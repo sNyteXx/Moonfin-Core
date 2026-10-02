@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 import 'package:dio/dio.dart';
 
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/user_preferences.dart';
 import '../models/aggregated_item.dart';
@@ -890,6 +891,14 @@ class ItemDetailViewModel extends ChangeNotifier {
 
       _loadSecondary();
     } catch (e) {
+      // hidden-vault: a hidden item outside its vault reads as unavailable,
+      // the same neutral screen a blocked rating gets.
+      if (HiddenVault.isRefusal(e)) {
+        _item = null;
+        _state = ItemDetailState.blocked;
+        notifyListeners();
+        return;
+      }
       _error = e;
       _state = ItemDetailState.error;
       notifyListeners();

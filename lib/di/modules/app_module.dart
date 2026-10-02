@@ -6,6 +6,7 @@ import 'package:server_core/server_core.dart';
 import '../../auth/repositories/session_repository.dart';
 import '../../auth/store/authentication_store.dart';
 import '../../auth/store/credential_store.dart';
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../../data/repositories/anime_marker_repository.dart';
 import '../../data/repositories/mdblist_repository.dart';
 import '../../data/repositories/multi_server_repository.dart';
@@ -169,6 +170,9 @@ void registerAppModule() {
   _getIt.registerLazySingleton(() => const ExternalPlayerService());
 
   _registerUserScopedSingletons();
+
+  // hidden-vault: auto-lock and screen refresh wiring for the vault session.
+  HiddenVault.initForeground();
 }
 
 void _registerUserScopedSingletons() {
