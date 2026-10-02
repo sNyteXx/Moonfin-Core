@@ -109,11 +109,11 @@ class VisibilityItemsApi implements ItemsApi {
     if (service.isRuleLibrary(anchorId)) return null;
     final entered = _context.enteredVaults;
     if (entered.isEmpty) return null;
+    // Only the seasons and episodes of the item asked about. A folder or a
+    // collection holding vault titles is not one of them.
     return (raw, vaultId) =>
-        (raw['Id']?.toString() == anchorId ||
-            raw['SeriesId']?.toString() == anchorId ||
-            raw['SeasonId']?.toString() == anchorId ||
-            raw['ParentId']?.toString() == anchorId) &&
+        (raw['SeriesId']?.toString() == anchorId ||
+            raw['SeasonId']?.toString() == anchorId) &&
         _allowed(entered, vaultId);
   }
 

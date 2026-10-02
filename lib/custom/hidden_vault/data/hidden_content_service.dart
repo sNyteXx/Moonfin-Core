@@ -357,7 +357,11 @@ class HiddenContentService extends ChangeNotifier {
 
     final index = _index;
     if (index != null) {
-      final entry = index[id] ?? index[seriesId] ?? index[seasonId];
+      final entry =
+          index[id] ??
+          index[seriesId] ??
+          index[seasonId] ??
+          index[_str(raw['AlbumId'])];
       if (entry != null) return ItemVerdict.hidden(entry.vaultId);
     }
 
@@ -397,16 +401,21 @@ class HiddenContentService extends ChangeNotifier {
   /// hand. Unknowns read as visible here; [settle] is the authoritative path.
   bool isHiddenNow(Map<dynamic, dynamic> raw) => verdictOf(raw).isHidden;
 
-  /// Records the tags of every item that came with them, so a series listed
-  /// next to its own episodes never needs a lookup.
+  /// Records the tags of series that came with them, so one listed next to
+  /// its own episodes never needs a lookup. Only series: nothing else is ever
+  /// looked up through a child. Only changes are written.
   void _learn(List<Map<dynamic, dynamic>> raws) {
     var learned = false;
     for (final raw in raws) {
+      if (raw['Type'] != 'Series') continue;
       final id = _str(raw['Id']);
       if (id == null) continue;
       final tags = extractTags(raw);
       if (tags == null) continue;
-      if (!_taggableTypes.contains(_str(raw['Type']))) continue;
+      final known = _check(id);
+      if (known != null && known.matches == _policy.matchesAnyRule(tags)) {
+        continue;
+      }
       _recordCheck(id, tags);
       learned = true;
     }

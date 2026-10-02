@@ -6,7 +6,6 @@ import 'package:moonfin/auth/repositories/session_repository.dart';
 import 'package:moonfin/custom/hidden_vault/data/hidden_content_registry.dart';
 import 'package:moonfin/custom/hidden_vault/data/visibility_media_server_client.dart';
 import 'package:moonfin/custom/hidden_vault/data/vault_store.dart';
-import 'package:moonfin/custom/hidden_vault/gate/hidden_content_gate.dart';
 import 'package:moonfin/custom/hidden_vault/hidden_vault.dart';
 import 'package:moonfin/custom/hidden_vault/session/vault_session.dart';
 import 'package:moonfin/data/models/aggregated_item.dart';

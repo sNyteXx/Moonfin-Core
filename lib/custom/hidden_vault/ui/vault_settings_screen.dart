@@ -216,8 +216,12 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
 
   Future<void> _apply(VaultConfig config) async {
     final before = _service.config;
-    final rulesChanged = config.fingerprint != before.fingerprint;
+    // The normal screens reload on their own once the new index is in. With
+    // no rules left there is no index to wait for, so they're told directly.
     await _service.saveConfig(config);
+    if (before.hasRules && !config.hasRules) {
+      HiddenVault.refreshNormalScreens();
+    }
     // A vault that was removed while open closes with it.
     final session = VaultSessionController.instance;
     for (final vault in before.vaults) {
@@ -225,7 +229,6 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
         session.lock(_scope, vault.id, VaultLockReason.configChanged);
       }
     }
-    if (rulesChanged) HiddenVault.refreshNormalScreens();
   }
 
   Future<void> _save() async {

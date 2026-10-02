@@ -207,18 +207,25 @@ abstract final class HiddenVault {
   }
 
   static int _lastSeenGeneration = -1;
+  static String? _lastFingerprint;
 
-  /// When a rebuild found newly hidden items, the rows on screen may hold
-  /// them. Reloading them through the filter is enough; nothing is cleared
-  /// wholesale.
+  /// When the rules changed, or a rebuild found newly hidden items, the rows
+  /// on screen may be out of step. Reloading them through the filter is
+  /// enough; nothing is cleared wholesale. Waits for the new index, so one
+  /// change costs one reload.
   static void _onRulesChanged() {
     final service = activeService;
     if (service == null) return;
     if (service.generation == _lastSeenGeneration) return;
+    if (service.isActive && service.index == null) return;
     _lastSeenGeneration = service.generation;
-    if (service.lastAddedIds.isEmpty) return;
+    final fingerprint = service.fingerprint;
+    final rulesChanged =
+        _lastFingerprint != null && _lastFingerprint != fingerprint;
+    _lastFingerprint = fingerprint;
+    final grew = service.lastAddedIds.isNotEmpty;
     service.lastAddedIds = const {};
-    refreshNormalScreens();
+    if (rulesChanged || grew) refreshNormalScreens();
   }
 
   /// Reloads what the normal app has on screen through the filter. Used after
@@ -240,5 +247,6 @@ abstract final class HiddenVault {
     _lifecycle?.dispose();
     _lifecycle = null;
     _lastSeenGeneration = -1;
+    _lastFingerprint = null;
   }
 }
