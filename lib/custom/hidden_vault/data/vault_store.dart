@@ -80,7 +80,49 @@ class MemoryVaultStore implements VaultKeyValueStore {
 /// Storage keys. Versioned so a later format can move without misreading the
 /// old one.
 abstract final class VaultStorageKeys {
-  static String config(VaultScope scope) => 'hidden_vault.v1.config.${scope.key}';
+  static String config(VaultScope scope) =>
+      'hidden_vault.v1.config.${scope.key}';
   static String index(VaultScope scope) => 'hidden_vault.v1.index.${scope.key}';
-  static String checks(VaultScope scope) => 'hidden_vault.v1.checks.${scope.key}';
+  static String checks(VaultScope scope) =>
+      'hidden_vault.v1.checks.${scope.key}';
+  static String device(VaultScope scope) =>
+      'hidden_vault.v1.device.${scope.key}';
+}
+
+/// Choices that belong to this device only and never travel with the
+/// synced config: whether to sync at all, and whether to accept a
+/// fingerprint or face instead of the PIN.
+class VaultDeviceSettings {
+  final bool syncEnabled;
+  final bool biometricEnabled;
+
+  const VaultDeviceSettings({
+    this.syncEnabled = true,
+    this.biometricEnabled = false,
+  });
+
+  VaultDeviceSettings copyWith({bool? syncEnabled, bool? biometricEnabled}) =>
+      VaultDeviceSettings(
+        syncEnabled: syncEnabled ?? this.syncEnabled,
+        biometricEnabled: biometricEnabled ?? this.biometricEnabled,
+      );
+
+  static VaultDeviceSettings load(VaultKeyValueStore store, VaultScope scope) {
+    final raw = store.getString(VaultStorageKeys.device(scope));
+    if (raw == null || raw.isEmpty) return const VaultDeviceSettings();
+    final parts = raw.split(',');
+    return VaultDeviceSettings(
+      syncEnabled: !parts.contains('nosync'),
+      biometricEnabled: parts.contains('biometric'),
+    );
+  }
+
+  Future<void> save(VaultKeyValueStore store, VaultScope scope) =>
+      store.setString(
+        VaultStorageKeys.device(scope),
+        [
+          if (!syncEnabled) 'nosync',
+          if (biometricEnabled) 'biometric',
+        ].join(','),
+      );
 }

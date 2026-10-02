@@ -77,7 +77,9 @@ void main() {
       serverId: scope.serverId,
       onlineItemsApi: () => server,
     );
-    GetIt.instance.registerSingleton<MediaServerClientFactory>(_Factory(client));
+    GetIt.instance.registerSingleton<MediaServerClientFactory>(
+      _Factory(client),
+    );
     GetIt.instance.registerSingleton<MediaServerClient>(client);
     GetIt.instance.registerSingleton<SessionRepository>(_Session());
     await client.visibilityService!.saveConfig(standardConfig());
@@ -189,7 +191,11 @@ void main() {
           id: 'latest',
           title: 'Latest',
           rowType: HomeRowType.latestMedia,
-          items: [_item('a1'), _item('a5'), _item('m1', type: 'Movie')],
+          items: [
+            _item('a1'),
+            _item('a5'),
+            _item('m1', type: 'Movie'),
+          ],
         ),
       ];
       final filtered = HiddenVault.filterCachedRows(rows);
@@ -214,10 +220,9 @@ void main() {
       ];
       expect(ids, isNot(contains('a1e1')));
       final resume = await client.itemsApi.getResumeItems(limit: 15);
-      expect(
-        [for (final item in resume['Items'] as List) (item as Map)['Id']],
-        isNot(contains('a2e1')),
-      );
+      expect([
+        for (final item in resume['Items'] as List) (item as Map)['Id'],
+      ], isNot(contains('a2e1')));
     });
   });
 }

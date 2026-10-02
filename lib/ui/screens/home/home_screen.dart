@@ -22,6 +22,7 @@ import 'package:server_core/server_core.dart' hide ImageType;
 import 'package:window_manager/window_manager.dart';
 
 import '../../../custom/hidden_vault/ui/vault_access.dart';
+import '../../../custom/hidden_vault/ui/widgets/vault_touch_hold.dart';
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/models/home_row.dart';
 import '../../../data/repositories/mdblist_repository.dart';
@@ -4731,7 +4732,7 @@ class _ContentRowsState extends State<_ContentRows>
           onTap: (_, item) => _navigateToLibrary(context, item),
           onLongPress: (_, item) =>
               showContextMenu(context, item, onChanged: () => setState(() {})),
-          // hidden-vault: a 2.5 s hold on a configured library opens its vault.
+          // hidden-vault: a 5 s hold on a configured library opens its vault.
           holdSelectEnabled: VaultAccess.isTriggerTile,
           onHoldSelect: (_, item) =>
               unawaited(VaultAccess.openFromTile(context, item)),
@@ -4745,24 +4746,37 @@ class _ContentRowsState extends State<_ContentRows>
               alignment: Alignment.topCenter,
               child: SizedBox.square(
                 dimension: squarePosterSide,
-                child: GridButtonCard(
-                  icon: icon,
-                  label: item.name,
-                  width: squarePosterSide,
-                  height: squarePosterSide,
-                  focusColor: focusColor,
-                  cardFocusExpansion: cardExpansion,
-                  externalIsFocused: isFocused,
-                  onTap: () => _navigateToLibrary(context, item),
+                // hidden-vault: a trigger tile takes the touch hold itself.
+                child: VaultTouchHold(
+                  enabled: VaultAccess.isTriggerTile(item),
+                  onHold: () =>
+                      unawaited(VaultAccess.openFromTile(context, item)),
                   onLongPress: () => showContextMenu(
                     context,
                     item,
                     onChanged: () => setState(() {}),
                   ),
-                  onSecondaryTap: () => showContextMenu(
-                    context,
-                    item,
-                    onChanged: () => setState(() {}),
+                  child: GridButtonCard(
+                    icon: icon,
+                    label: item.name,
+                    width: squarePosterSide,
+                    height: squarePosterSide,
+                    focusColor: focusColor,
+                    cardFocusExpansion: cardExpansion,
+                    externalIsFocused: isFocused,
+                    onTap: () => _navigateToLibrary(context, item),
+                    onLongPress: VaultAccess.isTriggerTile(item)
+                        ? null
+                        : () => showContextMenu(
+                            context,
+                            item,
+                            onChanged: () => setState(() {}),
+                          ),
+                    onSecondaryTap: () => showContextMenu(
+                      context,
+                      item,
+                      onChanged: () => setState(() {}),
+                    ),
                   ),
                 ),
               ),
@@ -4983,7 +4997,7 @@ class _ContentRowsState extends State<_ContentRows>
         },
         onLongPress: (_, item) =>
             showContextMenu(context, item, onChanged: () => setState(() {})),
-        // hidden-vault: a 2.5 s hold on a configured library opens its vault.
+        // hidden-vault: a 5 s hold on a configured library opens its vault.
         holdSelectEnabled: row.rowType == HomeRowType.libraryTiles
             ? VaultAccess.isTriggerTile
             : null,
@@ -5202,7 +5216,20 @@ class _ContentRowsState extends State<_ContentRows>
                   // the way the Jellyfin genre row does.
                   final isSeerrGenreCard =
                       _isSeerrFilterRow(row) && item.type == 'Genre';
-                  final card = MediaCard(
+                  // hidden-vault: a trigger tile takes the touch hold itself.
+                  final vaultTrigger =
+                      row.rowType == HomeRowType.libraryTiles &&
+                      VaultAccess.isTriggerTile(item);
+                  final card = VaultTouchHold(
+                    enabled: vaultTrigger,
+                    onHold: () =>
+                        unawaited(VaultAccess.openFromTile(context, item)),
+                    onLongPress: () => showContextMenu(
+                      context,
+                      item,
+                      onChanged: () => setState(() {}),
+                    ),
+                    child: MediaCard(
                     animeMarkerItemId: isSeerrGenreCard ? null : item.id,
                     title: cardTitle,
                     imageOverlays: isSeerrGenreCard
@@ -5264,11 +5291,13 @@ class _ContentRowsState extends State<_ContentRows>
                         _stopPreviewFor(item, rowIndex);
                       }
                     },
-                    onLongPress: () => showContextMenu(
-                      context,
-                      item,
-                      onChanged: () => setState(() {}),
-                    ),
+                    onLongPress: vaultTrigger
+                        ? null
+                        : () => showContextMenu(
+                            context,
+                            item,
+                            onChanged: () => setState(() {}),
+                          ),
                     onTap: () {
                       if (isV2MobileTouch) {
                         if (_mobilePressedV2Key.value == previewKey) {
@@ -5291,7 +5320,7 @@ class _ContentRowsState extends State<_ContentRows>
                       _finishSharedPreview(releaseResources: true);
                       navigateToItem();
                     },
-                  );
+                  ));
 
                   final previewWrappedCard = !canPreview
                       ? card

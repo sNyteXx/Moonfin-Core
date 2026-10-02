@@ -9,6 +9,7 @@ import '../model/tag_match.dart';
 import '../model/vault_config.dart';
 import 'hidden_content_index.dart';
 import 'item_tag_resolver.dart';
+import 'vault_config_sync.dart';
 import 'vault_store.dart';
 
 enum VerdictKind { visible, hidden, unknown }
@@ -28,7 +29,12 @@ class ItemVerdict {
   /// For [VerdictKind.unknown]: whose tags still have to be read.
   final String? resolveId;
 
-  const ItemVerdict._(this.kind, {this.vaultId, this.suspectId, this.resolveId});
+  const ItemVerdict._(
+    this.kind, {
+    this.vaultId,
+    this.suspectId,
+    this.resolveId,
+  });
 
   static const visible = ItemVerdict._(VerdictKind.visible);
 
@@ -52,7 +58,10 @@ class ItemVerdict {
 /// Decides whether a hidden item may still be shown in one particular call,
 /// given the vault it belongs to. Only item specific calls inside an entered
 /// vault ever say yes.
-typedef VaultAllowance = bool Function(Map<dynamic, dynamic> raw, String vaultId);
+typedef VaultAllowance = bool Function(
+  Map<dynamic, dynamic> raw,
+  String vaultId,
+);
 
 class _TagCheck {
   final bool matches;
@@ -77,6 +86,11 @@ class HiddenContentService extends ChangeNotifier {
   static const checkTtl = Duration(hours: 12);
 
   static const _resolveTimeout = Duration(seconds: 4);
+
+  /// How long the first list of a session waits for the config another
+  /// device may have saved. Past this the local copy answers, and a newer one
+  /// still applies the moment it arrives.
+  static const syncWait = Duration(seconds: 2);
   static const _suspectRefreshTimeout = Duration(seconds: 6);
   static const _maxStoredChecks = 20000;
 
@@ -100,6 +114,9 @@ class HiddenContentService extends ChangeNotifier {
   late final ItemTagResolver _resolver = ItemTagResolver.forApi(
     () => _onlineApi(),
   );
+  VaultConfigSync? _sync;
+  VaultDeviceSettings _device = const VaultDeviceSettings();
+  Future<void>? _initialSync;
 
   VaultConfig _config = VaultConfig.empty;
   HiddenTagPolicy _policy = HiddenTagPolicy.none;
@@ -126,8 +143,11 @@ class HiddenContentService extends ChangeNotifier {
     required this.scope,
     required this._store,
     required this._onlineApi,
+    DisplayPreferencesApi Function()? syncApi,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
+    if (syncApi != null) _sync = VaultConfigSync(syncApi);
+    _device = VaultDeviceSettings.load(_store, scope);
     _loadPersisted();
   }
 
@@ -151,10 +171,26 @@ class HiddenContentService extends ChangeNotifier {
 
   set onlineApi(ItemsApi Function() api) => _onlineApi = api;
 
+  set syncApi(DisplayPreferencesApi Function() api) =>
+      _sync = VaultConfigSync(api);
+
+  /// This device's own choices (sync on/off, biometric unlock).
+  VaultDeviceSettings get deviceSettings => _device;
+
+  Future<void> saveDeviceSettings(VaultDeviceSettings next) async {
+    final enablingSync = next.syncEnabled && !_device.syncEnabled;
+    _device = next;
+    await next.save(_store, scope);
+    if (enablingSync) await syncNow();
+    notifyListeners();
+  }
+
   bool isRuleLibrary(String? id) => id != null && _policy.ruleFor(id) != null;
 
   void _loadPersisted() {
-    _config = VaultConfig.decode(_store.getString(VaultStorageKeys.config(scope)));
+    _config = VaultConfig.decode(
+      _store.getString(VaultStorageKeys.config(scope)),
+    );
     _policy = HiddenTagPolicy.fromConfig(_config);
     if (!_policy.isActive) return;
     final index = HiddenContentIndex.decode(
@@ -220,8 +256,59 @@ class HiddenContentService extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   /// Stores [next] and, when what is hidden changed, rebuilds the index before
-  /// returning so nothing renders against the old rules.
+  /// returning so nothing renders against the old rules. With sync on, the
+  /// other devices of this user pick it up on their next start.
   Future<void> saveConfig(VaultConfig next) async {
+    final saved = next.copyWith(
+      updatedAt: _now().toUtc().millisecondsSinceEpoch,
+    );
+    await _applyConfig(saved);
+    if (_device.syncEnabled) unawaited(_push(saved));
+  }
+
+  Future<void> _push(VaultConfig config) async {
+    final sync = _sync;
+    if (sync == null) return;
+    try {
+      await sync.push(config);
+    } catch (error) {
+      // Picked up again by the next start's reconcile.
+      debugPrint('[HiddenVault] config push failed: $error');
+    }
+  }
+
+  /// Fetches the copy on the server once per session. The first lists wait
+  /// for it at most [syncWait], so a rule added on another device can't slip
+  /// through on this one.
+  Future<void> ensureSynced() {
+    final running = _initialSync;
+    if (running != null) return running;
+    if (_sync == null || !_device.syncEnabled) {
+      return _initialSync = Future.value();
+    }
+    final sync = syncNow().then((_) {}, onError: (_) {});
+    return _initialSync = sync.timeout(syncWait, onTimeout: () {});
+  }
+
+  /// Takes the server's copy when it is newer, and puts this device's copy
+  /// there when the server's is older or missing (a save made offline, or
+  /// the first device). True when the server's copy was applied.
+  Future<bool> syncNow() async {
+    final sync = _sync;
+    if (sync == null || !_device.syncEnabled) return false;
+    final remote = await sync.pull();
+    if (remote != null && remote.updatedAt > _config.updatedAt) {
+      await _applyConfig(remote);
+      return true;
+    }
+    final localIsNewer = remote == null
+        ? _config.updatedAt > 0
+        : _config.updatedAt > remote.updatedAt;
+    if (localIsNewer) await _push(_config);
+    return false;
+  }
+
+  Future<void> _applyConfig(VaultConfig next) async {
     final saved = next.copyWith(revision: _config.revision + 1);
     final rulesChanged = saved.fingerprint != _config.fingerprint;
     _config = saved;
@@ -251,6 +338,7 @@ class HiddenContentService extends ChangeNotifier {
   /// waited for. If even that fails, answers fall back to the tags alone,
   /// which hides too much rather than too little.
   Future<void> ensureReady() async {
+    await ensureSynced();
     if (!isActive) return;
     final index = _index;
     if (index != null) {
@@ -283,9 +371,8 @@ class HiddenContentService extends ChangeNotifier {
     final startedAt = _now();
     _refreshStartedAt = startedAt;
     final stats = HiddenIndexBuildStats();
-    final built = await HiddenIndexBuilder(
-      _onlineApi(),
-    ).build(policy, now: startedAt, stats: stats);
+    final built = await HiddenIndexBuilder(_onlineApi())
+        .build(policy, now: startedAt, stats: stats);
     indexBuilds++;
     indexRequests += stats.requests;
     debugPrint('[HiddenVault] index built: ${built.length} hidden, $stats');

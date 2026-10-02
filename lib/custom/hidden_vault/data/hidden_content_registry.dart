@@ -51,11 +51,13 @@ class HiddenContentRegistry {
   HiddenContentService? serviceFor(
     VaultScope scope, {
     ItemsApi Function()? onlineApi,
+    DisplayPreferencesApi Function()? syncApi,
   }) {
     if (!scope.isValid) return null;
     final existing = _services[scope];
     if (existing != null) {
       if (onlineApi != null) existing.onlineApi = onlineApi;
+      if (syncApi != null) existing.syncApi = syncApi;
       return existing;
     }
     final store = _resolvedStore;
@@ -64,6 +66,7 @@ class HiddenContentRegistry {
       scope: scope,
       store: store,
       onlineApi: onlineApi,
+      syncApi: syncApi,
       now: _now,
     );
     service.addListener(() => changes.value++);

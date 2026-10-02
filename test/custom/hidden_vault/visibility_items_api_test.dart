@@ -15,10 +15,12 @@ void main() {
           .where((c) => c.method == 'getItems' && c.params['tags'] != null)
           .toList();
       expect(tagQueries, hasLength(4));
-      expect(
-        tagQueries.map((c) => c.params['parentId']).toSet(),
-        {'lib-anime', 'lib-anime-movies', 'lib-shows', 'lib-movies'},
-      );
+      expect(tagQueries.map((c) => c.params['parentId']).toSet(), {
+        'lib-anime',
+        'lib-anime-movies',
+        'lib-shows',
+        'lib-movies',
+      });
       final index = h.service.index!;
       expect(index.ids.toSet(), {'a1', 'a2', 'm1', 'm2', 's2', 'f2'});
       // The server's cleaned match let "Ecchi!" through; exact matching
@@ -28,30 +30,40 @@ void main() {
       expect(index['s2']!.vaultId, 'shows');
     });
 
-    test('several tags in one library are one query (Jellyfin ORs them)', () async {
-      final h = Harness()..seedStandard();
-      await h.configure();
-      final animeMovies = h.server.calls.singleWhere(
-        (c) => c.params['parentId'] == 'lib-anime-movies' && c.params['tags'] != null,
-      );
-      expect(animeMovies.params['tags'], ['ecchi', 'private']);
-    });
+    test(
+      'several tags in one library are one query (Jellyfin ORs them)',
+      () async {
+        final h = Harness()..seedStandard();
+        await h.configure();
+        final animeMovies = h.server.calls.singleWhere(
+          (c) =>
+              c.params['parentId'] == 'lib-anime-movies' &&
+              c.params['tags'] != null,
+        );
+        expect(animeMovies.params['tags'], ['ecchi', 'private']);
+      },
+    );
 
-    test('persists and is reused on the next start without a request', () async {
-      final h = Harness()..seedStandard();
-      await h.configure();
-      h.server.resetCalls();
-      final service = h.restart();
-      expect(service.index, isNotNull);
-      await service.ensureReady();
-      expect(h.server.calls, isEmpty);
-    });
+    test(
+      'persists and is reused on the next start without a request',
+      () async {
+        final h = Harness()..seedStandard();
+        await h.configure();
+        h.server.resetCalls();
+        final service = h.restart();
+        expect(service.index, isNotNull);
+        await service.ensureReady();
+        expect(h.server.calls, isEmpty);
+      },
+    );
 
     test('rebuilds in the background once stale', () async {
       final h = Harness()..seedStandard();
       await h.configure();
       h.server.resetCalls();
-      h.now = h.now.add(HiddenContentService.staleAfter + const Duration(minutes: 1));
+      h.now = h.now.add(
+        HiddenContentService.staleAfter + const Duration(minutes: 1),
+      );
       await h.service.ensureReady();
       await h.service.refreshIndex();
       expect(h.server.count('getItems'), 4);
@@ -68,7 +80,10 @@ void main() {
     });
 
     test('latest', () async {
-      final latest = await h.api.getLatestItems(parentId: 'lib-anime', limit: 15);
+      final latest = await h.api.getLatestItems(
+        parentId: 'lib-anime',
+        limit: 15,
+      );
       expect(idsOf(latest), ['a6', 'a5', 'a4', 'a3']);
     });
 
@@ -94,7 +109,11 @@ void main() {
     });
 
     test('search', () async {
-      final results = await h.api.getItems(searchTerm: 'a', recursive: true, limit: 50);
+      final results = await h.api.getItems(
+        searchTerm: 'a',
+        recursive: true,
+        limit: 50,
+      );
       final ids = idsOf(results);
       for (final hidden in ['a1', 'a2', 'a1e1', 'a2e1', 'm1', 'm2']) {
         expect(ids, isNot(contains(hidden)));
@@ -109,20 +128,27 @@ void main() {
       expect(idsOf(similar), contains('a3'));
     });
 
-    test('library scope: an anime tag outside the anime vault stays visible', () async {
+    test(
+      'library scope: an anime tag outside the anime vault stays visible',
+      () async {
+        final grid = await h.api.getItems(
+          parentId: 'lib-shows',
+          includeItemTypes: ['Series'],
+          recursive: true,
+          limit: 48,
+        );
+        // s1 carries "ecchi" but sits in the shows library, whose vault hides
+        // "private" and "hidden" only. s3's "hidden gem" is not "hidden".
+        expect(idsOf(grid), ['s1', 's3']);
+      },
+    );
+
+    test('exact matching on films: adult vs adult animation', () async {
       final grid = await h.api.getItems(
-        parentId: 'lib-shows',
-        includeItemTypes: ['Series'],
+        parentId: 'lib-movies',
         recursive: true,
         limit: 48,
       );
-      // s1 carries "ecchi" but sits in the shows library, whose vault hides
-      // "private" and "hidden" only. s3's "hidden gem" is not "hidden".
-      expect(idsOf(grid), ['s1', 's3']);
-    });
-
-    test('exact matching on films: adult vs adult animation', () async {
-      final grid = await h.api.getItems(parentId: 'lib-movies', recursive: true, limit: 48);
       expect(idsOf(grid), ['f1', 'f3']);
     });
 
@@ -139,7 +165,11 @@ void main() {
         'Type': 'BoxSet',
         'Tags': ['Classics'],
       });
-      final grid = await h.api.getItems(parentId: 'lib-boxsets', recursive: true, limit: 48);
+      final grid = await h.api.getItems(
+        parentId: 'lib-boxsets',
+        recursive: true,
+        limit: 48,
+      );
       expect(idsOf(grid), ['box2']);
     });
 
@@ -166,43 +196,68 @@ void main() {
       expect((await h.api.getItem('a5'))['Id'], 'a5');
     });
 
-    test('series episodes of a hidden series are empty outside the vault', () async {
-      final episodes = await h.api.getEpisodes('a1');
-      expect(idsOf(episodes), isEmpty);
-    });
+    test(
+      'series episodes of a hidden series are empty outside the vault',
+      () async {
+        final episodes = await h.api.getEpisodes('a1');
+        expect(idsOf(episodes), isEmpty);
+      },
+    );
 
     test('Tags is requested with the normal fields, not separately', () async {
-      await h.api.getItems(parentId: 'lib-anime', limit: 10, fields: 'Overview,Genres');
+      await h.api.getItems(
+        parentId: 'lib-anime',
+        limit: 10,
+        fields: 'Overview,Genres',
+      );
       final call = h.server.calls.lastWhere((c) => c.method == 'getItems');
       expect(call.params['fields'], 'Overview,Genres,Tags');
     });
   });
 
   group('suspects and out-of-scope items', () {
-    test('a new out-of-scope tag match costs one rebuild, then is remembered', () async {
-      final h = Harness()..seedStandard();
-      await h.configure();
-      final buildsAfterConfig = h.service.indexBuilds;
-      await h.api.getItems(parentId: 'lib-shows', recursive: true, limit: 48);
-      expect(h.service.indexBuilds, buildsAfterConfig + 1);
-      await h.api.getItems(parentId: 'lib-shows', recursive: true, limit: 48);
-      await h.api.getNextUp(limit: 15);
-      expect(h.service.indexBuilds, buildsAfterConfig + 1);
-      // And across a restart.
-      h.restart();
-      final grid = await h.api.getItems(parentId: 'lib-shows', recursive: true, limit: 48);
-      expect(idsOf(grid), contains('s1'));
-      expect(h.service.indexBuilds, 0);
-    });
+    test(
+      'a new out-of-scope tag match costs one rebuild, then is remembered',
+      () async {
+        final h = Harness()..seedStandard();
+        await h.configure();
+        final buildsAfterConfig = h.service.indexBuilds;
+        await h.api.getItems(parentId: 'lib-shows', recursive: true, limit: 48);
+        expect(h.service.indexBuilds, buildsAfterConfig + 1);
+        await h.api.getItems(parentId: 'lib-shows', recursive: true, limit: 48);
+        await h.api.getNextUp(limit: 15);
+        expect(h.service.indexBuilds, buildsAfterConfig + 1);
+        // And across a restart.
+        h.restart();
+        final grid = await h.api.getItems(
+          parentId: 'lib-shows',
+          recursive: true,
+          limit: 48,
+        );
+        expect(idsOf(grid), contains('s1'));
+        expect(h.service.indexBuilds, 0);
+      },
+    );
 
-    test('an item tagged after the index was built is caught at once', () async {
-      final h = Harness()..seedStandard();
-      await h.configure();
-      h.server.series('lib-anime', 'a7', tags: ['ecchi'], created: '2025-01-01');
-      final latest = await h.api.getLatestItems(parentId: 'lib-anime', limit: 15);
-      expect(idsOf(latest), isNot(contains('a7')));
-      expect(h.service.index!.contains('a7'), isTrue);
-    });
+    test(
+      'an item tagged after the index was built is caught at once',
+      () async {
+        final h = Harness()..seedStandard();
+        await h.configure();
+        h.server.series(
+          'lib-anime',
+          'a7',
+          tags: ['ecchi'],
+          created: '2025-01-01',
+        );
+        final latest = await h.api.getLatestItems(
+          parentId: 'lib-anime',
+          limit: 15,
+        );
+        expect(idsOf(latest), isNot(contains('a7')));
+        expect(h.service.index!.contains('a7'), isTrue);
+      },
+    );
 
     test('episodes of a series tagged after the build are caught by the batch lookup', () async {
       final h = Harness()..seedStandard();
@@ -224,7 +279,12 @@ void main() {
       var n = 0;
       for (final series in ['x', 'y', 'z']) {
         for (var e = 0; e < 7 && n < 20; e++, n++) {
-          h.server.episode('lib-other', '$series-e$e', seriesId: series, nextUp: true);
+          h.server.episode(
+            'lib-other',
+            '$series-e$e',
+            seriesId: series,
+            nextUp: true,
+          );
         }
       }
       await h.configure();
@@ -245,17 +305,20 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 3));
       h.restart();
       await h.api.getNextUp(limit: 50);
-      expect(
-        h.server.calls.where((c) => c.params['ids'] != null),
-        isEmpty,
-      );
+      expect(h.server.calls.where((c) => c.params['ids'] != null), isEmpty);
     });
 
     test('concurrent rows share one lookup', () async {
       final h = Harness();
       h.server.series('lib-anime', 'hidden-series', tags: ['ecchi']);
       h.server.series('lib-other', 'x', tags: []);
-      h.server.episode('lib-other', 'x-e1', seriesId: 'x', nextUp: true, resume: true);
+      h.server.episode(
+        'lib-other',
+        'x-e1',
+        seriesId: 'x',
+        nextUp: true,
+        resume: true,
+      );
       await h.configure();
       h.server.resetCalls();
       await Future.wait([
@@ -308,7 +371,11 @@ void main() {
 
     test('rows stay full: a short page reads ahead within a budget', () async {
       final h = await bigLibrary();
-      final page = await h.api.getItems(parentId: 'lib-anime', recursive: true, limit: 15);
+      final page = await h.api.getItems(
+        parentId: 'lib-anime',
+        recursive: true,
+        limit: 15,
+      );
       expect(idsOf(page), hasLength(15));
       expect(h.server.count('getItems'), lessThanOrEqualTo(2));
     });
@@ -321,7 +388,11 @@ void main() {
       h.server.series('lib-anime', 'visible', tags: []);
       await h.configure();
       h.server.resetCalls();
-      final page = await h.api.getItems(parentId: 'lib-anime', recursive: true, limit: 15);
+      final page = await h.api.getItems(
+        parentId: 'lib-anime',
+        recursive: true,
+        limit: 15,
+      );
       expect(idsOf(page), isEmpty);
       expect(h.server.count('getItems'), 1 + 3);
     });
@@ -330,7 +401,12 @@ void main() {
       final h = Harness()..seedStandard();
       await h.configure();
       h.server.resetCalls();
-      await h.api.getItems(parentId: 'lib-movies', recursive: true, limit: 2, startIndex: 2);
+      await h.api.getItems(
+        parentId: 'lib-movies',
+        recursive: true,
+        limit: 2,
+        startIndex: 2,
+      );
       expect(h.server.count('getItems'), 1);
     });
   });
@@ -353,7 +429,11 @@ void main() {
       );
       expect(
         idsOf(
-          await h.api.getItems(parentId: 'lib-anime', recursive: true, limit: 48),
+          await h.api.getItems(
+            parentId: 'lib-anime',
+            recursive: true,
+            limit: 48,
+          ),
         ),
         isNot(contains('a1')),
       );
@@ -392,21 +472,30 @@ void main() {
               id: 'anime',
               name: 'Anime',
               libraries: [
-                VaultLibrary(libraryId: 'lib-anime', name: 'Anime', tags: ['Action']),
+                VaultLibrary(
+                  libraryId: 'lib-anime',
+                  name: 'Anime',
+                  tags: ['Action'],
+                ),
               ],
             ),
           ],
         ),
       );
       expect(h.service.fingerprint, isNot(before));
-      final latest = idsOf(await h.api.getLatestItems(parentId: 'lib-anime', limit: 15));
+      final latest = idsOf(
+        await h.api.getLatestItems(parentId: 'lib-anime', limit: 15),
+      );
       expect(latest, contains('a1'));
       expect(latest, isNot(contains('a5')));
     });
 
     test('no rules: every call passes straight through', () async {
       final h = Harness()..seedStandard();
-      final latest = await h.api.getLatestItems(parentId: 'lib-anime', limit: 15);
+      final latest = await h.api.getLatestItems(
+        parentId: 'lib-anime',
+        limit: 15,
+      );
       expect(idsOf(latest), hasLength(6));
       expect(h.server.calls, hasLength(1));
       expect(h.server.calls.single.params, isNot(contains('tags')));

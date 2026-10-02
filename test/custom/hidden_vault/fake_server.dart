@@ -124,7 +124,8 @@ class FakeJellyfin implements ItemsApi {
 
   Map<String, dynamic> _out(Map<String, dynamic> item, String? fields) {
     final wantsTags =
-        fields != null && fields.split(',').map((f) => f.trim()).contains('Tags');
+        fields != null &&
+        fields.split(',').map((f) => f.trim()).contains('Tags');
     return {
       for (final e in item.entries)
         if (!e.key.startsWith('_') && (e.key != 'Tags' || wantsTags))
@@ -251,9 +252,11 @@ class FakeJellyfin implements ItemsApi {
       );
     }
     final list = result.toList();
-    if (sortBy == 'DateCreated' || sortBy?.startsWith('DateLastContentAdded') == true) {
+    if (sortBy == 'DateCreated' ||
+        sortBy?.startsWith('DateLastContentAdded') == true) {
       list.sort(
-        (a, b) => b['DateCreated'].toString().compareTo(a['DateCreated'].toString()),
+        (a, b) =>
+            b['DateCreated'].toString().compareTo(a['DateCreated'].toString()),
       );
     }
     return _page(list, startIndex, limit, fields);
@@ -333,14 +336,19 @@ class FakeJellyfin implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
   }) async {
-    calls.add(FakeCall('getLatestItems', {'parentId': parentId, 'limit': limit}));
-    final list = _all
-        .where((i) => i['Type'] == 'Series' || i['Type'] == 'Movie')
-        .where((i) => parentId == null || libraryOf[i['Id']] == parentId)
-        .toList()
-      ..sort(
-        (a, b) => b['DateCreated'].toString().compareTo(a['DateCreated'].toString()),
-      );
+    calls.add(
+      FakeCall('getLatestItems', {'parentId': parentId, 'limit': limit}),
+    );
+    final list =
+        _all
+            .where((i) => i['Type'] == 'Series' || i['Type'] == 'Movie')
+            .where((i) => parentId == null || libraryOf[i['Id']] == parentId)
+            .toList()
+          ..sort(
+            (a, b) => b['DateCreated'].toString().compareTo(
+              a['DateCreated'].toString(),
+            ),
+          );
     final page = _page(list, 0, limit, fields);
     return page;
   }
@@ -405,7 +413,12 @@ class FakeJellyfin implements ItemsApi {
     return {
       'Items': [
         for (final s in seasons)
-          {'Id': s, 'Type': 'Season', 'SeriesId': seriesId, 'ParentId': seriesId},
+          {
+            'Id': s,
+            'Type': 'Season',
+            'SeriesId': seriesId,
+            'ParentId': seriesId,
+          },
       ],
       'TotalRecordCount': seasons.length,
     };

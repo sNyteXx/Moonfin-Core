@@ -41,8 +41,12 @@ class VisibilityMediaServerClient implements MediaServerClient {
   VaultScope get scope => VaultScope(serverId, _inner.userId ?? '');
 
   /// The rules for whoever is signed in on this client right now.
-  HiddenContentService? get visibilityService => HiddenContentRegistry.instance
-      .serviceFor(scope, onlineApi: _onlineItemsApi);
+  HiddenContentService? get visibilityService =>
+      HiddenContentRegistry.instance.serviceFor(
+        scope,
+        onlineApi: _onlineItemsApi,
+        syncApi: () => _inner.displayPreferencesApi,
+      );
 
   /// The filtered items API for the current routing (online or offline).
   @override
@@ -209,8 +213,9 @@ class _VisibilityUserLibraryApi implements UserLibraryApi {
   Future<Map<String, dynamic>> getItem(String itemId) async {
     final data = await _inner.getItem(itemId);
     final service = _context.service;
-    if (service == null || !service.isActive) return data;
+    if (service == null) return data;
     await service.ensureReady();
+    if (!service.isActive) return data;
     final verdict = (await service.settle([data])).single;
     if (!verdict.isHidden) return data;
     final vaultId = verdict.vaultId;
@@ -258,11 +263,15 @@ class _VisibilityInstantMixApi implements InstantMixApi {
   _VisibilityInstantMixApi(this._inner, this._context);
 
   @override
-  Future<Map<String, dynamic>> getInstantMix(String itemId, {int? limit}) async {
+  Future<Map<String, dynamic>> getInstantMix(
+    String itemId, {
+    int? limit,
+  }) async {
     final response = await _inner.getInstantMix(itemId, limit: limit);
     final service = _context.service;
-    if (service == null || !service.isActive) return response;
+    if (service == null) return response;
     await service.ensureReady();
+    if (!service.isActive) return response;
     final items = [
       for (final item in (response['Items'] as List?) ?? const [])
         if (item is Map) item.cast<String, dynamic>(),

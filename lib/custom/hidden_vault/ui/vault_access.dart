@@ -2,16 +2,19 @@ import 'package:flutter/widgets.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
+import 'package:vault_biometrics/vault_biometrics.dart';
 
 import '../../../data/models/aggregated_item.dart';
 import '../../../ui/widgets/pin_entry_dialog.dart';
 import '../../../util/pin_code_util.dart';
+import '../../../util/platform_detection.dart';
 import '../data/hidden_content_service.dart';
 import '../data/vault_store.dart';
 import '../hidden_vault.dart';
 import '../model/vault_config.dart';
 import '../session/vault_session.dart';
 import 'vault_routes.dart';
+import 'vault_strings.dart';
 
 /// PIN checks and the way into a vault.
 abstract final class VaultAccess {
@@ -37,6 +40,34 @@ abstract final class VaultAccess {
     );
     if (ok) await pin.clearFailedAttempts();
     return ok;
+  }
+
+  /// Whether this device may offer a fingerprint or face instead of the PIN.
+  /// Never on a TV.
+  static Future<bool> biometricsAvailable() async {
+    if (PlatformDetection.isTV) return false;
+    return VaultBiometrics.isAvailable();
+  }
+
+  /// Fingerprint or face first when this device opted in, the PIN when that
+  /// is off, unavailable, cancelled or fails.
+  static Future<bool> verify(BuildContext context, VaultScope scope) async {
+    final service = HiddenVault.activeService;
+    final useBiometrics =
+        service != null &&
+        service.deviceSettings.biometricEnabled &&
+        await biometricsAvailable();
+    if (!context.mounted) return false;
+    if (useBiometrics) {
+      final s = VaultStrings.of(context);
+      final result = await VaultBiometrics.authenticate(
+        title: s.biometricPrompt,
+        cancelLabel: s.usePin,
+      );
+      if (result == BiometricResult.success) return true;
+      if (!context.mounted) return false;
+    }
+    return verifyPin(context, scope);
   }
 
   /// Picks a new PIN (entered twice).
@@ -89,7 +120,7 @@ abstract final class VaultAccess {
   ) async {
     final session = VaultSessionController.instance;
     if (!session.isUnlocked(scope, vaultId)) {
-      final ok = await verifyPin(context, scope);
+      final ok = await verify(context, scope);
       if (!ok || !context.mounted) return;
       session.unlock(scope, vaultId);
     }

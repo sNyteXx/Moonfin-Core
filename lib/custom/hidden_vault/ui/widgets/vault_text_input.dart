@@ -72,7 +72,8 @@ class _VaultTextInputState extends State<VaultTextInput> {
         ),
       );
     }
-    final preferIme = GetIt.instance.isRegistered<UserPreferences>() &&
+    final preferIme =
+        GetIt.instance.isRegistered<UserPreferences>() &&
         GetIt.instance<UserPreferences>().get(
           UserPreferences.preferSystemImeKeyboard,
         );

@@ -179,7 +179,7 @@ enum SelectPressKind { none, tap, longPress, hold }
 /// Built on timers rather than a stopwatch so tests can drive it with fake
 /// time.
 class SelectHoldGesture {
-  static const defaultHoldAfter = Duration(milliseconds: 2500);
+  static const defaultHoldAfter = Duration(seconds: 5);
 
   final Duration longPressAfter;
   final Duration holdAfter;

@@ -136,7 +136,8 @@ class VirtualPager {
       if (extraRequests >= maxExtraRequests) break;
       // Nothing was dropped, so a short page means the end.
       if (visible.length == raw.length) break;
-      if (collected.length >= (limit < fullPageTarget ? limit : fullPageTarget)) {
+      if (collected.length >=
+          (limit < fullPageTarget ? limit : fullPageTarget)) {
         break;
       }
       extraRequests++;

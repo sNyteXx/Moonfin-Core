@@ -68,8 +68,7 @@ class VaultSessionController extends ChangeNotifier {
   }
 
   /// Fires once per vault that locks, with the reason.
-  Stream<(VaultScope, String, VaultLockReason)> get lockEvents =>
-      _locks.stream;
+  Stream<(VaultScope, String, VaultLockReason)> get lockEvents => _locks.stream;
 
   static String _key(VaultScope scope, String vaultId) =>
       '${scope.key}#$vaultId';

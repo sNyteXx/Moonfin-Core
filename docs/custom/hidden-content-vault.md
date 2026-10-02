@@ -38,9 +38,20 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
    *Geöffnet über* = Trigger-Kachel (z. B. Anime).
 3. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
    normalen Screens laden gefiltert neu.
-4. Öffnen: im Startbildschirm Fokus auf die Trigger-Kachel, **OK ≥ 2,5 s
-   halten** → PIN → Vault. Fallback (Touch/Desktop): im selben Settings-Screen
-   *Öffnen: <Name>*.
+4. Öffnen: im Startbildschirm die Trigger-Kachel **5 s halten** – auf dem TV
+   OK auf der fokussierten Kachel, auf Handy/Tablet den Finger auf der
+   Kachel – → PIN (bzw. Fingerabdruck/Gesicht, §6.1) → Vault. Fallback: im
+   selben Settings-Screen *Öffnen: <Name>*.
+
+Solange noch keine PIN gesetzt ist, ist die Kachel ganz normal: die Geste
+existiert erst, wenn Regeln, Trigger-Kachel **und** PIN eingerichtet sind.
+
+Abschnitt *Dieses Gerät* (gilt nur für das aktuelle Gerät):
+
+* **Mit anderen Geräten synchronisieren** (Default an, §6.2)
+* **Fingerabdruck/Gesicht statt PIN** (Default aus; nur auf Handy/Tablet mit
+  eingerichteter Biometrie sichtbar, Einschalten verlangt eine erfolgreiche
+  biometrische Bestätigung)
 
 ## 3. Architektur
 
@@ -64,9 +75,13 @@ lib/custom/hidden_vault/
     visibility_media_server_client.dart  Client-Wrapper (Items/UserLibrary/InstantMix)
     virtual_pager.dart              virtuelles Paging + begrenztes Nachladen
     vault_repository.dart           VAULT-Kontext-Queries
+    vault_config_sync.dart          Config-Sync über Jellyfin-DisplayPreferences
   session/vault_session.dart        In-Memory-Unlock, Timeout, Lock-on-leave, Auto-Lock
   gate/hidden_content_gate.dart     Playback-Gate (+ Detail via Refusal)
   ui/                               Vault-Home/-Grid/-Suche, Settings, Zugriff, Strings
+  ui/widgets/vault_touch_hold.dart  Touch-Hold auf Trigger-Kacheln
+
+packages/vault_biometrics/          lokales Plugin: BiometricPrompt (Android) / LAContext (iOS)
 ```
 
 ### 3.1 Warum ein `ItemsApi`-Decorator
@@ -196,18 +211,26 @@ landet im gesperrten Zustand auf Home; Kids Mode sperrt den Vault komplett.
 
 ## 6. Unlock-Flow & Session
 
-1. Trigger-Kachel fokussiert, OK halten. Zentral in
-   `key_event_utils.dart` (`SelectHoldGesture`, timerbasiert) und opt-in in
-   `LockedFocusRow` (`holdSelectEnabled`/`onHoldSelect`), nur für Kacheln mit
-   vollständig eingerichtetem Vault (Regeln + Trigger + PIN):
+1. Trigger-Kachel halten, nur für Kacheln mit vollständig eingerichtetem
+   Vault (Regeln + Trigger + PIN):
+   * **D-Pad/Tastatur:** zentral in `key_event_utils.dart`
+     (`SelectHoldGesture`, timerbasiert, `defaultHoldAfter = 5 s`) und opt-in
+     in `LockedFocusRow` (`holdSelectEnabled`/`onHoldSelect`).
+   * **Touch/Maus:** `VaultTouchHold` (`LongPressGestureRecognizer` + Timer
+     bis 5 s) um die Kachel; deren eigener Long-Press ist für Trigger-Kacheln
+     abgeschaltet, Tap und Rechtsklick bleiben.
    * < 0,5 s: Library öffnen wie bisher
-   * 0,5–2,5 s: Kontextmenü **beim Loslassen** (nur Trigger-Kacheln)
-   * ≥ 2,5 s: PIN-Dialog (keine sichtbare UI vorher)
-   * Menü-Taste: Kontextmenü unverändert; alle anderen Kacheln unverändert
-     (500-ms-Menü wie bisher).
-2. `PinEntryDialog` mit `PinCodeUtil.vault(store, scope)`: eigener Namespace,
-   pro Server+User, SHA-256 mit Scope-Salt, Lockout wie Kids Mode
-   (5 freie Versuche, dann 30 s steigend bis 15 min).
+   * 0,5–5 s: Kontextmenü **beim Loslassen** (nur Trigger-Kacheln)
+   * ≥ 5 s: sofort Entsperr-Dialog (PIN oder Biometrie), vorher keine
+     sichtbare UI
+   * Menü-Taste/Rechtsklick: Kontextmenü unverändert; alle anderen Kacheln
+     unverändert (500-ms-Menü wie bisher).
+2. `VaultAccess.verify`: ist auf diesem Gerät Biometrie eingeschaltet und
+   verfügbar, zuerst der System-Dialog (§6.1); Abbrechen oder Fehlschlag
+   führt zur PIN. Sonst direkt `PinEntryDialog` mit
+   `PinCodeUtil.vault(store, scope)`: eigener Namespace, pro Server+User,
+   SHA-256 mit Scope-Salt, Lockout wie Kids Mode (5 freie Versuche, dann
+   30 s steigend bis 15 min).
 3. Erfolg → `VaultSessionController.unlock()` (nur Speicher) → `/vault/<id>`.
 
 Auto-Lock: App-Neustart/Kill (nichts persistiert), Logout, User-/Serverwechsel
@@ -217,6 +240,55 @@ laufende Vault-Wiedergabe zählt als Aktivität), *Beim Verlassen sperren*
 (Default an). Beim Lock: alle Vault-Routen und darüberliegende Detail/Player-
 Seiten werden per `go(home)` verlassen, das Vault-Repository verworfen, der
 globale Backdrop geleert.
+
+### 6.1 Biometrie (Handy/Tablet)
+
+* Eigenes lokales Plugin `packages/vault_biometrics` statt `local_auth`:
+  `MainActivity` erbt von `AudioServiceActivity`, `local_auth` verlangt eine
+  `FragmentActivity`. Das Plugin nutzt das Framework-`BiometricPrompt`
+  (Android 10+/API 29, `BIOMETRIC_STRONG` ab API 30) bzw. `LAContext`
+  (iOS, `NSFaceIDUsageDescription` in `Info.plist`). Keine Änderung an
+  `MainActivity`.
+* **TV nie**: `UI_MODE_TYPE_TELEVISION` meldet „nicht verfügbar“, die
+  Einstellung wird dort gar nicht angezeigt.
+* Opt-in **pro Gerät** (`VaultDeviceSettings`, nie synchronisiert). Die PIN
+  bleibt immer gültig und ist Pflicht-Fallback; ohne PIN keine Biometrie.
+* Biometrie ersetzt nur die PIN-Eingabe. Unlock-Zustand, Timeout und
+  Auto-Lock sind identisch.
+* Fehlt das Plugin (Desktop, Tests): `MissingPluginException` → „nicht
+  verfügbar“ → PIN.
+
+### 6.2 Sync zwischen Geräten
+
+Das Moonbase-Plugin wurde geprüft (read-only): `MoonfinSettingsProfile` ist
+ein fest typisiertes Schema ohne `JsonExtensionData`, unbekannte Felder werden
+beim Speichern verworfen. Ohne Änderung am Plugin kann es die Vault-Config
+nicht tragen.
+
+Stattdessen: Jellyfins eigene **DisplayPreferences pro User**
+(`id=moonfin-hidden-vault`, `client=moonfin`, CustomPref `config`), dasselbe
+Muster, das Moonfin bereits für Library-Bildtypen nutzt. Kein Plugin nötig,
+erreicht jedes Gerät mit demselben Jellyfin-User; Library-IDs sind
+serverweit gleich.
+
+* **Synchronisiert:** Vaults, Libraries (IDs), Tags, Trigger,
+  Session-Einstellungen (Timeout, Beim Verlassen sperren).
+* **Nie synchronisiert:** PIN (pro Gerät), Hidden-Index, Prüf-Cache,
+  Unlock-Zustand, Geräte-Einstellungen (Sync an/aus, Biometrie).
+* **Last-Writer-Wins** über `updatedAt` (beim Speichern gesetzt). Pull einmal
+  pro App-Sitzung in `ensureSynced()`; die ersten Listen warten darauf
+  höchstens `syncWait` = 2 s, danach wird mit der lokalen Config gefiltert
+  und eine später eintreffende neuere Config sofort angewendet. Push nach
+  jedem Speichern; scheitert er (offline), wird beim nächsten Sync
+  nachgeschoben, wenn die lokale Kopie neuer ist.
+* Sync aus: kein Request an die DisplayPreferences. Wieder einschalten
+  synchronisiert sofort.
+* Ein neues Gerät übernimmt damit Regeln und Trigger, der Bereich bleibt aber
+  zu, bis auf diesem Gerät eine PIN gesetzt wurde (*Privater Bereich* in den
+  Einstellungen).
+* Schreibt nur in die DisplayPreferences des angemeldeten Users (dieselbe
+  API, die jeder Client für Ansichtseinstellungen nutzt); keine Metadaten,
+  keine Libraries, keine Server-Konfiguration.
 
 ## 7. Gates
 
@@ -249,7 +321,7 @@ globale Backdrop geleert.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 82 Tests
+flutter test test/custom/hidden_vault/     # 101 Tests
 flutter test                               # gesamte Suite
 ```
 
@@ -260,8 +332,11 @@ Batch-Resolution, Home (Latest/Resume/Next Up/Recommendations/Similar), Suche
 normal vs. Vault, Detail-Gate, Playback-Gate inkl. Mischqueue, Vault zeigt nur
 eigenen Scope, Unlock lässt Normal-Home gefiltert, Cache nach
 Config-Änderung, virtuelles Paging, Read-Ahead-Budget, Secret Gesture
-(Tap/Menü/Hold, andere Kacheln unverändert), Session (Timeout, Lock on leave,
-Kontowechsel, Lifecycle), PIN-Namespace.
+D-Pad und Touch (Tap/Menü/5-s-Hold, andere Kacheln unverändert), Session
+(Timeout, Lock on leave, Kontowechsel, Lifecycle), PIN-Namespace, Biometrie
+(Default aus, Erfolg ohne PIN, Abbruch/nicht verfügbar → PIN), Sync
+(TV → Handy, nur Regeln im Payload, LWW in beide Richtungen, Offline-Speichern,
+Sync aus, langsamer Server ≤ 2 s).
 
 Request-Zählung mit Bestand in echter Größe (Anime 793 Serien / 23.548
 Episoden, Filme (Anime) 417, Serien 795 / 18.998, Filme 2.843; ~150 Serien
@@ -302,10 +377,12 @@ Episoden über ihre Serie gefiltert würden. Die IDs oben sind nur die
 Entwicklungsreferenz und stehen nirgends im Code.
 
 Android: Der komplette Dart-Code wurde im Release-Modus (Produkt, TFA) für
-`android-arm64` und `android-arm` AOT kompiliert (`libapp.so`). Das
-Gradle-Packaging zur APK braucht das Android SDK von `dl.google.com`, das in
-der Cloud-Umgebung gesperrt war → auf ubuntudev mit `./build-android.sh`
-bauen.
+`android-arm64` und `android-arm` AOT kompiliert (`libapp.so`), der Kotlin-Code
+von `vault_biometrics` gegen die Android-API kompiliert. Das Gradle-Packaging
+zur APK braucht das Android SDK von `dl.google.com`, das in der
+Cloud-Umgebung gesperrt war → auf ubuntudev mit `./build-android.sh` bauen.
+iOS: nach dem Pull `pod install` (neues lokales Plugin); der Swift-Teil ist
+hier nicht kompiliert.
 
 ## 10. Bekannte Grenzen
 
@@ -321,8 +398,9 @@ bauen.
   im Vault eingerichteter Auto-Download zeigt seine Download-Benachrichtigung.
 * Jellyfin selbst (Dashboard „Now playing“, andere Clients) ist außerhalb des
   Scopes.
-* Secret Gesture ist für D-Pad/Tastatur umgesetzt; Touch nutzt den
-  Settings-Fallback.
+* Biometrie gibt es erst ab Android 10; ältere Handys nutzen die PIN.
+* Sync ist Last-Writer-Wins auf die ganze Config: wer auf zwei Geräten
+  gleichzeitig offline ändert, behält die zuletzt gespeicherte Fassung.
 * Admin-Metadaten-Editor öffnet Hidden-Items nur aus dem Vault heraus.
 
 ## 11. Upstream-Merge-Hinweise
@@ -339,12 +417,14 @@ diese Zeilen wieder einsetzen:
 | `lib/ui/navigation/app_router.dart` | Vault-Routen + Redirect |
 | `lib/data/viewmodels/item_detail_view_model.dart` | Refusal → blocked |
 | `lib/ui/screens/home/home_view_model.dart` | Cache-Key-Token + Hydrate-Filter |
-| `lib/ui/screens/home/home_screen.dart` | Trigger-Kacheln (Hold-Geste) |
+| `lib/ui/screens/home/home_screen.dart` | Trigger-Kacheln (Hold-Geste D-Pad + `VaultTouchHold`) |
 | `lib/ui/widgets/focus/locked_focus_row.dart` | opt-in Hold-Geste |
 | `lib/util/focus/key_event_utils.dart` | `SelectHoldGesture` |
 | `lib/util/pin_code_util.dart` | `PinCodeUtil.vault` |
 | `lib/data/providers/offline_providers.dart` | Downloads-Listen filtern |
 | `lib/ui/screens/settings/settings_side_panel.dart` + `panel/authentication_category_screen.dart` | Settings-Eintrag |
+| `pubspec.yaml` | lokales Plugin `vault_biometrics` |
+| `ios/Runner/Info.plist` | `NSFaceIDUsageDescription` |
 
 Strings liegen in `lib/custom/hidden_vault/ui/vault_strings.dart` (EN/DE)
 statt in den ARB-Dateien, damit Weblate-Commits nie mit dem Fork kollidieren.

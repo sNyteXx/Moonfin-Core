@@ -55,7 +55,8 @@ class VaultRepository {
     required this.serverId,
   });
 
-  Iterable<VaultLibrary> get libraries => vault.libraries.where((l) => l.hasTags);
+  Iterable<VaultLibrary> get libraries =>
+      vault.libraries.where((l) => l.hasTags);
 
   static List<String> typesFor(VaultLibrary library) =>
       switch (library.collectionType) {
@@ -171,27 +172,28 @@ class VaultRepository {
   static String _lastPlayed(AggregatedItem item) =>
       (item.rawData['UserData'] as Map?)?['LastPlayedDate']?.toString() ?? '';
 
-  Future<List<AggregatedItem>> continueWatching() => _cached('resume', () async {
-    await service.ensureReady();
-    final lists = await Future.wait([
-      for (final library in libraries)
-        _api
-            .getResumeItems(
-              parentId: library.libraryId,
-              limit: 60,
-              fields: fields,
-              enableImageTypes: _imageTypes,
-              imageTypeLimit: 1,
-            )
-            .then(_items),
-    ]);
-    requestCount += lists.length;
-    final items = [
-      for (final raw in lists.expand((e) => e))
-        if (_inVault(raw)) _item(raw),
-    ]..sort((a, b) => _lastPlayed(b).compareTo(_lastPlayed(a)));
-    return items.take(rowLimit).toList();
-  });
+  Future<List<AggregatedItem>> continueWatching() =>
+      _cached('resume', () async {
+        await service.ensureReady();
+        final lists = await Future.wait([
+          for (final library in libraries)
+            _api
+                .getResumeItems(
+                  parentId: library.libraryId,
+                  limit: 60,
+                  fields: fields,
+                  enableImageTypes: _imageTypes,
+                  imageTypeLimit: 1,
+                )
+                .then(_items),
+        ]);
+        requestCount += lists.length;
+        final items = [
+          for (final raw in lists.expand((e) => e))
+            if (_inVault(raw)) _item(raw),
+        ]..sort((a, b) => _lastPlayed(b).compareTo(_lastPlayed(a)));
+        return items.take(rowLimit).toList();
+      });
 
   Future<List<AggregatedItem>> nextUp() => _cached('nextUp', () async {
     await service.ensureReady();

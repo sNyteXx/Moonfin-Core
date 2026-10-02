@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
+import 'package:vault_biometrics/vault_biometrics.dart';
 
 import '../../../ui/screens/settings/settings_app_bar.dart';
 import '../../../ui/widgets/adaptive/adaptive_list_section.dart';
@@ -12,6 +13,7 @@ import '../../../ui/widgets/settings/clean_settings_typography.dart';
 import '../../../ui/widgets/settings/preference_tiles.dart';
 import '../../../ui/widgets/settings/settings_panel.dart';
 import '../../../ui/widgets/settings/settings_section_header.dart';
+import '../../../util/focus/key_event_utils.dart';
 import '../../../util/platform_detection.dart';
 import '../data/hidden_content_service.dart';
 import '../data/vault_store.dart';
@@ -31,7 +33,7 @@ abstract final class VaultSettingsEntry {
     final scope = HiddenVault.activeScope;
     if (scope == null || HiddenVault.activeService == null) return;
     final ok = VaultAccess.hasPin(scope)
-        ? await VaultAccess.verifyPin(context, scope)
+        ? await VaultAccess.verify(context, scope)
         : await VaultAccess.setPin(context, scope);
     if (!ok || !context.mounted) return;
     await context.pushSettingsScreen(const VaultSettingsScreen());
@@ -173,6 +175,8 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
   bool _saving = false;
   List<_LibraryOption>? _libraries;
   Object? _librariesError;
+  bool _syncing = false;
+  bool _biometricsAvailable = false;
 
   @override
   void initState() {
@@ -181,6 +185,63 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
     _service = HiddenVault.activeService!;
     _draft = _service.config;
     unawaited(_loadLibraries());
+    unawaited(_syncFromServer());
+    unawaited(
+      VaultAccess.biometricsAvailable().then((available) {
+        if (mounted) setState(() => _biometricsAvailable = available);
+      }),
+    );
+  }
+
+  /// Another device may have changed things since this one last looked.
+  Future<void> _syncFromServer() async {
+    if (!_service.deviceSettings.syncEnabled) return;
+    setState(() => _syncing = true);
+    var applied = false;
+    try {
+      applied = await _service.syncNow();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      if (applied && !_dirty) _draft = _service.config;
+    });
+    if (applied) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(VaultStrings.of(context).syncedFromServer)),
+      );
+    }
+  }
+
+  Future<void> _toggleSync() async {
+    final device = _service.deviceSettings;
+    setState(() => _syncing = true);
+    try {
+      await _service.saveDeviceSettings(
+        device.copyWith(syncEnabled: !device.syncEnabled),
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      _syncing = false;
+      if (!_dirty) _draft = _service.config;
+    });
+  }
+
+  Future<void> _toggleBiometric(VaultStrings s) async {
+    final device = _service.deviceSettings;
+    if (!device.biometricEnabled) {
+      // Turning it on proves a finger or face is there to use.
+      final result = await VaultBiometrics.authenticate(
+        title: s.biometricPrompt,
+        cancelLabel: s.cancel,
+      );
+      if (result != BiometricResult.success) return;
+    }
+    await _service.saveDeviceSettings(
+      device.copyWith(biometricEnabled: !device.biometricEnabled),
+    );
+    if (mounted) setState(() {});
   }
 
   @override
@@ -345,7 +406,7 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
         appBar: buildSettingsAppBar(context, Text(s.configTitle)),
         body: ListView(
           children: [
-            if (_saving) const LinearProgressIndicator(),
+            if (_saving || _syncing) const LinearProgressIndicator(),
             adaptiveListSection(
               children: [
                 _tile(
@@ -417,6 +478,27 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                 ],
               ),
             ],
+            SettingsSectionHeader(s.thisDevice),
+            adaptiveListSection(
+              children: [
+                _tile(
+                  context,
+                  checked: _service.deviceSettings.syncEnabled,
+                  title: Text(s.syncTitle),
+                  subtitle: Text(s.syncSubtitle),
+                  enabled: !_syncing,
+                  onTap: _toggleSync,
+                ),
+                if (_biometricsAvailable)
+                  _tile(
+                    context,
+                    checked: _service.deviceSettings.biometricEnabled,
+                    title: Text(s.biometricToggle),
+                    subtitle: Text(s.biometricSubtitle),
+                    onTap: () => _toggleBiometric(s),
+                  ),
+              ],
+            ),
             SettingsSectionHeader(s.session),
             adaptiveListSection(
               children: [
@@ -517,13 +599,17 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
     _set(
       _vault.copyWith(
         libraries: libraries,
-        clearTrigger: trigger != null && !libraries.any((l) => l.libraryId == trigger),
+        clearTrigger:
+            trigger != null && !libraries.any((l) => l.libraryId == trigger),
       ),
     );
   }
 
   void _cycleTrigger() {
-    final options = <String?>[null, for (final lib in _vault.libraries) lib.libraryId];
+    final options = <String?>[
+      null,
+      for (final lib in _vault.libraries) lib.libraryId,
+    ];
     final at = options.indexOf(_vault.triggerLibraryId);
     final next = options[(at + 1) % options.length];
     _set(
@@ -594,7 +680,7 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
                     _vault.triggerLibraryId == null
                         ? s.triggerNone
                         : '${nameOf(_vault.triggerLibraryId)} · '
-                              '${s.triggerHint(nameOf(_vault.triggerLibraryId))}',
+                              '${s.triggerHint(nameOf(_vault.triggerLibraryId), SelectHoldGesture.defaultHoldAfter.inSeconds)}',
                   ),
                   onTap: _cycleTrigger,
                 ),

@@ -15,7 +15,8 @@ import 'vault_search_screen.dart';
 abstract final class VaultRoutes {
   static const _root = '/vault';
 
-  static String home(String vaultId) => '$_root/${Uri.encodeComponent(vaultId)}';
+  static String home(String vaultId) =>
+      '$_root/${Uri.encodeComponent(vaultId)}';
 
   static String library(String vaultId, String libraryId) =>
       '${home(vaultId)}/library/${Uri.encodeComponent(libraryId)}';

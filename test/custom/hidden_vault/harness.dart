@@ -105,7 +105,12 @@ class Harness {
   void seedStandard() {
     final s = server;
     // Anime: a1, a2 hidden; a3/a4 carry look-alike tags and stay visible.
-    s.series('lib-anime', 'a1', tags: ['Ecchi', 'Romance'], created: '2024-05-01');
+    s.series(
+      'lib-anime',
+      'a1',
+      tags: ['Ecchi', 'Romance'],
+      created: '2024-05-01',
+    );
     s.series('lib-anime', 'a2', tags: ['ECCHI'], created: '2024-05-02');
     s.series('lib-anime', 'a3', tags: ['ecchi comedy'], created: '2024-05-03');
     s.series('lib-anime', 'a4', tags: ['super-ecchi'], created: '2024-05-04');

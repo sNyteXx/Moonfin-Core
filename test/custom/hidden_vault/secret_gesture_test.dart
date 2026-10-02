@@ -5,7 +5,7 @@ import 'package:moonfin/ui/widgets/focus/hub_focus_memory.dart';
 import 'package:moonfin/ui/widgets/focus/locked_focus_row.dart';
 import 'package:moonfin/util/focus/key_event_utils.dart';
 
-/// The hidden way into a vault: a 2.5 s hold of OK on a configured library
+/// The hidden way into a vault: a 5 s hold of OK on a configured library
 /// tile, while a short press still opens the library and every other tile
 /// keeps its 500 ms context menu.
 void main() {
@@ -66,8 +66,8 @@ void main() {
     ) async {
       await pump(tester);
       await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
-      await tester.pump(const Duration(milliseconds: 2400));
-      expect(holds, isEmpty, reason: 'not before 2.5 s');
+      await tester.pump(const Duration(milliseconds: 4900));
+      expect(holds, isEmpty, reason: 'not before 5 s');
       await tester.pump(const Duration(milliseconds: 200));
       expect(holds, ['anime']);
       // Still held: more repeats change nothing.
@@ -101,7 +101,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
       // Fires while still held, exactly as before.
       expect(longPresses, ['music']);
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 6));
       await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
       await tester.pump();
       expect(holds, isEmpty);
@@ -115,7 +115,7 @@ void main() {
       await tester.pump();
       await press(tester, const Duration(milliseconds: 100));
       expect(taps, ['shows']);
-      await press(tester, const Duration(milliseconds: 2600));
+      await press(tester, const Duration(milliseconds: 5100));
       expect(holds, ['shows']);
     });
 
@@ -131,7 +131,7 @@ void main() {
       await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
       await tester.pump(const Duration(milliseconds: 1000));
       node.unfocus();
-      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(seconds: 5));
       expect(holds, isEmpty);
     });
   });

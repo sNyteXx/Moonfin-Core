@@ -49,7 +49,12 @@ void main() {
 
   group('extractTags', () {
     test('reads Jellyfin Tags', () {
-      expect(extractTags({'Tags': ['a', 'B']}), ['a', 'B']);
+      expect(
+        extractTags({
+          'Tags': ['a', 'B'],
+        }),
+        ['a', 'B'],
+      );
     });
 
     test('reads Emby TagItems', () {
@@ -77,7 +82,11 @@ void main() {
           id: 'anime',
           name: 'Anime',
           libraries: [
-            VaultLibrary(libraryId: 'lib-anime', name: 'Anime', tags: ['ecchi']),
+            VaultLibrary(
+              libraryId: 'lib-anime',
+              name: 'Anime',
+              tags: ['ecchi'],
+            ),
             VaultLibrary(
               libraryId: 'lib-anime-movies',
               name: 'Filme (Anime)',
@@ -90,7 +99,11 @@ void main() {
           id: 'shows',
           name: 'Serien',
           libraries: [
-            VaultLibrary(libraryId: 'lib-shows', name: 'Serien', tags: ['private']),
+            VaultLibrary(
+              libraryId: 'lib-shows',
+              name: 'Serien',
+              tags: ['private'],
+            ),
           ],
         ),
       ],
@@ -115,12 +128,16 @@ void main() {
           VaultDefinition(
             id: 'a',
             name: 'A',
-            libraries: [VaultLibrary(libraryId: 'lib', name: 'L', tags: ['x'])],
+            libraries: [
+              VaultLibrary(libraryId: 'lib', name: 'L', tags: ['x']),
+            ],
           ),
           VaultDefinition(
             id: 'b',
             name: 'B',
-            libraries: [VaultLibrary(libraryId: 'lib', name: 'L', tags: ['y'])],
+            libraries: [
+              VaultLibrary(libraryId: 'lib', name: 'L', tags: ['y']),
+            ],
           ),
         ],
       );
@@ -130,9 +147,7 @@ void main() {
 
     test('fingerprint follows the rules, not names or session settings', () {
       final renamed = VaultConfig(
-        vaults: [
-          for (final v in config.vaults) v.copyWith(name: '${v.name}!'),
-        ],
+        vaults: [for (final v in config.vaults) v.copyWith(name: '${v.name}!')],
         settings: const VaultSettings(autoLockMinutes: 60, lockOnLeave: false),
       );
       expect(renamed.fingerprint, config.fingerprint);

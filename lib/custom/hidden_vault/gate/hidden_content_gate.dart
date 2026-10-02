@@ -58,7 +58,9 @@ abstract final class HiddenContentGate {
     if (item is! AggregatedItem) return false;
     final client = _clientFor(item.serverId);
     final service = client?.visibilityService;
-    if (client == null || service == null || !service.isActive) return false;
+    if (client == null || service == null) return false;
+    await service.ensureSynced();
+    if (!service.isActive) return false;
     final verdict = await service.settledVerdict(item.rawData);
     if (!verdict.isHidden) return false;
     return !_allowedInOpenVault(client, verdict);

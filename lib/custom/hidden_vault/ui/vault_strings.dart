@@ -19,8 +19,7 @@ class VaultStrings {
 
   // Settings entry. Deliberately plain, it must not advertise anything.
   String get settingsEntry => _t('Private content', 'Privater Bereich');
-  String get settingsEntrySubtitle =>
-      _t('PIN protected', 'PIN-geschützt');
+  String get settingsEntrySubtitle => _t('PIN protected', 'PIN-geschützt');
 
   String get configTitle => _t('Private content', 'Privater Bereich');
   String get vaults => _t('Areas', 'Bereiche');
@@ -53,9 +52,11 @@ class VaultStrings {
   String get filterTags => _t('Filter tags', 'Tags filtern');
   String get trigger => _t('Opened from', 'Geöffnet über');
   String get triggerNone => _t('Settings only', 'Nur über Einstellungen');
-  String triggerHint(String library) => _t(
-    'Hold OK on the $library tile on the home screen for 2.5 seconds.',
-    'OK auf der Kachel $library im Startbildschirm 2,5 Sekunden halten.',
+  String triggerHint(String library, int seconds) => _t(
+    'Hold OK (or touch and hold) the $library tile on the home screen for '
+        '$seconds seconds.',
+    'OK auf der Kachel $library im Startbildschirm $seconds Sekunden halten '
+        '(Touch: Kachel gedrückt halten).',
   );
   String get removeVault => _t('Remove area', 'Bereich entfernen');
   String get save => _t('Save', 'Speichern');
@@ -63,7 +64,8 @@ class VaultStrings {
   String get saved => _t('Saved', 'Gespeichert');
   String get open => _t('Open', 'Öffnen');
   String get session => _t('Locking', 'Sperren');
-  String get autoLock => _t('Lock after inactivity', 'Sperren nach Inaktivität');
+  String get autoLock =>
+      _t('Lock after inactivity', 'Sperren nach Inaktivität');
   String minutes(int n) => _t('$n minutes', '$n Minuten');
   String get lockOnLeave => _t('Lock when leaving', 'Beim Verlassen sperren');
   String get lockOnLeaveSubtitle => _t(
@@ -78,6 +80,31 @@ class VaultStrings {
   );
   String get cancel => _t('Cancel', 'Abbrechen');
   String get confirm => _t('Remove', 'Entfernen');
+  String get thisDevice => _t('This device', 'Dieses Gerät');
+  String get syncTitle =>
+      _t('Sync across devices', 'Geräteübergreifend synchronisieren');
+  String get syncSubtitle => _t(
+    'Areas, libraries and tags travel through your Jellyfin account. The PIN '
+        'stays on each device.',
+    'Bereiche, Bibliotheken und Tags laufen über dein Jellyfin-Konto. Die PIN '
+        'bleibt auf jedem Gerät eigen.',
+  );
+  String get syncing => _t('Syncing…', 'Wird abgeglichen…');
+  String get syncedFromServer => _t(
+    'Took the newer settings from another device.',
+    'Neuere Einstellungen eines anderen Geräts übernommen.',
+  );
+  String get biometricToggle => _t(
+    'Unlock with fingerprint or face',
+    'Mit Fingerabdruck oder Gesicht entsperren',
+  );
+  String get biometricSubtitle => _t(
+    'The PIN still works and is asked for when this fails.',
+    'Die PIN funktioniert weiter und wird abgefragt, wenn das fehlschlägt.',
+  );
+  String get biometricPrompt =>
+      _t('Unlock private content', 'Privaten Bereich entsperren');
+  String get usePin => _t('Use PIN', 'PIN verwenden');
   String indexSummary(int n) =>
       _t('$n items currently hidden', '$n Einträge aktuell versteckt');
   String get rebuildIndex => _t('Refresh now', 'Jetzt aktualisieren');

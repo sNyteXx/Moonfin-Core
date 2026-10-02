@@ -61,11 +61,7 @@ class VisibilityItemsApi implements ItemsApi {
   /// opening it costs no extra lookup.
   final String? _defaultItemFields;
 
-  VisibilityItemsApi(
-    this._inner,
-    this._context, {
-    this._defaultItemFields,
-  });
+  VisibilityItemsApi(this._inner, this._context, {this._defaultItemFields});
 
   /// The wrapped API, for the vault's own queries and the settings screen.
   ItemsApi get unfiltered => _inner;
@@ -73,9 +69,13 @@ class VisibilityItemsApi implements ItemsApi {
   /// Requests the read-ahead sent, for tests and the performance log.
   int get pagerRequests => _pager.requestCount;
 
-  HiddenContentService? get _service {
+  /// The rules for this call, once this session's first sync is in, or null
+  /// to pass straight through.
+  Future<HiddenContentService?> _activeService() async {
     final service = _context.service;
-    return service != null && service.isActive ? service : null;
+    if (service == null) return null;
+    await service.ensureSynced();
+    return service.isActive ? service : null;
   }
 
   static String? _withTags(String? fields) {
@@ -85,7 +85,11 @@ class VisibilityItemsApi implements ItemsApi {
     return '$fields,Tags';
   }
 
-  static String _signature(String method, Map<String, Object?> params, int gen) {
+  static String _signature(
+    String method,
+    Map<String, Object?> params,
+    int gen,
+  ) {
     final sorted = Map.fromEntries(
       params.entries.where((e) => e.value != null).toList()
         ..sort((a, b) => a.key.compareTo(b.key)),
@@ -215,7 +219,7 @@ class VisibilityItemsApi implements ItemsApi {
     bool? is4K,
     bool? is3D,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     final effectiveFields = service == null ? fields : _withTags(fields);
     Future<Map<String, dynamic>> call(int? start, int? lim) => _inner.getItems(
       serverWide: serverWide,
@@ -338,7 +342,7 @@ class VisibilityItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     Future<Map<String, dynamic>> call(int? start, int? lim) => _inner.getNextUp(
       seriesId: seriesId,
       parentId: parentId,
@@ -382,7 +386,7 @@ class VisibilityItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     final effectiveFields = service == null ? fields : _withTags(fields);
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
         _inner.getResumeItems(
@@ -420,7 +424,7 @@ class VisibilityItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     final effectiveFields = service == null ? fields : _withTags(fields);
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
         _inner.getLatestItems(
@@ -453,7 +457,7 @@ class VisibilityItemsApi implements ItemsApi {
     int? imageTypeLimit,
     bool recursive = false,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     final effectiveFields = service == null ? fields : _withTags(fields);
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
         _inner.getRecentlyReleasedItems(
@@ -483,7 +487,7 @@ class VisibilityItemsApi implements ItemsApi {
     int? limit,
     String? bypass,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
         _inner.getSimilarItems(itemId, limit: lim, bypass: bypass);
     if (service == null) return call(null, limit);
@@ -499,8 +503,11 @@ class VisibilityItemsApi implements ItemsApi {
   }
 
   @override
-  Future<Map<String, dynamic>> getSeasons(String seriesId, {String? fields}) {
-    final service = _service;
+  Future<Map<String, dynamic>> getSeasons(
+    String seriesId, {
+    String? fields,
+  }) async {
+    final service = await _activeService();
     if (service == null) return _inner.getSeasons(seriesId, fields: fields);
     return _filterAll(
       service,
@@ -514,8 +521,8 @@ class VisibilityItemsApi implements ItemsApi {
     String seriesId, {
     String? seasonId,
     String? fields,
-  }) {
-    final service = _service;
+  }) async {
+    final service = await _activeService();
     if (service == null) {
       return _inner.getEpisodes(seriesId, seasonId: seasonId, fields: fields);
     }
@@ -527,8 +534,8 @@ class VisibilityItemsApi implements ItemsApi {
   }
 
   @override
-  Future<Map<String, dynamic>> getPlaylists() {
-    final service = _service;
+  Future<Map<String, dynamic>> getPlaylists() async {
+    final service = await _activeService();
     if (service == null) return _inner.getPlaylists();
     return _filterAll(service, _inner.getPlaylists);
   }
@@ -539,7 +546,7 @@ class VisibilityItemsApi implements ItemsApi {
     int? startIndex,
     int? limit,
   }) async {
-    final service = _service;
+    final service = await _activeService();
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
         _inner.getPlaylistItems(playlistId, startIndex: start, limit: lim);
     if (service == null) return call(startIndex, limit);
@@ -557,8 +564,8 @@ class VisibilityItemsApi implements ItemsApi {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getSpecialFeatures(String itemId) {
-    final service = _service;
+  Future<List<Map<String, dynamic>>> getSpecialFeatures(String itemId) async {
+    final service = await _activeService();
     if (service == null) return _inner.getSpecialFeatures(itemId);
     return _filterList(
       service,
@@ -568,8 +575,8 @@ class VisibilityItemsApi implements ItemsApi {
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getLocalTrailers(String itemId) {
-    final service = _service;
+  Future<List<Map<String, dynamic>>> getLocalTrailers(String itemId) async {
+    final service = await _activeService();
     if (service == null) return _inner.getLocalTrailers(itemId);
     return _filterList(
       service,
@@ -583,8 +590,8 @@ class VisibilityItemsApi implements ItemsApi {
     String itemId, {
     String? mediaSourceId,
     String? fields,
-  }) {
-    final service = _service;
+  }) async {
+    final service = await _activeService();
     if (service == null) {
       return _inner.getItem(
         itemId,
@@ -615,7 +622,7 @@ class VisibilityItemsApi implements ItemsApi {
       parentId: parentId,
       includeItemTypes: includeItemTypes,
     );
-    final service = _service;
+    final service = await _activeService();
     if (service == null) return values;
     final hidden = service.policy.tagsForScope(
       service.isRuleLibrary(parentId) ? parentId : null,

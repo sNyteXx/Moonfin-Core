@@ -40,7 +40,9 @@ void main() {
   test('anime vault: only anime hidden content', () async {
     final repo = repoFor('anime');
     expect(
-      ids((await repo.libraryPage(repo.vault.library('lib-anime-movies')!)).items),
+      ids(
+        (await repo.libraryPage(repo.vault.library('lib-anime-movies')!)).items,
+      ),
       ['m1', 'm2'],
     );
     expect(ids(await repo.continueWatching()), unorderedEquals(['a2e1', 'm1']));

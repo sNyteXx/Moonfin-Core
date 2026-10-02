@@ -186,6 +186,7 @@ class VaultConfig {
     vaults: [],
     settings: VaultSettings(),
     revision: 0,
+    updatedAt: 0,
   );
 
   final List<VaultDefinition> vaults;
@@ -195,10 +196,15 @@ class VaultConfig {
   /// rules came out the same.
   final int revision;
 
+  /// When this config was last saved on any device (ms since epoch, UTC).
+  /// Syncing keeps whichever copy is newer.
+  final int updatedAt;
+
   const VaultConfig._({
     required this.vaults,
     required this.settings,
     required this.revision,
+    required this.updatedAt,
   });
 
   /// Drops empty ids and gives each library to the first vault that names it,
@@ -207,6 +213,7 @@ class VaultConfig {
     required List<VaultDefinition> vaults,
     VaultSettings settings = const VaultSettings(),
     int revision = 0,
+    int updatedAt = 0,
   }) {
     final claimed = <String>{};
     final seenVaults = <String>{};
@@ -220,17 +227,13 @@ class VaultConfig {
       final trigger = vault.triggerLibraryId;
       final triggerValid =
           trigger != null && libs.any((l) => l.libraryId == trigger);
-      cleaned.add(
-        vault.copyWith(
-          libraries: libs,
-          clearTrigger: !triggerValid,
-        ),
-      );
+      cleaned.add(vault.copyWith(libraries: libs, clearTrigger: !triggerValid));
     }
     return VaultConfig._(
       vaults: List.unmodifiable(cleaned),
       settings: settings,
       revision: revision,
+      updatedAt: updatedAt,
     );
   }
 
@@ -261,10 +264,12 @@ class VaultConfig {
     List<VaultDefinition>? vaults,
     VaultSettings? settings,
     int? revision,
+    int? updatedAt,
   }) => VaultConfig(
     vaults: vaults ?? this.vaults,
     settings: settings ?? this.settings,
     revision: revision ?? this.revision,
+    updatedAt: updatedAt ?? this.updatedAt,
   );
 
   /// Changes exactly when what is hidden changes: vault ids, library ids and
@@ -289,6 +294,7 @@ class VaultConfig {
   Map<String, dynamic> toJson() => {
     'v': 1,
     'revision': revision,
+    'updatedAt': updatedAt,
     'vaults': [for (final v in vaults) v.toJson()],
     'settings': settings.toJson(),
   };
@@ -310,6 +316,7 @@ class VaultConfig {
             : const [],
         settings: VaultSettings.fromJson(json['settings']),
         revision: json['revision'] is int ? json['revision'] as int : 0,
+        updatedAt: json['updatedAt'] is int ? json['updatedAt'] as int : 0,
       );
     } catch (_) {
       return empty;

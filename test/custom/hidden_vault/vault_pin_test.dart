@@ -16,21 +16,24 @@ void main() {
     await store.init();
   });
 
-  test('the vault PIN is its own, never the sign in or Kids Mode PIN', () async {
-    final vault = PinCodeUtil.vault(store, scope.key);
-    final kids = PinCodeUtil.kidsMode(store, scope.userId);
-    final login = PinCodeUtil(store, scope.userId);
-    await vault.setPin('1234');
-    expect(vault.isPinEnabled, isTrue);
-    expect(kids.isPinEnabled, isFalse);
-    expect(login.isPinEnabled, isFalse);
+  test(
+    'the vault PIN is its own, never the sign in or Kids Mode PIN',
+    () async {
+      final vault = PinCodeUtil.vault(store, scope.key);
+      final kids = PinCodeUtil.kidsMode(store, scope.userId);
+      final login = PinCodeUtil(store, scope.userId);
+      await vault.setPin('1234');
+      expect(vault.isPinEnabled, isTrue);
+      expect(kids.isPinEnabled, isFalse);
+      expect(login.isPinEnabled, isFalse);
 
-    await kids.setPin('1234');
-    expect(kids.verifyPin('1234'), isTrue);
-    expect(vault.verifyPin('1234'), isTrue);
-    await kids.removePin();
-    expect(vault.verifyPin('1234'), isTrue);
-  });
+      await kids.setPin('1234');
+      expect(kids.verifyPin('1234'), isTrue);
+      expect(vault.verifyPin('1234'), isTrue);
+      await kids.removePin();
+      expect(vault.verifyPin('1234'), isTrue);
+    },
+  );
 
   test('stored hashed and salted, never in clear', () async {
     final vault = PinCodeUtil.vault(store, scope.key);
@@ -40,10 +43,7 @@ void main() {
     for (final key in keys) {
       expect(prefs.get(key)?.toString(), isNot(contains('4711')));
     }
-    expect(
-      keys.where((k) => k.startsWith('vault_pin_hash_')),
-      hasLength(1),
-    );
+    expect(keys.where((k) => k.startsWith('vault_pin_hash_')), hasLength(1));
     // Same digits, other namespace: a different hash.
     final kids = PinCodeUtil.kidsMode(store, scope.key);
     await kids.setPin('4711');

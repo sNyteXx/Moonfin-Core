@@ -15,7 +15,8 @@ import 'harness.dart';
 void main() {
   FakeJellyfin realisticServer() {
     final s = FakeJellyfin();
-    String date(int i) => DateTime(2020).add(Duration(days: i)).toIso8601String();
+    String date(int i) =>
+        DateTime(2020).add(Duration(days: i)).toIso8601String();
     var episodeBudget = 23548;
     var ecchi = 0;
     for (var i = 0; i < 793; i++) {
@@ -104,13 +105,21 @@ void main() {
       rows.loadResume(scope.serverId),
       rows.loadNextUp(scope.serverId),
       rows.loadLatestMedia('lib-anime', 'Anime', scope.serverId, 'tvshows'),
-      rows.loadLatestMedia('lib-anime-movies', 'Filme (Anime)', scope.serverId, 'movies'),
+      rows.loadLatestMedia(
+        'lib-anime-movies',
+        'Filme (Anime)',
+        scope.serverId,
+        'movies',
+      ),
       rows.loadLatestMedia('lib-shows', 'Serien', scope.serverId, 'tvshows'),
       rows.loadLatestMedia('lib-movies', 'Filme', scope.serverId, 'movies'),
     ]);
   }
 
-  Future<List<String>> openLibrary(VisibilityItemsApiLike api, String lib) async {
+  Future<List<String>> openLibrary(
+    VisibilityItemsApiLike api,
+    String lib,
+  ) async {
     final seen = <String>[];
     for (var page = 0; page < 3; page++) {
       final response = await api.getItems(
@@ -128,7 +137,9 @@ void main() {
 
   test('request counts: off vs. cold start vs. warm start', () async {
     final report = StringBuffer()
-      ..writeln('| Scenario | Requests | thereof index | thereof tag lookups | ms |');
+      ..writeln(
+        '| Scenario | Requests | thereof index | thereof tag lookups | ms |',
+      );
 
     Future<void> measure(
       String label,
@@ -162,29 +173,43 @@ void main() {
     await homeLoad(offRows);
     watch.stop();
     final offHome = offServer.calls.length;
-    report.writeln('| Home, vault off | $offHome | 0 | 0 | ${watch.elapsedMilliseconds} |');
+    report.writeln(
+      '| Home, vault off | $offHome | 0 | 0 | ${watch.elapsedMilliseconds} |',
+    );
 
     // Feature on, first start ever: the index is built once.
     final server = realisticServer();
     final h = (harness: Harness(catalog: server));
     await h.harness.service.saveConfig(ecchiOnly());
     final buildRequests = server.calls.length;
-    report.writeln('| Index build (config save / first start) | $buildRequests | $buildRequests | 0 | – |');
+    report.writeln(
+      '| Index build (config save / first start) | $buildRequests | $buildRequests | 0 | – |',
+    );
     expect(buildRequests, 2, reason: 'one query per configured library');
     expect(h.harness.service.index!.length, 150 + 30);
 
     final rows = RowDataSource(FakeMediaServerClient(h.harness.api));
     await measure('Home, vault on, cold', h.harness, () => homeLoad(rows));
     final coldHome = h.harness.server.calls.length;
-    await measure('Home, vault on, warm (same session)', h.harness, () => homeLoad(rows));
+    await measure(
+      'Home, vault on, warm (same session)',
+      h.harness,
+      () => homeLoad(rows),
+    );
     final warmHome = h.harness.server.calls.length;
 
     // Next start: index and lookups come from storage, once the session ran
     // long enough to write them (they are written a moment after learning).
     await Future<void>.delayed(const Duration(milliseconds: 2100));
     h.harness.restart();
-    final rowsAfterRestart = RowDataSource(FakeMediaServerClient(h.harness.api));
-    await measure('Home, vault on, next app start', h.harness, () => homeLoad(rowsAfterRestart));
+    final rowsAfterRestart = RowDataSource(
+      FakeMediaServerClient(h.harness.api),
+    );
+    await measure(
+      'Home, vault on, next app start',
+      h.harness,
+      () => homeLoad(rowsAfterRestart),
+    );
     final restartHome = h.harness.server.calls.length;
 
     await measure('Open Anime (3 pages of 48)', h.harness, () async {
@@ -206,7 +231,10 @@ void main() {
         recursive: true,
         limit: 50,
       );
-      expect(idsOf(r).where((id) => h.harness.service.index!.contains(id)), isEmpty);
+      expect(
+        idsOf(r).where((id) => h.harness.service.index!.contains(id)),
+        isEmpty,
+      );
     });
 
     // ignore: avoid_print

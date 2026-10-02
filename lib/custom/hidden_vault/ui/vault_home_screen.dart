@@ -89,9 +89,9 @@ class _VaultHomeState extends State<_VaultHome> {
                     IconButton(
                       tooltip: s.search,
                       icon: const Icon(Icons.search),
-                      onPressed: () => GoRouter.of(
-                        context,
-                      ).push(VaultRoutes.search(vault.vault.id)),
+                      onPressed: () =>
+                          GoRouter.of(context)
+                              .push(VaultRoutes.search(vault.vault.id)),
                     ),
                     IconButton(
                       tooltip: s.lock,
@@ -106,11 +106,7 @@ class _VaultHomeState extends State<_VaultHome> {
                 ),
               ),
               for (final row in _rows!)
-                _VaultRow(
-                  spec: row,
-                  vault: vault,
-                  claimFocus: _claimFocus,
-                ),
+                _VaultRow(spec: row, vault: vault, claimFocus: _claimFocus),
             ],
           ),
         ),

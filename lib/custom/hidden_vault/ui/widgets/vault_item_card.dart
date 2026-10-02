@@ -22,7 +22,11 @@ String? vaultImageUrl(
     }
     final primary = item.primaryImageTag;
     if (item.type == 'Episode' && primary != null) {
-      return images.getPrimaryImageUrl(item.id, maxWidth: maxWidth, tag: primary);
+      return images.getPrimaryImageUrl(
+        item.id,
+        maxWidth: maxWidth,
+        tag: primary,
+      );
     }
     final parentThumbId = raw['ParentThumbItemId']?.toString();
     final parentThumb = raw['ParentThumbImageTag'] as String?;
@@ -64,7 +68,9 @@ String? vaultSubtitle(AggregatedItem item) {
     final season = raw['ParentIndexNumber'];
     final episode = raw['IndexNumber'];
     final series = raw['SeriesName']?.toString();
-    final code = (season is int && episode is int) ? 'S$season:E$episode' : null;
+    final code = (season is int && episode is int)
+        ? 'S$season:E$episode'
+        : null;
     return [?code, ?series].join(' · ');
   }
   final year = raw['ProductionYear'];
@@ -75,7 +81,8 @@ String? vaultSubtitle(AggregatedItem item) {
 /// it only because the vault is open; the decision is made by the vault
 /// session, not by anything in this route.
 void openVaultItem(BuildContext context, AggregatedItem item) {
-  GoRouter.of(context).push(Destinations.item(item.id, serverId: item.serverId));
+  GoRouter.of(context)
+      .push(Destinations.item(item.id, serverId: item.serverId));
 }
 
 class VaultItemCard extends StatelessWidget {

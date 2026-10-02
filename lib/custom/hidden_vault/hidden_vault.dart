@@ -137,7 +137,9 @@ abstract final class HiddenVault {
 
   /// Downloaded rows minus hidden content. Saved copies stay on disk; they
   /// just never show up in the normal lists.
-  static List<DownloadedItem> withoutHiddenDownloads(List<DownloadedItem> rows) {
+  static List<DownloadedItem> withoutHiddenDownloads(
+    List<DownloadedItem> rows,
+  ) {
     final service = activeService;
     if (service == null || !service.isActive) return rows;
     return [
@@ -156,7 +158,8 @@ abstract final class HiddenVault {
   // Gates
   // ---------------------------------------------------------------------------
 
-  static bool isRefusal(Object? error) => items_api.isHiddenContentRefusal(error);
+  static bool isRefusal(Object? error) =>
+      items_api.isHiddenContentRefusal(error);
 
   static bool refusePlaybackNow(Object? item) =>
       HiddenContentGate.isRefusedNow(item);
