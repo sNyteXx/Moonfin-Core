@@ -124,12 +124,10 @@ class HiddenContentService extends ChangeNotifier {
 
   HiddenContentService({
     required this.scope,
-    required VaultKeyValueStore store,
-    required ItemsApi Function() onlineApi,
+    required this._store,
+    required this._onlineApi,
     DateTime Function()? now,
-  }) : _store = store,
-       _onlineApi = onlineApi,
-       _now = now ?? DateTime.now {
+  }) : _now = now ?? DateTime.now {
     _loadPersisted();
   }
 

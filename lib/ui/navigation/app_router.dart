@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:playback_core/playback_core.dart';
 
 import '../../auth/repositories/session_repository.dart';
+import '../../custom/hidden_vault/ui/vault_routes.dart';
 import '../../auth/repositories/user_repository.dart';
 import '../../data/services/connectivity_service.dart';
 import '../../data/services/media_server_client_factory.dart';
@@ -239,9 +240,18 @@ final appRouter = GoRouter(
       return Destinations.externalPlayer;
     }
 
+    // hidden-vault: a vault path opens only while that vault is unlocked.
+    final vaultRedirect = VaultRoutes.redirect(
+      path,
+      fallback: Destinations.home,
+    );
+    if (vaultRedirect != null) return vaultRedirect;
+
     return null;
   },
   routes: [
+    // hidden-vault: the vault's own screens.
+    ...VaultRoutes.routes(),
     // Auth
     GoRoute(
       path: Destinations.startup,

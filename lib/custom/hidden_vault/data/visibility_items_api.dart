@@ -64,8 +64,8 @@ class VisibilityItemsApi implements ItemsApi {
   VisibilityItemsApi(
     this._inner,
     this._context, {
-    String? defaultItemFields,
-  }) : _defaultItemFields = defaultItemFields;
+    this._defaultItemFields,
+  });
 
   /// The wrapped API, for the vault's own queries and the settings screen.
   ItemsApi get unfiltered => _inner;

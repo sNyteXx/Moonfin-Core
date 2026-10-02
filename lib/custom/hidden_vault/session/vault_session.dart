@@ -220,8 +220,12 @@ class VaultSessionController extends ChangeNotifier {
     _ticker = null;
   }
 
+  bool _disposed = false;
+
   @override
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     _stopTicker();
     _locks.close();
     super.dispose();

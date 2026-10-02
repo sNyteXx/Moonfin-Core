@@ -18,6 +18,13 @@ class VirtualPager {
   /// Queries remembered at once; the oldest is forgotten first.
   static const maxSignatures = 64;
 
+  /// Reading ahead stops once a page holds this many items (or its whole
+  /// limit, when smaller). A home row shows about fifteen; a caller asking
+  /// for sixty to collapse episodes, or a hundred for bookkeeping, doesn't
+  /// need every slot refilled, and the next page picks up where this one
+  /// stopped either way.
+  static const fullPageTarget = 24;
+
   final LinkedHashMap<String, SplayTreeMap<int, int>> _checkpoints =
       LinkedHashMap();
 
@@ -129,6 +136,9 @@ class VirtualPager {
       if (extraRequests >= maxExtraRequests) break;
       // Nothing was dropped, so a short page means the end.
       if (visible.length == raw.length) break;
+      if (collected.length >= (limit < fullPageTarget ? limit : fullPageTarget)) {
+        break;
+      }
       extraRequests++;
       if (paged) {
         final ceiling = limit > maxReadAheadPage ? limit : maxReadAheadPage;

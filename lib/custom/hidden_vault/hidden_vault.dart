@@ -223,7 +223,7 @@ abstract final class HiddenVault {
 
   /// Reloads what the normal app has on screen through the filter. Used after
   /// the rules changed and when a rebuild hid something new.
-  static void refreshNormalScreens({bool force = false}) {
+  static void refreshNormalScreens() {
     RowDataSource.clearRecommendationCache();
     final getIt = GetIt.instance;
     if (getIt.isRegistered<MediaBarViewModel>()) {

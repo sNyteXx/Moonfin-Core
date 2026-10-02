@@ -22,8 +22,7 @@ class HiddenContentRegistry {
   /// show items can recheck what they hold.
   final ValueNotifier<int> changes = ValueNotifier(0);
 
-  HiddenContentRegistry._(this._store, {DateTime Function()? now})
-    : _now = now;
+  HiddenContentRegistry._(this._store, {this._now});
 
   /// Replaces the shared instance, for tests.
   @visibleForTesting

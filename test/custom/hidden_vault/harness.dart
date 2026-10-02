@@ -1,4 +1,5 @@
 import 'package:moonfin/custom/hidden_vault/data/hidden_content_service.dart';
+import 'package:server_core/server_core.dart';
 import 'package:moonfin/custom/hidden_vault/data/visibility_items_api.dart';
 import 'package:moonfin/custom/hidden_vault/data/vault_store.dart';
 import 'package:moonfin/custom/hidden_vault/model/vault_config.dart';
@@ -66,14 +67,14 @@ VaultConfig standardConfig() => VaultConfig(
 );
 
 class Harness {
-  final FakeJellyfin server = FakeJellyfin();
+  final FakeJellyfin server;
   final MemoryVaultStore store = MemoryVaultStore();
   final TestContext context = TestContext();
   late HiddenContentService service;
   late VisibilityItemsApi api;
   DateTime now = DateTime(2026, 10, 2, 12);
 
-  Harness() {
+  Harness({FakeJellyfin? catalog}) : server = catalog ?? FakeJellyfin() {
     service = HiddenContentService(
       scope: scope,
       store: store,
@@ -134,3 +135,28 @@ class Harness {
 List<String> idsOf(Map<String, dynamic> response) => [
   for (final item in (response['Items'] as List)) (item as Map)['Id'] as String,
 ];
+
+/// A signed in client over [FakeJellyfin]; everything the tests don't use
+/// throws.
+class FakeMediaServerClient implements MediaServerClient {
+  @override
+  final ItemsApi itemsApi;
+
+  @override
+  String? userId = scope.userId;
+
+  @override
+  String baseUrl = 'http://server';
+
+  @override
+  String? accessToken = 'token';
+
+  FakeMediaServerClient(this.itemsApi);
+
+  @override
+  ServerType get serverType => ServerType.jellyfin;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError(invocation.memberName.toString());
+}

@@ -21,6 +21,7 @@ import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart' hide ImageType;
 import 'package:window_manager/window_manager.dart';
 
+import '../../../custom/hidden_vault/ui/vault_access.dart';
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/models/home_row.dart';
 import '../../../data/repositories/mdblist_repository.dart';
@@ -4730,6 +4731,10 @@ class _ContentRowsState extends State<_ContentRows>
           onTap: (_, item) => _navigateToLibrary(context, item),
           onLongPress: (_, item) =>
               showContextMenu(context, item, onChanged: () => setState(() {})),
+          // hidden-vault: a 2.5 s hold on a configured library opens its vault.
+          holdSelectEnabled: VaultAccess.isTriggerTile,
+          onHoldSelect: (_, item) =>
+              unawaited(VaultAccess.openFromTile(context, item)),
           itemBuilder: (ctx, item, idx, isFocused) {
             final collectionType =
                 (item.rawData['CollectionType'] as String? ?? '').toLowerCase();
@@ -4978,6 +4983,12 @@ class _ContentRowsState extends State<_ContentRows>
         },
         onLongPress: (_, item) =>
             showContextMenu(context, item, onChanged: () => setState(() {})),
+        // hidden-vault: a 2.5 s hold on a configured library opens its vault.
+        holdSelectEnabled: row.rowType == HomeRowType.libraryTiles
+            ? VaultAccess.isTriggerTile
+            : null,
+        onHoldSelect: (_, item) =>
+            unawaited(VaultAccess.openFromTile(context, item)),
         onTap: (_, item) {
           _finishSharedPreview(releaseResources: true);
           if (row.rowType == HomeRowType.libraryTiles) {
