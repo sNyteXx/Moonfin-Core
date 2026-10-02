@@ -1,6 +1,10 @@
 # Fork only: builds the Android phone/tablet and Android TV APKs and publishes
-# them as a pre-release. Started by pushing a tag like `fork-v2.6.0-vault.1`,
-# which the upstream "Build All Platforms" tag pattern does not match, so only
+# them as a pre-release. Started in one of three ways:
+#   - a push that changes .github/fork-release, whose one line is the tag to
+#     create (e.g. fork-v2.6.0-vault.1), on any branch
+#   - pushing a tag like fork-v2.6.0-vault.1
+#   - a manual run with a tag (once this file is on the default branch)
+# None of these match the upstream "Build All Platforms" tag pattern, so only
 # this workflow runs.
 name: Fork Android Release
 
@@ -8,6 +12,10 @@ on:
   push:
     tags:
       - 'fork-v*'
+    branches:
+      - '**'
+    paths:
+      - '.github/fork-release'
   workflow_dispatch:
     inputs:
       tag:
@@ -25,6 +33,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Pick the release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG=$(head -n 1 .github/fork-release | tr -d '[:space:]')
+          fi
+          case "$TAG" in
+            fork-v*) ;;
+            *) echo "::error::Release tag must start with fork-v, got '$TAG'"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -78,7 +104,7 @@ jobs:
       - name: Name the files after the tag
         id: files
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
           mv Moonfin_Android_v*.apk "Moonfin_Android_${TAG}.apk"
           mv Moonfin_AndroidTV_v*.apk "Moonfin_AndroidTV_${TAG}.apk"
@@ -108,6 +134,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.files.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: Moonfin ${{ steps.files.outputs.tag }}
           prerelease: true
           body_path: release-notes.md

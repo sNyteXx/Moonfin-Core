@@ -400,10 +400,13 @@ Cloud-Umgebung gesperrt war → auf ubuntudev mit `./build-android.sh` bauen.
 iOS: nach dem Pull `pod install` (neues lokales Plugin); der Swift-Teil ist
 hier nicht kompiliert.
 
-Fork-Releases: `.github/workflows/fork-android-release.yml` baut beim Push
-eines Tags `fork-v*` (z. B. `fork-v2.6.0-vault.1`) die Handy- und die
-TV-APK und veröffentlicht sie als Pre-Release. Das Upstream-Tag-Muster
-(`1.2.3`) startet dabei nicht den Build aller Plattformen. Ohne die
+Fork-Releases: `.github/workflows/fork-android-release.yml` baut die Handy-
+und die TV-APK und veröffentlicht sie als Pre-Release. Auslöser ist ein Push,
+der `.github/fork-release` ändert (eine Zeile mit dem Tag, z. B.
+`fork-v2.6.0-vault.1`), ein gepushter Tag `fork-v*` oder ein manueller Lauf.
+Das Upstream-Tag-Muster (`1.2.3`) startet dabei nicht den Build aller
+Plattformen. Auf einem Fork müssen die Actions einmal im Tab *Actions*
+aktiviert werden. Ohne die
 Secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_TYPE`,
 `ANDROID_STORE_PASSWORD`, `ANDROID_KEY_ALIAS` und `ANDROID_KEY_PASSWORD` ist
 die APK debug-signiert, mit wechselndem Schlüssel pro Build.
