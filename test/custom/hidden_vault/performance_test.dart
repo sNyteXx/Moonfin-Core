@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:moonfin/custom/hidden_vault/data/vault_repository.dart';
 import 'package:moonfin/custom/hidden_vault/data/visibility_items_api.dart';
 import 'package:moonfin/custom/hidden_vault/model/vault_config.dart';
+import 'package:moonfin/data/models/aggregated_item.dart';
 import 'package:moonfin/data/services/row_data_source.dart';
 
 import 'fake_server.dart';
@@ -251,6 +253,94 @@ void main() {
     // Opening a library: one request per page, as without the vault.
     expect(animeOpen, 3);
     expect(showsOpen, 3);
+  });
+
+  test('vault context: requests and payload of the vault screens', () async {
+    final server = realisticServer();
+    final h = Harness(catalog: server);
+    await h.service.saveConfig(ecchiOnly());
+    final repo = VaultRepository(
+      service: h.service,
+      vault: h.service.config.vault('anime')!,
+      api: server,
+      serverId: scope.serverId,
+    );
+    final report = StringBuffer()
+      ..writeln('| Vault scenario | Requests | Items sent | Items shown |');
+
+    Future<({int requests, int sent, List<AggregatedItem> shown})> measure(
+      String label,
+      Future<List<AggregatedItem>> Function() run,
+    ) async {
+      server.resetCalls();
+      final shown = await run();
+      report.writeln(
+        '| $label | ${server.calls.length} | ${server.transferred} | '
+        '${shown.length} |',
+      );
+      return (
+        requests: server.calls.length,
+        sent: server.transferred,
+        shown: shown,
+      );
+    }
+
+    void onlyThisVault(List<AggregatedItem> items) {
+      expect(items, isNotEmpty);
+      for (final item in items) {
+        expect(h.service.belongsToVault(item.rawData, 'anime'), isTrue);
+      }
+    }
+
+    Future<List<AggregatedItem>> home() async => [
+      for (final row in await Future.wait([
+        repo.continueWatching(),
+        repo.nextUp(),
+        repo.recentlyAdded(),
+        for (final library in repo.libraries) repo.libraryRow(library),
+      ]))
+        ...row,
+    ];
+
+    final open = await measure('Vault home, all rows', home);
+    onlyThisVault(open.shown);
+    final back = await measure('Vault home again (same visit)', home);
+
+    final anime = repo.vault.library('lib-anime')!;
+    final grid = await measure('Anime grid, 3 pages of 48', () async {
+      final items = <AggregatedItem>[];
+      var start = 0;
+      for (var page = 0; page < 3; page++) {
+        final result = await repo.libraryPage(anime, startIndex: start);
+        items.addAll(result.items);
+        start += result.rawCount;
+      }
+      return items;
+    });
+    onlyThisVault(grid.shown);
+
+    final search = await measure(
+      'Vault search "anime-1"',
+      () => repo.search('anime-1'),
+    );
+    onlyThisVault(search.shown);
+
+    // ignore: avoid_print
+    print(report);
+
+    // Resume and recently added per library, next up for the show library,
+    // one row per library: 2 + 1 + 2 + 2.
+    expect(open.requests, 7);
+    expect(back.requests, 0);
+    // The grid asks the server for the tags, so only hidden titles travel.
+    expect(grid.requests, 3);
+    expect(grid.sent, grid.shown.length);
+    expect(grid.shown.map((i) => i.id).toSet(), hasLength(grid.shown.length));
+    expect(grid.shown, hasLength(144));
+    // Titles by tag in both libraries, episodes in the show library.
+    expect(search.requests, 3);
+    // No lookups per item anywhere in the vault.
+    expect(server.count('getItem'), 0);
   });
 }
 

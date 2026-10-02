@@ -321,7 +321,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 101 Tests
+flutter test test/custom/hidden_vault/     # 102 Tests
 flutter test                               # gesamte Suite
 ```
 
@@ -361,6 +361,22 @@ Kein vollständiges Vorladen von Libraries/Episoden, keine Requests pro
 Episode. Filterkosten: Hash-Lookups pro Item; die Rows rendern sofort aus
 dem persistierten Index.
 
+Vault-Kontext, gleicher Katalog, Vault „Anime“ (Anime + Filme (Anime)):
+
+| Szenario | Requests | Items übertragen | Items angezeigt |
+|---|---|---|---|
+| Vault-Home, alle Rows | 7 | 131 | 85 |
+| Vault-Home erneut (gleicher Besuch) | 0 | 0 | 85 |
+| Anime-Raster, 3 Pages à 48 | 3 | 144 | 144 |
+| Vault-Suche | 3 | 62 | 32 |
+
+Das Raster und die Titelsuche filtern serverseitig über `Tags`, es werden
+also nur versteckte Titel übertragen. Weiterschauen, Als Nächstes und die
+Episodensuche kennen keinen Tag-Filter für Episoden (die Tags hängen an der
+Serie). Sie holen deshalb pro Library ein begrenztes Fenster und behalten
+nur, was der Index diesem Vault zuordnet. Das ist ein Request pro Library,
+ohne Lookups pro Item.
+
 Smoke-Test gegen den echten Server (nur GET, ändert nichts):
 
 ```
@@ -399,6 +415,10 @@ hier nicht kompiliert.
 * Jellyfin selbst (Dashboard „Now playing“, andere Clients) ist außerhalb des
   Scopes.
 * Biometrie gibt es erst ab Android 10; ältere Handys nutzen die PIN.
+* Vault-*Weiterschauen* und *Als Nächstes* lesen pro Library die 60
+  jüngsten Einträge, die Episodensuche 40 Treffer. Wer in derselben Library
+  sehr viele normale Titel angefangen hat, sieht ältere Vault-Einträge dort
+  erst wieder, wenn sie neuer sind als diese.
 * Sync ist Last-Writer-Wins auf die ganze Config: wer auf zwei Geräten
   gleichzeitig offline ändert, behält die zuletzt gespeicherte Fassung.
 * Admin-Metadaten-Editor öffnet Hidden-Items nur aus dem Vault heraus.

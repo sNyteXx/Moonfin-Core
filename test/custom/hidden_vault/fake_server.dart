@@ -31,7 +31,13 @@ class FakeJellyfin implements ItemsApi {
 
   int count(String method) => calls.where((c) => c.method == method).length;
 
-  void resetCalls() => calls.clear();
+  /// Items sent back across all list responses, i.e. the payload size.
+  int transferred = 0;
+
+  void resetCalls() {
+    calls.clear();
+    transferred = 0;
+  }
 
   /// Item ids in insertion order, which is also the default sort.
   final List<String> _order = [];
@@ -141,6 +147,7 @@ class FakeJellyfin implements ItemsApi {
   ) {
     final start = startIndex ?? 0;
     final slice = all.skip(start).take(limit ?? all.length).toList();
+    transferred += slice.length;
     return {
       'Items': [for (final item in slice) _out(item, fields)],
       'TotalRecordCount': all.length,
