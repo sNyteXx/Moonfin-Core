@@ -35,7 +35,9 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 2. *Bereich hinzufügen* → Name, Bibliotheken (z. B. Anime + Filme (Anime)),
    pro Bibliothek *Versteckte Tags* (Mehrfachauswahl aus den tatsächlich
    vorhandenen Tags der Library, Filterfeld, plus *Tag manuell hinzufügen*),
-   *Geöffnet über* = Trigger-Kachel (z. B. Anime).
+   *Geöffnet über* = Trigger-Kachel (z. B. Anime). Die erste gewählte
+   Bibliothek wird automatisch zur Trigger-Kachel; *Nur über Einstellungen*
+   schaltet die Geste ab. Die Bereichsliste zeigt den Auslöser an.
 3. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
    normalen Screens laden gefiltert neu.
 4. Öffnen: im Startbildschirm die Trigger-Kachel **5 s halten** – auf dem TV
@@ -216,9 +218,13 @@ landet im gesperrten Zustand auf Home; Kids Mode sperrt den Vault komplett.
    * **D-Pad/Tastatur:** zentral in `key_event_utils.dart`
      (`SelectHoldGesture`, timerbasiert, `defaultHoldAfter = 5 s`) und opt-in
      in `LockedFocusRow` (`holdSelectEnabled`/`onHoldSelect`).
-   * **Touch/Maus:** `VaultTouchHold` (`LongPressGestureRecognizer` + Timer
-     bis 5 s) um die Kachel; deren eigener Long-Press ist für Trigger-Kacheln
-     abgeschaltet, Tap und Rechtsklick bleiben.
+   * **Touch/Maus:** `VaultTouchHold` um die Kachel. Die Zeitmessung liest
+     rohe Pointer-Events (`Listener`), weil `MediaCard` immer einen eigenen
+     Long-Press-Recognizer hat, der die Gesture-Arena sonst gewinnt. Ein
+     eigener Long-Press-Recognizer verhindert nur, dass ein langer Druck
+     zusätzlich als Tap zählt. Bewegung über die Touch-Slop (Scrollen der
+     Reihe) bricht ab. Der eigene Long-Press der Kachel ist für
+     Trigger-Kacheln abgeschaltet, Tap und Rechtsklick bleiben.
    * < 0,5 s: Library öffnen wie bisher
    * 0,5–5 s: Kontextmenü **beim Loslassen** (nur Trigger-Kacheln)
    * ≥ 5 s: sofort Entsperr-Dialog (PIN oder Biometrie), vorher keine
@@ -321,7 +327,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 102 Tests
+flutter test test/custom/hidden_vault/     # 104 Tests
 flutter test                               # gesamte Suite
 ```
 

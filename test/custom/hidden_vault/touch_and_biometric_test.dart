@@ -10,6 +10,7 @@ import 'package:moonfin/custom/hidden_vault/data/visibility_media_server_client.
 import 'package:moonfin/custom/hidden_vault/ui/vault_access.dart';
 import 'package:moonfin/custom/hidden_vault/ui/widgets/vault_touch_hold.dart';
 import 'package:moonfin/l10n/app_localizations.dart';
+import 'package:moonfin/ui/widgets/media_card.dart';
 import 'package:moonfin/ui/widgets/pin_entry_dialog.dart';
 import 'package:server_core/server_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -83,6 +84,48 @@ void main() {
       await pump(tester);
       await hold(tester, const Duration(milliseconds: 5100));
       expect(events, ['hold']);
+    });
+
+    testWidgets('the real library card: the hold still wins', (tester) async {
+      events = [];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: VaultTouchHold(
+              enabled: true,
+              onHold: () => events.add('hold'),
+              onLongPress: () => events.add('menu'),
+              child: MediaCard(
+                key: const ValueKey('tile'),
+                title: 'Anime',
+                width: 200,
+                aspectRatio: 16 / 9,
+                externalIsFocused: false,
+                onTap: () => events.add('tap'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await hold(tester, const Duration(milliseconds: 5100));
+      expect(events, ['hold']);
+      await hold(tester, const Duration(seconds: 2));
+      expect(events, ['hold', 'menu']);
+      await hold(tester, const Duration(milliseconds: 100));
+      expect(events, ['hold', 'menu', 'tap']);
+    });
+
+    testWidgets('dragging the row is not a hold', (tester) async {
+      await pump(tester);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('tile'))),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      await gesture.moveBy(const Offset(80, 0));
+      await tester.pump(const Duration(seconds: 6));
+      await gesture.up();
+      await tester.pump();
+      expect(events.where((e) => e == 'hold' || e == 'menu'), isEmpty);
     });
 
     testWidgets('other tiles keep their own long press', (tester) async {

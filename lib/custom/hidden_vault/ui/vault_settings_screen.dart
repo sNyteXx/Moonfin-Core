@@ -388,11 +388,13 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  String _librarySummary(VaultDefinition vault) {
+  String _librarySummary(VaultStrings s, VaultDefinition vault) {
     if (vault.libraries.isEmpty) return '—';
-    return [
+    final libraries = [
       for (final lib in vault.libraries) '${lib.name} (${lib.tags.length})',
     ].join(', ');
+    final trigger = vault.library(vault.triggerLibraryId ?? '')?.name;
+    return '$libraries\n${s.trigger}: ${trigger ?? s.triggerNone}';
   }
 
   @override
@@ -437,7 +439,7 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                     context,
                     icon: Icons.folder_special_outlined,
                     title: Text(vault.name),
-                    subtitle: Text(_librarySummary(vault)),
+                    subtitle: Text(_librarySummary(s, vault)),
                     onTap: () => _editVault(vault),
                   ),
                 _tile(
@@ -595,12 +597,16 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
               collectionType: option.collectionType,
             ),
           ];
+    // The vault opens from one of its own libraries, the first one picked
+    // unless another was chosen, so it is never left without a way in.
     final trigger = _vault.triggerLibraryId;
+    final keep =
+        trigger != null && libraries.any((l) => l.libraryId == trigger);
     _set(
       _vault.copyWith(
         libraries: libraries,
-        clearTrigger:
-            trigger != null && !libraries.any((l) => l.libraryId == trigger),
+        triggerLibraryId: keep ? trigger : libraries.firstOrNull?.libraryId,
+        clearTrigger: !keep && libraries.isEmpty,
       ),
     );
   }
