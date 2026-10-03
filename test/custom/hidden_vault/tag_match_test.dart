@@ -188,4 +188,46 @@ void main() {
       expect(HiddenTagPolicy.fromConfig(VaultConfig.empty).isActive, isFalse);
     });
   });
+
+  group('trigger tile', () {
+    VaultDefinition anime({String? trigger}) => VaultDefinition(
+      id: 'anime',
+      name: 'Anime',
+      libraries: [
+        VaultLibrary(libraryId: 'lib-anime', name: 'Anime', tags: ['ecchi']),
+        VaultLibrary(libraryId: 'lib-am', name: 'Filme (Anime)', tags: ['x']),
+      ],
+      triggerLibraryId: trigger,
+    );
+
+    test('the chosen library stays the trigger', () {
+      final config = VaultConfig(vaults: [anime(trigger: 'lib-am')]);
+      expect(config.vaultForTrigger('lib-am')?.id, 'anime');
+      expect(config.vaultForTrigger('lib-anime'), isNull);
+    });
+
+    test('a vault saved without a trigger opens from its first library', () {
+      final config = VaultConfig(vaults: [anime()]);
+      expect(config.vaultForTrigger('lib-anime')?.id, 'anime');
+      // Also after a round trip through storage or the server.
+      final decoded = VaultConfig.decode(
+        '{"v":1,"vaults":[{"id":"anime","name":"Anime","libraries":'
+        '[{"libraryId":"lib-anime","name":"Anime","tags":["ecchi"]}]}]}',
+      );
+      expect(decoded.vaultForTrigger('lib-anime')?.id, 'anime');
+    });
+
+    test('a trigger outside the vault falls back to its first library', () {
+      final config = VaultConfig(vaults: [anime(trigger: 'lib-gone')]);
+      expect(config.vaultForTrigger('lib-anime')?.id, 'anime');
+      expect(config.vaultForTrigger('lib-gone'), isNull);
+    });
+
+    test('a vault without libraries has no trigger', () {
+      final config = VaultConfig(
+        vaults: [VaultDefinition(id: 'empty', name: 'Empty', libraries: [])],
+      );
+      expect(config.vaults.single.triggerLibraryId, isNull);
+    });
+  });
 }

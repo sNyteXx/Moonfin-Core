@@ -51,7 +51,8 @@ class VaultStrings {
       _t('Could not load tags.', 'Tags konnten nicht geladen werden.');
   String get filterTags => _t('Filter tags', 'Tags filtern');
   String get trigger => _t('Opened from', 'Geöffnet über');
-  String get triggerNone => _t('Settings only', 'Nur über Einstellungen');
+  String get triggerNone =>
+      _t('Pick a library first', 'Zuerst eine Bibliothek wählen');
   String triggerHint(String library, int seconds) => _t(
     'Hold OK (or touch and hold) the $library tile on the home screen for '
         '$seconds seconds.',

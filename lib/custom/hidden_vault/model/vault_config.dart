@@ -224,10 +224,20 @@ class VaultConfig {
       for (final lib in vault.libraries) {
         if (claimed.add(lib.libraryId)) libs.add(lib);
       }
+      // A vault always opens from one of its own libraries: the one chosen,
+      // or else the first. A config saved without one (or with a library that
+      // left the vault) still gets a working tile.
       final trigger = vault.triggerLibraryId;
       final triggerValid =
           trigger != null && libs.any((l) => l.libraryId == trigger);
-      cleaned.add(vault.copyWith(libraries: libs, clearTrigger: !triggerValid));
+      final effective = triggerValid ? trigger : libs.firstOrNull?.libraryId;
+      cleaned.add(
+        vault.copyWith(
+          libraries: libs,
+          triggerLibraryId: effective,
+          clearTrigger: effective == null,
+        ),
+      );
     }
     return VaultConfig._(
       vaults: List.unmodifiable(cleaned),

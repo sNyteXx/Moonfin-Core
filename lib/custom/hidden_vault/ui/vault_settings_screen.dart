@@ -612,17 +612,10 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
   }
 
   void _cycleTrigger() {
-    final options = <String?>[
-      null,
-      for (final lib in _vault.libraries) lib.libraryId,
-    ];
-    final at = options.indexOf(_vault.triggerLibraryId);
-    final next = options[(at + 1) % options.length];
-    _set(
-      next == null
-          ? _vault.copyWith(clearTrigger: true)
-          : _vault.copyWith(triggerLibraryId: next),
-    );
+    final options = [for (final lib in _vault.libraries) lib.libraryId];
+    if (options.isEmpty) return;
+    final at = options.indexOf(_vault.triggerLibraryId ?? '');
+    _set(_vault.copyWith(triggerLibraryId: options[(at + 1) % options.length]));
   }
 
   Future<void> _rename(VaultStrings s) async {

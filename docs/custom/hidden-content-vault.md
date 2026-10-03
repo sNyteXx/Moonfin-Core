@@ -35,9 +35,10 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 2. *Bereich hinzufügen* → Name, Bibliotheken (z. B. Anime + Filme (Anime)),
    pro Bibliothek *Versteckte Tags* (Mehrfachauswahl aus den tatsächlich
    vorhandenen Tags der Library, Filterfeld, plus *Tag manuell hinzufügen*),
-   *Geöffnet über* = Trigger-Kachel (z. B. Anime). Die erste gewählte
-   Bibliothek wird automatisch zur Trigger-Kachel; *Nur über Einstellungen*
-   schaltet die Geste ab. Die Bereichsliste zeigt den Auslöser an.
+   *Geöffnet über* = Trigger-Kachel (z. B. Anime). Jeder Bereich hat immer
+   eine: die gewählte, sonst die erste seiner Bibliotheken (auch für
+   Configs, die ohne Auslöser gespeichert oder vom Server synchronisiert
+   wurden). Die Bereichsliste zeigt den Auslöser an.
 3. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
    normalen Screens laden gefiltert neu.
 4. Öffnen: im Startbildschirm die Trigger-Kachel **5 s halten** – auf dem TV
@@ -327,7 +328,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 104 Tests
+flutter test test/custom/hidden_vault/     # 117 Tests
 flutter test                               # gesamte Suite
 ```
 
