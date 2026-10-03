@@ -47,6 +47,7 @@ class VaultStrings {
   String get loadingTags => _t('Loading tags…', 'Tags werden geladen…');
   String get tagsLoadFailed =>
       _t('Could not load tags.', 'Tags konnten nicht geladen werden.');
+  String selectedCount(int count) => _t('$count selected', '$count ausgewählt');
   String get filterTags => _t('Filter tags', 'Tags filtern');
   String get display => _t('Display', 'Anzeige');
   String get hideWatched => _t('Hide watched', 'Gesehene ausblenden');

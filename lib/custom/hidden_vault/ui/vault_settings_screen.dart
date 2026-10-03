@@ -751,21 +751,43 @@ class _TagPickerScreen extends StatefulWidget {
   State<_TagPickerScreen> createState() => _TagPickerScreenState();
 }
 
+/// One tag of the picker, normalized once when the list is built.
+class _TagEntry {
+  final String tag;
+  final String normalized;
+
+  _TagEntry(this.tag) : normalized = normalizeTag(tag);
+}
+
 class _TagPickerScreenState extends State<_TagPickerScreen> {
-  late List<String> _selected = [...widget.library.tags];
-  List<String>? _available;
+  static const _filterDelay = Duration(milliseconds: 200);
+
+  /// Every tag in a fixed order: the chosen ones first, then the library's
+  /// in alphabetical order. Ticking a tag never moves it, so focus stays on
+  /// it.
+  List<_TagEntry> _entries = [];
+  List<_TagEntry> _visible = [];
+  late final Set<String> _selected = {
+    for (final tag in widget.library.tags) normalizeTag(tag),
+  };
+  bool _loading = true;
   Object? _error;
   final _filter = TextEditingController();
+  String _query = '';
+  Timer? _filterTimer;
 
   @override
   void initState() {
     super.initState();
-    _filter.addListener(() => setState(() {}));
+    _entries = [for (final tag in widget.library.tags) _TagEntry(tag)];
+    _visible = _entries;
+    _filter.addListener(_onFilterChanged);
     unawaited(_load());
   }
 
   @override
   void dispose() {
+    _filterTimer?.cancel();
     _filter.dispose();
     super.dispose();
   }
@@ -779,54 +801,87 @@ class _TagPickerScreenState extends State<_TagPickerScreen> {
         widget.scope,
         widget.library.libraryId,
       );
-      if (mounted) setState(() => _available = tags);
+      if (!mounted) return;
+      final known = {for (final entry in _entries) entry.normalized};
+      setState(() {
+        _entries = [
+          ..._entries,
+          for (final tag in tags)
+            if (known.add(normalizeTag(tag))) _TagEntry(tag),
+        ];
+        _loading = false;
+        _applyFilter();
+      });
     } catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = error;
+        });
+      }
     }
   }
 
-  bool _isSelected(String tag) {
-    final normalized = normalizeTag(tag);
-    return _selected.any((t) => normalizeTag(t) == normalized);
+  /// Typing on a TV keyboard sends a change per letter; the list is
+  /// filtered once the typing pauses.
+  void _onFilterChanged() {
+    _filterTimer?.cancel();
+    _filterTimer = Timer(_filterDelay, () {
+      final query = normalizeTag(_filter.text);
+      if (!mounted || query == _query) return;
+      setState(() {
+        _query = query;
+        _applyFilter();
+      });
+    });
   }
 
-  void _toggle(String tag) {
-    final normalized = normalizeTag(tag);
+  void _applyFilter() {
+    _visible = _query.isEmpty
+        ? _entries
+        : [
+            for (final entry in _entries)
+              if (entry.normalized.contains(_query)) entry,
+          ];
+  }
+
+  List<String> get _selection => [
+    for (final entry in _entries)
+      if (_selected.contains(entry.normalized)) entry.tag,
+  ];
+
+  void _toggle(_TagEntry entry) {
     setState(() {
-      if (_isSelected(tag)) {
-        _selected = [
-          for (final t in _selected)
-            if (normalizeTag(t) != normalized) t,
-        ];
-      } else {
-        _selected = [..._selected, tag];
-      }
+      if (!_selected.remove(entry.normalized)) _selected.add(entry.normalized);
     });
-    widget.onChanged(_selected);
+    widget.onChanged(_selection);
   }
 
   Future<void> _addCustom(VaultStrings s) async {
-    final tag = await _askText(
+    final tag = (await _askText(
       context,
       title: s.addCustomTag,
       hint: s.customTagHint,
-    );
-    if (tag == null || normalizeTag(tag).isEmpty) return;
-    if (!_isSelected(tag)) _toggle(tag.trim());
+    ))?.trim();
+    if (tag == null || tag.isEmpty) return;
+    final entry = _TagEntry(tag);
+    if (entry.normalized.isEmpty) return;
+    final existing = _entries
+        .where((e) => e.normalized == entry.normalized)
+        .firstOrNull;
+    setState(() {
+      if (existing == null) {
+        _entries = [entry, ..._entries];
+        _applyFilter();
+      }
+      _selected.add(entry.normalized);
+    });
+    widget.onChanged(_selection);
   }
 
   @override
   Widget build(BuildContext context) {
     final s = VaultStrings.of(context);
-    final query = normalizeTag(_filter.text);
-    final available = _available ?? const <String>[];
-    final selectedNormalized = {for (final t in _selected) normalizeTag(t)};
-    final others = [
-      for (final tag in available)
-        if (!selectedNormalized.contains(normalizeTag(tag)) &&
-            (query.isEmpty || normalizeTag(tag).contains(query)))
-          tag,
-    ];
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -834,71 +889,76 @@ class _TagPickerScreenState extends State<_TagPickerScreen> {
           context,
           Text(s.hiddenTagsFor(widget.library.name)),
         ),
-        body: ListView(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(s.hiddenTagsHint),
-            ),
-            adaptiveListSection(
-              children: [
-                _tile(
-                  context,
-                  autofocus: true,
-                  icon: Icons.add,
-                  title: Text(s.addCustomTag),
-                  onTap: () => _addCustom(s),
-                ),
-                for (final tag in _selected)
-                  _tile(
-                    context,
-                    checked: true,
-                    title: Text(tag),
-                    onTap: () => _toggle(tag),
-                  ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: VaultTextInput(
-                controller: _filter,
-                hint: s.filterTags,
-                onSubmitted: (_) {},
+        body: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Text(s.hiddenTagsHint),
               ),
             ),
-            if (_available == null && _error == null)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(s.loadingTags),
-                  ],
+            SliverToBoxAdapter(
+              child: _tile(
+                context,
+                autofocus: true,
+                icon: Icons.add,
+                title: Text(s.addCustomTag),
+                subtitle: Text(s.selectedCount(_selected.length)),
+                onTap: () => _addCustom(s),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: VaultTextInput(
+                  controller: _filter,
+                  hint: s.filterTags,
+                  onSubmitted: (_) {},
+                ),
+              ),
+            ),
+            if (_loading)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(s.loadingTags),
+                    ],
+                  ),
                 ),
               ),
             if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(s.tagsLoadFailed),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(s.tagsLoadFailed),
+                ),
               ),
-            if (others.isNotEmpty)
-              adaptiveListSection(
-                children: [
-                  for (final tag in others)
-                    _tile(
-                      context,
-                      checked: false,
-                      title: Text(tag),
-                      onTap: () => _toggle(tag),
-                    ),
-                ],
-              ),
-            const SizedBox(height: 32),
+            // Built lazily: only the rows on screen exist, however many tags
+            // the library has.
+            SliverList.builder(
+              itemCount: _visible.length,
+              itemBuilder: (context, index) {
+                final entry = _visible[index];
+                return KeyedSubtree(
+                  key: ValueKey(entry.normalized),
+                  child: _tile(
+                    context,
+                    checked: _selected.contains(entry.normalized),
+                    title: Text(entry.tag),
+                    onTap: () => _toggle(entry),
+                  ),
+                );
+              },
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
       ),

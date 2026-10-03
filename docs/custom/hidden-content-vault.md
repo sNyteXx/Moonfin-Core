@@ -38,7 +38,9 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 3. Darunter die Einrichtung: *Bereich hinzufügen* → Name, Bibliotheken (z. B.
    Anime + Filme (Anime)), pro Bibliothek *Versteckte Tags* (Mehrfachauswahl
    aus den tatsächlich vorhandenen Tags der Library, Filterfeld, plus *Tag
-   manuell hinzufügen*).
+   manuell hinzufügen*). Die Tag-Liste baut nur die sichtbaren Zeilen, auch
+   bei Hunderten Tags; der Filter greift, sobald das Tippen kurz pausiert,
+   und ein angehakter Tag bleibt an seinem Platz (der Fokus springt nicht).
 4. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
    normalen Screens laden gefiltert neu.
 
@@ -348,7 +350,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 96 Tests
+flutter test test/custom/hidden_vault/     # 99 Tests
 flutter test                               # gesamte Suite
 ```
 
