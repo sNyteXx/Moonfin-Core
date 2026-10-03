@@ -5,6 +5,7 @@ import 'package:playback_jellyfin/playback_jellyfin.dart';
 import 'package:playback_emby/playback_emby.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/models/series_track_preference.dart';
 import '../../data/repositories/offline_repository.dart';
@@ -536,11 +537,15 @@ void registerPlaybackModule() {
   manager.setContentRefusal(
     queueFilter: (item) {
       if (item is! AggregatedItem) return false;
+      // hidden-vault: hidden content plays only inside its open vault.
+      if (HiddenVault.refusePlaybackNow(item)) return true;
       if (!_getIt.isRegistered<BlockedContentGate>()) return false;
       return _getIt<BlockedContentGate>().isBlockedNow(item);
     },
     playRefusal: (item) async {
       if (item is! AggregatedItem) return false;
+      // hidden-vault: hidden content plays only inside its open vault.
+      if (await HiddenVault.refusePlayback(item)) return true;
       if (!_getIt.isRegistered<BlockedContentGate>()) return false;
       return _getIt<BlockedContentGate>().isBlocked(item);
     },

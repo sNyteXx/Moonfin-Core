@@ -4,6 +4,7 @@ import 'package:get_it/get_it.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/offline/connectivity_aware_media_server_client.dart';
 import '../../data/offline/offline_catalog.dart';
@@ -79,16 +80,23 @@ void setActiveServerClient(
   // The raw client keeps serving downloads, playback, and sockets, while the
   // registered singleton is a wrapper that answers browse and read calls from
   // the downloads catalog whenever the server is unreachable.
-  final rawClient = client is ConnectivityAwareMediaServerClient
-      ? client.onlineClient
-      : client;
-  final wrapped = ConnectivityAwareMediaServerClient(
-    rawClient,
-    useOffline: shouldUseOfflineCatalog,
-    catalog: _getIt<OfflineCatalog>(),
-    storagePath: _getIt<StoragePathService>(),
-    pendingRatings: _getIt<PendingRatingStore>(),
-    offlineRepo: _getIt<OfflineRepository>(),
+  // hidden-vault: peel the visibility filter off before the connectivity
+  // wrapper, and put it back around the result below.
+  final routedClient = HiddenVault.unwrapClient(client);
+  final rawClient = routedClient is ConnectivityAwareMediaServerClient
+      ? routedClient.onlineClient
+      : routedClient;
+  final wrapped = HiddenVault.wrapClient(
+    ConnectivityAwareMediaServerClient(
+      rawClient,
+      useOffline: shouldUseOfflineCatalog,
+      catalog: _getIt<OfflineCatalog>(),
+      storagePath: _getIt<StoragePathService>(),
+      pendingRatings: _getIt<PendingRatingStore>(),
+      offlineRepo: _getIt<OfflineRepository>(),
+    ),
+    serverId: _getIt<MediaServerClientFactory>().serverIdOf(rawClient),
+    onlineItemsApi: () => rawClient.itemsApi,
   );
 
   if (_getIt.isRegistered<MediaServerClient>()) {

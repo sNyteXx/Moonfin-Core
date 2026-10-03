@@ -1,0 +1,143 @@
+# Fork only: builds the Android phone/tablet and Android TV APKs and publishes
+# them as a pre-release. Started in one of three ways:
+#   - a push that changes .github/fork-release, whose one line is the tag to
+#     create (e.g. fork-v2.6.0-vault.1), on any branch
+#   - pushing a tag like fork-v2.6.0-vault.1
+#   - a manual run with a tag (once this file is on the default branch)
+# None of these match the upstream "Build All Platforms" tag pattern, so only
+# this workflow runs.
+name: Fork Android Release
+
+on:
+  push:
+    tags:
+      - 'fork-v*'
+    branches:
+      - '**'
+    paths:
+      - '.github/fork-release'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create, e.g. fork-v2.6.0-vault.2
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: '3.47.2'
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick the release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG=$(head -n 1 .github/fork-release | tr -d '[:space:]')
+          fi
+          case "$TAG" in
+            fork-v*) ;;
+            *) echo "::error::Release tag must start with fork-v, got '$TAG'"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      # Same as build.yml: with the keystore secrets set, every release carries
+      # the same signature and installs over the previous one. Without them
+      # Gradle signs with the runner's throwaway debug key.
+      - name: Set up signing
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_TYPE: ${{ secrets.ANDROID_KEYSTORE_TYPE }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "No Android keystore secret; debug-signed build."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+
+          cat > android/keystore.properties <<EOF
+          storeFile=../release.keystore
+          storeType=$STORE_TYPE
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+          if [ -n "$STORE_TYPE" ]; then
+            keytool -list -v -keystore android/app/release.keystore -storetype "$STORE_TYPE" -storepass "$STORE_PASSWORD" >/dev/null
+          else
+            keytool -list -v -keystore android/app/release.keystore -storepass "$STORE_PASSWORD" >/dev/null
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: |
+          chmod +x build-android.sh
+          ./build-android.sh
+
+      - name: Name the files after the tag
+        id: files
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          mv Moonfin_Android_v*.apk "Moonfin_Android_${TAG}.apk"
+          mv Moonfin_AndroidTV_v*.apk "Moonfin_AndroidTV_${TAG}.apk"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Write release notes
+        env:
+          TAG: ${{ steps.files.outputs.tag }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "Fork build of \`${SHA:0:7}\` with the Hidden Content Vault (see \`docs/custom/hidden-content-vault.md\`)."
+            echo
+            echo "- **Android TV:** \`Moonfin_AndroidTV_${TAG}.apk\`"
+            echo "- **Phone / tablet:** \`Moonfin_Android_${TAG}.apk\`"
+            echo
+            echo "Both use the package name of the official Moonfin with a different signature: if the official app is installed, uninstall it before the first install."
+            echo
+            if [ "$SIGNED" = "true" ]; then
+              echo "Signed with this fork's own key: later releases install over this one and keep the settings."
+            else
+              echo "Debug-signed: no keystore secrets are set on this fork. Every build gets a new key, so each new release also needs an uninstall first. Add the ANDROID_KEYSTORE_* secrets to get updates that install over the previous version."
+            fi
+          } > release-notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.files.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Moonfin ${{ steps.files.outputs.tag }}
+          prerelease: true
+          body_path: release-notes.md
+          files: |
+            Moonfin_Android_${{ steps.files.outputs.tag }}.apk
+            Moonfin_AndroidTV_${{ steps.files.outputs.tag }}.apk
