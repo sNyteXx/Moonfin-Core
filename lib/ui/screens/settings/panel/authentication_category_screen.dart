@@ -117,13 +117,6 @@ class _AuthenticationCategoryScreen extends StatelessWidget {
                 onTap: () =>
                     context.pushSettingsScreen(const ParentalSettingsScreen()),
               ),
-              // hidden-vault: the PIN protected vault configuration.
-              _TvSettingsListTile(
-                leading: const Icon(Icons.shield_outlined),
-                title: Text(VaultStrings.of(context).settingsEntry),
-                subtitle: Text(VaultStrings.of(context).settingsEntrySubtitle),
-                onTap: () => unawaited(VaultSettingsEntry.open(context)),
-              ),
               if (!hideWebOnlyAuthControls)
                 SwitchPreferenceTile(
                   preference: UserPreferences.confirmExit,

@@ -57,11 +57,6 @@ class LockedFocusRow<T> extends StatefulWidget {
   final bool autofocus;
   final Clip clipBehavior;
 
-  // hidden-vault: an opt-in extra-long hold of select. Only items this says
-  // yes to get it; every other item keeps tap and long press as they were.
-  final bool Function(T item)? holdSelectEnabled;
-  final void Function(int index, T item)? onHoldSelect;
-
   const LockedFocusRow({
     super.key,
     required this.items,
@@ -85,8 +80,6 @@ class LockedFocusRow<T> extends StatefulWidget {
     this.autofocus = false,
     this.clipBehavior = Clip.hardEdge,
     this.itemKey,
-    this.holdSelectEnabled,
-    this.onHoldSelect,
   });
 
   @override
@@ -114,7 +107,6 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
   Timer? _selectHoldTimer;
   bool _selectLongPressFired = false;
   bool _selectDownSeen = false;
-  final SelectHoldGesture _holdGesture = SelectHoldGesture();
 
   @override
   void initState() {
@@ -166,7 +158,6 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
   @override
   void dispose() {
     _selectHoldTimer?.cancel();
-    _holdGesture.cancel();
     _focusNode.removeListener(_onRowFocusChange);
     if (_ownsFocusNode) _focusNode.dispose();
     if (_ownsScrollController) _scrollController.dispose();
@@ -223,7 +214,6 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
       _hasRowFocusNotifier.value = has;
       widget.onFocusChange?.call(has);
     }
-    if (!has) _holdGesture.cancel();
     if (has) {
       _scrollToIndex(_focusedIndex);
       final idx = _focusedIndex;
@@ -253,52 +243,8 @@ class LockedFocusRowState<T> extends State<LockedFocusRow<T>> {
     );
   }
 
-  /// hidden-vault: select on an item with an extra-long hold. Tap and long
-  /// press are told apart on release, the hold fires on its own.
-  KeyEventResult? _onHoldSelectKey(KeyEvent event) {
-    final onHold = widget.onHoldSelect;
-    final enabled = widget.holdSelectEnabled;
-    if (onHold == null || enabled == null) return null;
-    if (event is KeyDownEvent) {
-      final idx = _focusedIndex;
-      if (idx < 0 || idx >= widget.items.length) return null;
-      if (!enabled(widget.items[idx])) return null;
-      _holdGesture.down(() {
-        if (!mounted || !_focusNode.hasFocus) return;
-        final current = _focusedIndex;
-        if (current != idx || current >= widget.items.length) return;
-        onHold(current, widget.items[current]);
-      });
-      return KeyEventResult.handled;
-    }
-    if (!_holdGesture.isDown) return null;
-    if (event is KeyRepeatEvent) return KeyEventResult.handled;
-    if (event is KeyUpEvent) {
-      final kind = _holdGesture.up();
-      final idx = _focusedIndex;
-      if (idx < 0 || idx >= widget.items.length) return KeyEventResult.handled;
-      final item = widget.items[idx];
-      switch (kind) {
-        case SelectPressKind.tap:
-          widget.onTap?.call(idx, item);
-        case SelectPressKind.longPress:
-          (widget.onLongPress ?? widget.onTap)?.call(idx, item);
-        case SelectPressKind.hold:
-        case SelectPressKind.none:
-          break;
-      }
-      return KeyEventResult.handled;
-    }
-    return null;
-  }
-
   KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
     if (widget.items.isEmpty) return KeyEventResult.ignored;
-
-    if (event.logicalKey.isSelectKey) {
-      final hold = _onHoldSelectKey(event);
-      if (hold != null) return hold;
-    }
 
     if (event.logicalKey.isSelectKey) {
       if (widget.onLongPress != null) {

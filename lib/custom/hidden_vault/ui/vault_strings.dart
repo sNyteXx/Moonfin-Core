@@ -18,8 +18,6 @@ class VaultStrings {
   String _t(String en, String de) => _de ? de : en;
 
   // Settings entry. Deliberately plain, it must not advertise anything.
-  String get settingsEntry => _t('Private content', 'Privater Bereich');
-  String get settingsEntrySubtitle => _t('PIN protected', 'PIN-geschützt');
 
   String get configTitle => _t('Private content', 'Privater Bereich');
   String get vaults => _t('Areas', 'Bereiche');
@@ -50,15 +48,6 @@ class VaultStrings {
   String get tagsLoadFailed =>
       _t('Could not load tags.', 'Tags konnten nicht geladen werden.');
   String get filterTags => _t('Filter tags', 'Tags filtern');
-  String get trigger => _t('Opened from', 'Geöffnet über');
-  String get triggerNone =>
-      _t('Pick a library first', 'Zuerst eine Bibliothek wählen');
-  String triggerHint(String library, int seconds) => _t(
-    'Hold OK (or touch and hold) the $library tile on the home screen for '
-        '$seconds seconds.',
-    'OK auf der Kachel $library im Startbildschirm $seconds Sekunden halten '
-        '(Touch: Kachel gedrückt halten).',
-  );
   String get removeVault => _t('Remove area', 'Bereich entfernen');
   String get save => _t('Save', 'Speichern');
   String get saving => _t('Saving…', 'Speichern…');

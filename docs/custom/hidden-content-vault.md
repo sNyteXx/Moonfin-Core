@@ -29,25 +29,21 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 
 ## 2. Einrichtung (Bedienung)
 
-1. Einstellungen → *Konto & Sicherheit* → Abschnitt *Privatsphäre & Sicherheit*
-   → **„Privater Bereich“**. Beim ersten Mal wird eine eigene 4-stellige PIN
-   gesetzt (nicht Login-/Kids-Mode-PIN), danach wird sie jedes Mal abgefragt.
-2. *Bereich hinzufügen* → Name, Bibliotheken (z. B. Anime + Filme (Anime)),
-   pro Bibliothek *Versteckte Tags* (Mehrfachauswahl aus den tatsächlich
-   vorhandenen Tags der Library, Filterfeld, plus *Tag manuell hinzufügen*),
-   *Geöffnet über* = Trigger-Kachel (z. B. Anime). Jeder Bereich hat immer
-   eine: die gewählte, sonst die erste seiner Bibliotheken (auch für
-   Configs, die ohne Auslöser gespeichert oder vom Server synchronisiert
-   wurden). Die Bereichsliste zeigt den Auslöser an.
-3. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
+1. Einstellungen → *Über* → **auf „Version“ tippen**. Der Eintrag sieht aus
+   wie immer (kein Pfeil, kein Hinweis auf ein Untermenü). Beim ersten Mal
+   wird eine eigene 4-stellige PIN gesetzt (nicht Login-/Kids-Mode-PIN),
+   danach wird sie (oder Fingerabdruck/Gesicht, §6.1) jedes Mal abgefragt.
+2. Der private Bereich öffnet sich mit seinen Bereichen ganz oben: ein Tipp
+   auf z. B. *Anime* führt direkt in dessen eigenes Home.
+3. Darunter die Einrichtung: *Bereich hinzufügen* → Name, Bibliotheken (z. B.
+   Anime + Filme (Anime)), pro Bibliothek *Versteckte Tags* (Mehrfachauswahl
+   aus den tatsächlich vorhandenen Tags der Library, Filterfeld, plus *Tag
+   manuell hinzufügen*).
+4. *Speichern* – der Hidden-Index wird gebaut (1 Request je Library), alle
    normalen Screens laden gefiltert neu.
-4. Öffnen: im Startbildschirm die Trigger-Kachel **5 s halten** – auf dem TV
-   OK auf der fokussierten Kachel, auf Handy/Tablet den Finger auf der
-   Kachel – → PIN (bzw. Fingerabdruck/Gesicht, §6.1) → Vault. Fallback: im
-   selben Settings-Screen *Öffnen: <Name>*.
 
-Solange noch keine PIN gesetzt ist, ist die Kachel ganz normal: die Geste
-existiert erst, wenn Regeln, Trigger-Kachel **und** PIN eingerichtet sind.
+Im Startbildschirm gibt es keinen Einstieg und keine Geste; alle Kacheln
+verhalten sich wie im Original.
 
 Abschnitt *Dieses Gerät* (gilt nur für das aktuelle Gerät):
 
@@ -82,7 +78,6 @@ lib/custom/hidden_vault/
   session/vault_session.dart        In-Memory-Unlock, Timeout, Lock-on-leave, Auto-Lock
   gate/hidden_content_gate.dart     Playback-Gate (+ Detail via Refusal)
   ui/                               Vault-Home/-Grid/-Suche, Settings, Zugriff, Strings
-  ui/widgets/vault_touch_hold.dart  Touch-Hold auf Trigger-Kacheln
 
 packages/vault_biometrics/          lokales Plugin: BiometricPrompt (Android) / LAContext (iOS)
 ```
@@ -214,31 +209,22 @@ landet im gesperrten Zustand auf Home; Kids Mode sperrt den Vault komplett.
 
 ## 6. Unlock-Flow & Session
 
-1. Trigger-Kachel halten, nur für Kacheln mit vollständig eingerichtetem
-   Vault (Regeln + Trigger + PIN):
-   * **D-Pad/Tastatur:** zentral in `key_event_utils.dart`
-     (`SelectHoldGesture`, timerbasiert, `defaultHoldAfter = 5 s`) und opt-in
-     in `LockedFocusRow` (`holdSelectEnabled`/`onHoldSelect`).
-   * **Touch/Maus:** `VaultTouchHold` um die Kachel. Die Zeitmessung liest
-     rohe Pointer-Events (`Listener`), weil `MediaCard` immer einen eigenen
-     Long-Press-Recognizer hat, der die Gesture-Arena sonst gewinnt. Ein
-     eigener Long-Press-Recognizer verhindert nur, dass ein langer Druck
-     zusätzlich als Tap zählt. Bewegung über die Touch-Slop (Scrollen der
-     Reihe) bricht ab. Der eigene Long-Press der Kachel ist für
-     Trigger-Kacheln abgeschaltet, Tap und Rechtsklick bleiben.
-   * < 0,5 s: Library öffnen wie bisher
-   * 0,5–5 s: Kontextmenü **beim Loslassen** (nur Trigger-Kacheln)
-   * ≥ 5 s: sofort Entsperr-Dialog (PIN oder Biometrie), vorher keine
-     sichtbare UI
-   * Menü-Taste/Rechtsklick: Kontextmenü unverändert; alle anderen Kacheln
-     unverändert (500-ms-Menü wie bisher).
+1. Einstellungen → Über → Tipp auf *Version* (`VaultSettingsEntry.open`).
+   Der Eintrag hatte upstream schon `trailing: SizedBox.shrink()` und ein
+   leeres `onTap`; nur das `onTap` ist ersetzt.
 2. `VaultAccess.verify`: ist auf diesem Gerät Biometrie eingeschaltet und
    verfügbar, zuerst der System-Dialog (§6.1); Abbrechen oder Fehlschlag
    führt zur PIN. Sonst direkt `PinEntryDialog` mit
    `PinCodeUtil.vault(store, scope)`: eigener Namespace, pro Server+User,
    SHA-256 mit Scope-Salt, Lockout wie Kids Mode (5 freie Versuche, dann
    30 s steigend bis 15 min).
-3. Erfolg → `VaultSessionController.unlock()` (nur Speicher) → `/vault/<id>`.
+3. Erfolg → privater Bereich mit den Bereichen oben. Tipp auf einen Bereich
+   → `VaultSessionController.unlock()` (nur Speicher) → `/vault/<id>`. Die
+   PIN gilt für diesen einen Bereich; die anderen bleiben gesperrt.
+
+Die frühere 5-s-Halte-Geste auf Startbildschirm-Kacheln ist entfernt: sie
+war auf echten Geräten nicht verlässlich, und ohne sie bleiben
+`home_screen.dart`, `LockedFocusRow` und `key_event_utils.dart` unverändert.
 
 Auto-Lock: App-Neustart/Kill (nichts persistiert), Logout, User-/Serverwechsel
 (`UserRepository.currentUserStream`), `AppLifecycleState.detached`,
@@ -278,7 +264,7 @@ Muster, das Moonfin bereits für Library-Bildtypen nutzt. Kein Plugin nötig,
 erreicht jedes Gerät mit demselben Jellyfin-User; Library-IDs sind
 serverweit gleich.
 
-* **Synchronisiert:** Vaults, Libraries (IDs), Tags, Trigger,
+* **Synchronisiert:** Vaults, Libraries (IDs), Tags,
   Session-Einstellungen (Timeout, Beim Verlassen sperren).
 * **Nie synchronisiert:** PIN (pro Gerät), Hidden-Index, Prüf-Cache,
   Unlock-Zustand, Geräte-Einstellungen (Sync an/aus, Biometrie).
@@ -290,9 +276,9 @@ serverweit gleich.
   nachgeschoben, wenn die lokale Kopie neuer ist.
 * Sync aus: kein Request an die DisplayPreferences. Wieder einschalten
   synchronisiert sofort.
-* Ein neues Gerät übernimmt damit Regeln und Trigger, der Bereich bleibt aber
-  zu, bis auf diesem Gerät eine PIN gesetzt wurde (*Privater Bereich* in den
-  Einstellungen).
+* Ein neues Gerät übernimmt damit die Regeln, der Bereich bleibt aber
+  zu, bis auf diesem Gerät eine PIN gesetzt wurde (Einstellungen → Über →
+  *Version*).
 * Schreibt nur in die DisplayPreferences des angemeldeten Users (dieselbe
   API, die jeder Client für Ansichtseinstellungen nutzt); keine Metadaten,
   keine Libraries, keine Server-Konfiguration.
@@ -318,7 +304,7 @@ serverweit gleich.
   normalen Screens: Recommendation-Caches leeren, Media Bar `force`, Home über
   `homeRefreshBus` – keine globale Cache-Löschung.
 * Der Fingerprint hängt nur an Vault-IDs, Library-IDs und normalisierten Tags;
-  Namen, Trigger und Session-Einstellungen invalidieren nichts.
+  Namen und Session-Einstellungen invalidieren nichts.
 * Vault-Daten nur im `VaultRepository` der aktuellen Vault-Sitzung
   (In-Memory, pro Visit); kein Disk-Cache für Vault-Inhalte.
 * Persistiert pro Server+User: Config, Index, Prüf-Cache (`outOfScope`,
@@ -328,7 +314,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 117 Tests
+flutter test test/custom/hidden_vault/     # 92 Tests
 flutter test                               # gesamte Suite
 ```
 
@@ -338,8 +324,9 @@ Abgedeckt u. a.: exaktes Matching (`ecchi` vs `Ecchi`/`ECCHI`, nicht
 Batch-Resolution, Home (Latest/Resume/Next Up/Recommendations/Similar), Suche
 normal vs. Vault, Detail-Gate, Playback-Gate inkl. Mischqueue, Vault zeigt nur
 eigenen Scope, Unlock lässt Normal-Home gefiltert, Cache nach
-Config-Änderung, virtuelles Paging, Read-Ahead-Budget, Secret Gesture
-D-Pad und Touch (Tap/Menü/5-s-Hold, andere Kacheln unverändert), Session
+Config-Änderung, virtuelles Paging, Read-Ahead-Budget, Einstieg über
+*Version* (PIN → Bereichsliste → Vault-Home, falsche PIN, Deep Link ohne
+PIN), Session
 (Timeout, Lock on leave, Kontowechsel, Lifecycle), PIN-Namespace, Biometrie
 (Default aus, Erfolg ohne PIN, Abbruch/nicht verfügbar → PIN), Sync
 (TV → Handy, nur Regeln im Payload, LWW in beide Richtungen, Offline-Speichern,
@@ -455,12 +442,9 @@ diese Zeilen wieder einsetzen:
 | `lib/ui/navigation/app_router.dart` | Vault-Routen + Redirect |
 | `lib/data/viewmodels/item_detail_view_model.dart` | Refusal → blocked |
 | `lib/ui/screens/home/home_view_model.dart` | Cache-Key-Token + Hydrate-Filter |
-| `lib/ui/screens/home/home_screen.dart` | Trigger-Kacheln (Hold-Geste D-Pad + `VaultTouchHold`) |
-| `lib/ui/widgets/focus/locked_focus_row.dart` | opt-in Hold-Geste |
-| `lib/util/focus/key_event_utils.dart` | `SelectHoldGesture` |
 | `lib/util/pin_code_util.dart` | `PinCodeUtil.vault` |
 | `lib/data/providers/offline_providers.dart` | Downloads-Listen filtern |
-| `lib/ui/screens/settings/settings_side_panel.dart` + `panel/authentication_category_screen.dart` | Settings-Eintrag |
+| `lib/ui/screens/settings/settings_side_panel.dart` + `panel/about_category_screen.dart` | Einstieg über *Version* |
 | `pubspec.yaml` | lokales Plugin `vault_biometrics` |
 | `ios/Runner/Info.plist` | `NSFaceIDUsageDescription` |
 

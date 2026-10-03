@@ -81,15 +81,10 @@ class VaultDefinition {
   final String name;
   final List<VaultLibrary> libraries;
 
-  /// The home library tile whose long hold opens this vault, or null for a
-  /// vault reached only through settings.
-  final String? triggerLibraryId;
-
   VaultDefinition({
     required this.id,
     required this.name,
     List<VaultLibrary> libraries = const [],
-    this.triggerLibraryId,
   }) : libraries = List.unmodifiable(libraries);
 
   bool get hasRules => libraries.any((l) => l.hasTags);
@@ -101,25 +96,17 @@ class VaultDefinition {
     return null;
   }
 
-  VaultDefinition copyWith({
-    String? name,
-    List<VaultLibrary>? libraries,
-    String? triggerLibraryId,
-    bool clearTrigger = false,
-  }) => VaultDefinition(
-    id: id,
-    name: name ?? this.name,
-    libraries: libraries ?? this.libraries,
-    triggerLibraryId: clearTrigger
-        ? null
-        : (triggerLibraryId ?? this.triggerLibraryId),
-  );
+  VaultDefinition copyWith({String? name, List<VaultLibrary>? libraries}) =>
+      VaultDefinition(
+        id: id,
+        name: name ?? this.name,
+        libraries: libraries ?? this.libraries,
+      );
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'libraries': [for (final l in libraries) l.toJson()],
-    if (triggerLibraryId != null) 'triggerLibraryId': triggerLibraryId,
   };
 
   static VaultDefinition? fromJson(Object? json) {
@@ -127,14 +114,12 @@ class VaultDefinition {
     final id = json['id']?.toString() ?? '';
     if (id.isEmpty) return null;
     final libs = json['libraries'];
-    final trigger = json['triggerLibraryId']?.toString();
     return VaultDefinition(
       id: id,
       name: json['name']?.toString() ?? '',
       libraries: libs is List
           ? libs.map(VaultLibrary.fromJson).whereType<VaultLibrary>().toList()
           : const [],
-      triggerLibraryId: (trigger == null || trigger.isEmpty) ? null : trigger,
     );
   }
 }
@@ -224,20 +209,7 @@ class VaultConfig {
       for (final lib in vault.libraries) {
         if (claimed.add(lib.libraryId)) libs.add(lib);
       }
-      // A vault always opens from one of its own libraries: the one chosen,
-      // or else the first. A config saved without one (or with a library that
-      // left the vault) still gets a working tile.
-      final trigger = vault.triggerLibraryId;
-      final triggerValid =
-          trigger != null && libs.any((l) => l.libraryId == trigger);
-      final effective = triggerValid ? trigger : libs.firstOrNull?.libraryId;
-      cleaned.add(
-        vault.copyWith(
-          libraries: libs,
-          triggerLibraryId: effective,
-          clearTrigger: effective == null,
-        ),
-      );
+      cleaned.add(vault.copyWith(libraries: libs));
     }
     return VaultConfig._(
       vaults: List.unmodifiable(cleaned),
@@ -263,13 +235,6 @@ class VaultConfig {
     return null;
   }
 
-  VaultDefinition? vaultForTrigger(String libraryId) {
-    for (final vault in vaults) {
-      if (vault.triggerLibraryId == libraryId) return vault;
-    }
-    return null;
-  }
-
   VaultConfig copyWith({
     List<VaultDefinition>? vaults,
     VaultSettings? settings,
@@ -283,7 +248,7 @@ class VaultConfig {
   );
 
   /// Changes exactly when what is hidden changes: vault ids, library ids and
-  /// normalized tags. Names, the trigger tile and session settings are left
+  /// normalized tags. Names and session settings are left
   /// out, so editing them keeps every cache.
   String get fingerprint {
     final parts = <String>[];

@@ -42,7 +42,6 @@ VaultConfig standardConfig() => VaultConfig(
           tags: ['ecchi', 'private'],
         ),
       ],
-      triggerLibraryId: 'lib-anime',
     ),
     VaultDefinition(
       id: 'shows',
@@ -61,7 +60,6 @@ VaultConfig standardConfig() => VaultConfig(
           tags: ['adult'],
         ),
       ],
-      triggerLibraryId: 'lib-shows',
     ),
   ],
 );
@@ -141,9 +139,18 @@ List<String> idsOf(Map<String, dynamic> response) => [
   for (final item in (response['Items'] as List)) (item as Map)['Id'] as String,
 ];
 
+/// Image urls that point nowhere; enough for screens to lay out.
+class FakeImageApi implements ImageApi {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => '';
+}
+
 /// A signed in client over [FakeJellyfin]; everything the tests don't use
 /// throws.
 class FakeMediaServerClient implements MediaServerClient {
+  @override
+  final ImageApi imageApi = FakeImageApi();
+
   @override
   final ItemsApi itemsApi;
 

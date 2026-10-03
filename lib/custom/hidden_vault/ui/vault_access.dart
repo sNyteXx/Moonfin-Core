@@ -4,14 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:vault_biometrics/vault_biometrics.dart';
 
-import '../../../data/models/aggregated_item.dart';
 import '../../../ui/widgets/pin_entry_dialog.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../util/platform_detection.dart';
-import '../data/hidden_content_service.dart';
 import '../data/vault_store.dart';
 import '../hidden_vault.dart';
-import '../model/vault_config.dart';
 import '../session/vault_session.dart';
 import 'vault_routes.dart';
 import 'vault_strings.dart';
@@ -79,37 +76,6 @@ abstract final class VaultAccess {
       mode: PinEntryMode.set,
       onPinSet: pin.setPin,
     );
-  }
-
-  /// The vault whose trigger tile [item] is, when one is set up completely:
-  /// rules, a trigger on this library and a PIN. Anything less and the tile
-  /// behaves exactly like every other one.
-  static VaultDefinition? vaultForTile(AggregatedItem item) {
-    final scope = HiddenVault.activeScope;
-    if (scope == null || VaultRoutes.kidsModeActive) return null;
-    final HiddenContentService? service = HiddenVault.activeService;
-    if (service == null) return null;
-    if (item.serverId != scope.serverId &&
-        item.serverId != HiddenVault.activeUnfilteredClient?.baseUrl) {
-      return null;
-    }
-    final vault = service.config.vaultForTrigger(item.id);
-    if (vault == null || !vault.hasRules) return null;
-    if (!hasPin(scope)) return null;
-    return vault;
-  }
-
-  static bool isTriggerTile(AggregatedItem item) => vaultForTile(item) != null;
-
-  /// The long hold on a trigger tile: PIN, then the vault.
-  static Future<void> openFromTile(
-    BuildContext context,
-    AggregatedItem item,
-  ) async {
-    final vault = vaultForTile(item);
-    final scope = HiddenVault.activeScope;
-    if (vault == null || scope == null) return;
-    await open(context, scope, vault.id);
   }
 
   /// Opens [vaultId], asking for the PIN unless it is still unlocked.

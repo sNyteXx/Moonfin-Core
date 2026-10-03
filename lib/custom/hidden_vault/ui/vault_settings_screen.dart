@@ -13,7 +13,6 @@ import '../../../ui/widgets/settings/clean_settings_typography.dart';
 import '../../../ui/widgets/settings/preference_tiles.dart';
 import '../../../ui/widgets/settings/settings_panel.dart';
 import '../../../ui/widgets/settings/settings_section_header.dart';
-import '../../../util/focus/key_event_utils.dart';
 import '../../../util/platform_detection.dart';
 import '../data/hidden_content_service.dart';
 import '../data/vault_store.dart';
@@ -388,13 +387,11 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  String _librarySummary(VaultStrings s, VaultDefinition vault) {
+  String _librarySummary(VaultDefinition vault) {
     if (vault.libraries.isEmpty) return '—';
-    final libraries = [
+    return [
       for (final lib in vault.libraries) '${lib.name} (${lib.tags.length})',
     ].join(', ');
-    final trigger = vault.library(vault.triggerLibraryId ?? '')?.name;
-    return '$libraries\n${s.trigger}: ${trigger ?? s.triggerNone}';
   }
 
   @override
@@ -402,6 +399,10 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
     final s = VaultStrings.of(context);
     final settings = _draft.settings;
     final index = _service.index;
+    final openable = [
+      for (final vault in _service.config.vaults)
+        if (vault.hasRules) vault,
+    ];
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -409,11 +410,31 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
         body: ListView(
           children: [
             if (_saving || _syncing) const LinearProgressIndicator(),
+            // The private area opens on its vaults; each one leads straight
+            // to its own home.
+            if (openable.isNotEmpty) ...[
+              SettingsSectionHeader(s.open),
+              adaptiveListSection(
+                children: [
+                  for (final (i, vault) in openable.indexed)
+                    _tile(
+                      context,
+                      autofocus: i == 0,
+                      icon: Icons.arrow_forward,
+                      title: Text(vault.name),
+                      subtitle: index == null
+                          ? null
+                          : Text(s.indexSummary(index.idsOf(vault.id).length)),
+                      onTap: () => _openVault(vault),
+                    ),
+                ],
+              ),
+            ],
             adaptiveListSection(
               children: [
                 _tile(
                   context,
-                  autofocus: true,
+                  autofocus: openable.isEmpty,
                   icon: Icons.save_outlined,
                   title: Text(_saving ? s.saving : s.save),
                   enabled: _dirty && !_saving,
@@ -439,7 +460,7 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                     context,
                     icon: Icons.folder_special_outlined,
                     title: Text(vault.name),
-                    subtitle: Text(_librarySummary(s, vault)),
+                    subtitle: Text(_librarySummary(vault)),
                     onTap: () => _editVault(vault),
                   ),
                 _tile(
@@ -451,35 +472,6 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                 ),
               ],
             ),
-            if (_service.config.vaults.any((v) => v.hasRules)) ...[
-              SettingsSectionHeader(s.open),
-              adaptiveListSection(
-                children: [
-                  for (final vault in _service.config.vaults)
-                    if (vault.hasRules)
-                      _tile(
-                        context,
-                        icon: Icons.arrow_forward,
-                        title: Text('${s.open}: ${vault.name}'),
-                        subtitle: index == null
-                            ? null
-                            : Text(
-                                s.indexSummary(index.idsOf(vault.id).length),
-                              ),
-                        onTap: () => _openVault(vault),
-                      ),
-                  _tile(
-                    context,
-                    icon: Icons.refresh,
-                    title: Text(s.rebuildIndex),
-                    onTap: () async {
-                      await _service.refreshIndex();
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                ],
-              ),
-            ],
             SettingsSectionHeader(s.thisDevice),
             adaptiveListSection(
               children: [
@@ -532,6 +524,15 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                       ),
                     ),
                   ),
+                ),
+                _tile(
+                  context,
+                  icon: Icons.refresh,
+                  title: Text(s.rebuildIndex),
+                  onTap: () async {
+                    await _service.refreshIndex();
+                    if (mounted) setState(() {});
+                  },
                 ),
                 _tile(
                   context,
@@ -597,25 +598,7 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
               collectionType: option.collectionType,
             ),
           ];
-    // The vault opens from one of its own libraries, the first one picked
-    // unless another was chosen, so it is never left without a way in.
-    final trigger = _vault.triggerLibraryId;
-    final keep =
-        trigger != null && libraries.any((l) => l.libraryId == trigger);
-    _set(
-      _vault.copyWith(
-        libraries: libraries,
-        triggerLibraryId: keep ? trigger : libraries.firstOrNull?.libraryId,
-        clearTrigger: !keep && libraries.isEmpty,
-      ),
-    );
-  }
-
-  void _cycleTrigger() {
-    final options = [for (final lib in _vault.libraries) lib.libraryId];
-    if (options.isEmpty) return;
-    final at = options.indexOf(_vault.triggerLibraryId ?? '');
-    _set(_vault.copyWith(triggerLibraryId: options[(at + 1) % options.length]));
+    _set(_vault.copyWith(libraries: libraries));
   }
 
   Future<void> _rename(VaultStrings s) async {
@@ -653,8 +636,6 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
   @override
   Widget build(BuildContext context) {
     final s = VaultStrings.of(context);
-    String nameOf(String? id) =>
-        _vault.library(id ?? '')?.name ?? s.triggerNone;
     return withCleanSettingsTypography(
       context,
       Scaffold(
@@ -670,18 +651,6 @@ class _VaultEditorScreenState extends State<_VaultEditorScreen> {
                   title: Text(s.vaultName),
                   subtitle: Text(_vault.name),
                   onTap: () => _rename(s),
-                ),
-                _tile(
-                  context,
-                  icon: Icons.touch_app_outlined,
-                  title: Text(s.trigger),
-                  subtitle: Text(
-                    _vault.triggerLibraryId == null
-                        ? s.triggerNone
-                        : '${nameOf(_vault.triggerLibraryId)} · '
-                              '${s.triggerHint(nameOf(_vault.triggerLibraryId), SelectHoldGesture.defaultHoldAfter.inSeconds)}',
-                  ),
-                  onTap: _cycleTrigger,
                 ),
               ],
             ),
