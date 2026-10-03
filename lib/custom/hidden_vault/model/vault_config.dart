@@ -133,22 +133,32 @@ class VaultSettings {
   final int autoLockMinutes;
   final bool lockOnLeave;
 
+  /// Vault rows and grids list only what hasn't been watched yet. Continue
+  /// watching and next up are unwatched by nature and stay as they are.
+  final bool hideWatched;
+
   const VaultSettings({
     this.autoLockMinutes = defaultAutoLockMinutes,
     this.lockOnLeave = true,
+    this.hideWatched = false,
   });
 
   Duration get autoLockAfter => Duration(minutes: autoLockMinutes);
 
-  VaultSettings copyWith({int? autoLockMinutes, bool? lockOnLeave}) =>
-      VaultSettings(
-        autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
-        lockOnLeave: lockOnLeave ?? this.lockOnLeave,
-      );
+  VaultSettings copyWith({
+    int? autoLockMinutes,
+    bool? lockOnLeave,
+    bool? hideWatched,
+  }) => VaultSettings(
+    autoLockMinutes: autoLockMinutes ?? this.autoLockMinutes,
+    lockOnLeave: lockOnLeave ?? this.lockOnLeave,
+    hideWatched: hideWatched ?? this.hideWatched,
+  );
 
   Map<String, dynamic> toJson() => {
     'autoLockMinutes': autoLockMinutes,
     'lockOnLeave': lockOnLeave,
+    if (hideWatched) 'hideWatched': true,
   };
 
   static VaultSettings fromJson(Object? json) {
@@ -161,6 +171,7 @@ class VaultSettings {
       lockOnLeave: json['lockOnLeave'] is bool
           ? json['lockOnLeave'] as bool
           : true,
+      hideWatched: json['hideWatched'] == true,
     );
   }
 }

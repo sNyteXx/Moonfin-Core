@@ -48,6 +48,13 @@ class VaultStrings {
   String get tagsLoadFailed =>
       _t('Could not load tags.', 'Tags konnten nicht geladen werden.');
   String get filterTags => _t('Filter tags', 'Tags filtern');
+  String get display => _t('Display', 'Anzeige');
+  String get hideWatched => _t('Hide watched', 'Gesehene ausblenden');
+  String get hideWatchedSubtitle => _t(
+    'Rows and grids in the private area list only what you haven\'t watched '
+        'yet.',
+    'Reihen und Raster im privaten Bereich zeigen nur noch Ungesehenes.',
+  );
   String get removeVault => _t('Remove area', 'Bereich entfernen');
   String get save => _t('Save', 'Speichern');
   String get saving => _t('Saving…', 'Speichern…');

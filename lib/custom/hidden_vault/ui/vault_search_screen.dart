@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
@@ -44,10 +46,19 @@ class _VaultSearchState extends State<_VaultSearch> {
   void _search(String query) {
     final generation = ++_generation;
     final future = widget.vault.repository.search(query);
-    setState(() => _results = future);
-    future.whenComplete(() {
-      if (mounted && generation == _generation) setState(() {});
+    setState(() {
+      _results = future;
     });
+    unawaited(
+      future.then<void>(
+        (_) {
+          if (mounted && generation == _generation) setState(() {});
+        },
+        onError: (Object _) {
+          if (mounted && generation == _generation) setState(() {});
+        },
+      ),
+    );
   }
 
   @override
@@ -88,20 +99,9 @@ class _VaultSearchState extends State<_VaultSearch> {
                           if (items.isEmpty) {
                             return Center(child: Text(s.noResults));
                           }
-                          return GridView.builder(
-                            padding: const EdgeInsets.fromLTRB(48, 0, 48, 48),
-                            gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 170,
-                                  childAspectRatio: 150 / 290,
-                                  crossAxisSpacing: 16,
-                                  mainAxisSpacing: 16,
-                                ),
-                            itemCount: items.length,
-                            itemBuilder: (context, index) => VaultItemCard(
-                              item: items[index],
-                              images: widget.vault.client.imageApi,
-                            ),
+                          return VaultCardGrid(
+                            items: items,
+                            images: widget.vault.client.imageApi,
                           );
                         },
                       ),

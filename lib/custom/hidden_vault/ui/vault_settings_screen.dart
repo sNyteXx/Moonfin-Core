@@ -472,6 +472,24 @@ class _VaultSettingsScreenState extends State<VaultSettingsScreen> {
                 ),
               ],
             ),
+            SettingsSectionHeader(s.display),
+            adaptiveListSection(
+              children: [
+                _tile(
+                  context,
+                  checked: settings.hideWatched,
+                  title: Text(s.hideWatched),
+                  subtitle: Text(s.hideWatchedSubtitle),
+                  onTap: () => _update(
+                    _draft.copyWith(
+                      settings: settings.copyWith(
+                        hideWatched: !settings.hideWatched,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
             SettingsSectionHeader(s.thisDevice),
             adaptiveListSection(
               children: [

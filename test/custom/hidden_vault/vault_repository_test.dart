@@ -72,6 +72,33 @@ void main() {
     expect(search, isNot(contains('s3')));
   });
 
+  test('hide watched: the server leaves watched titles out', () async {
+    h.server.markPlayed('a1');
+    await h.service.saveConfig(
+      h.service.config.copyWith(
+        settings: h.service.config.settings.copyWith(hideWatched: true),
+      ),
+    );
+    h.server.resetCalls();
+    final repo = repoFor('anime');
+    final anime = repo.vault.library('lib-anime')!;
+    final page = await repo.libraryPage(anime);
+    expect(ids(page.items), ['a2']);
+    expect(h.server.calls.single.params['filters'], ['IsUnplayed']);
+    expect(ids(await repo.recentlyAdded()), isNot(contains('a1')));
+    expect(ids(await repo.search('a')), isNot(contains('a1')));
+    // Unwatched by nature, so left as they are.
+    expect(ids(await repo.nextUp()), ['a1e1']);
+  });
+
+  test('watched titles stay by default', () async {
+    h.server.markPlayed('a1');
+    final repo = repoFor('anime');
+    final page = await repo.libraryPage(repo.vault.library('lib-anime')!);
+    expect(ids(page.items), contains('a1'));
+    expect(h.server.calls.last.params['filters'], isNull);
+  });
+
   test('recently added merges the libraries newest first', () async {
     final repo = repoFor('anime');
     final recent = ids(await repo.recentlyAdded());

@@ -58,6 +58,12 @@ class FakeJellyfin implements ItemsApi {
     _order.add(id);
   }
 
+  /// Marks [id] watched, as the server's user data would.
+  void markPlayed(String id) {
+    final item = _items[id]!;
+    item['UserData'] = {...?(item['UserData'] as Map?), 'Played': true};
+  }
+
   Map<String, dynamic> series(
     String libraryId,
     String id, {
@@ -213,6 +219,7 @@ class FakeJellyfin implements ItemsApi {
         'limit': limit,
         'fields': fields,
         'searchTerm': searchTerm,
+        'filters': filters,
         'includeItemTypes': includeItemTypes,
       }),
     );
@@ -238,6 +245,9 @@ class FakeJellyfin implements ItemsApi {
     }
     if (isFavorite == true) {
       result = result.where((i) => i['IsFavorite'] == true);
+    }
+    if (filters != null && filters.contains('IsUnplayed')) {
+      result = result.where((i) => (i['UserData'] as Map?)?['Played'] != true);
     }
     if (personIds != null && personIds.isNotEmpty) {
       result = result.where(

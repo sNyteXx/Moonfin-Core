@@ -45,6 +45,13 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 Im Startbildschirm gibt es keinen Einstieg und keine Geste; alle Kacheln
 verhalten sich wie im Original.
 
+Abschnitt *Anzeige* (wird mit der Config synchronisiert):
+
+* **Gesehene ausblenden** (Default aus): Raster, Bibliotheks-Reihen,
+  *Zuletzt hinzugefügt* und die Suche im privaten Bereich fragen den Server
+  mit `Filters=IsUnplayed` ab. Paging bleibt exakt, es werden weniger Daten
+  übertragen. *Weiterschauen* und *Als Nächstes* sind ohnehin ungesehen.
+
 Abschnitt *Dieses Gerät* (gilt nur für das aktuelle Gerät):
 
 * **Mit anderen Geräten synchronisieren** (Default an, §6.2)
@@ -78,6 +85,8 @@ lib/custom/hidden_vault/
   session/vault_session.dart        In-Memory-Unlock, Timeout, Lock-on-leave, Auto-Lock
   gate/hidden_content_gate.dart     Playback-Gate (+ Detail via Refusal)
   ui/                               Vault-Home/-Grid/-Suche, Settings, Zugriff, Strings
+  ui/widgets/vault_card_metrics.dart  Kartenmaße wie im Home (Postergröße, Skalierung, Fokus)
+  ui/widgets/vault_item_card.dart   MediaCard + Kontextmenü, Raster für Bibliothek/Suche
 
 packages/vault_biometrics/          lokales Plugin: BiometricPrompt (Android) / LAContext (iOS)
 ```
@@ -202,6 +211,31 @@ Ohne Hidden-Treffer: **0** Zusatz-Requests.
 | VAULT (explizit) | `VaultRepository` (nur Vault-Screens) | ausschließlich Hidden-Inhalte des Vaults; Library-Listen serverseitig `ParentId=<lib>&Tags=…` + exakte Validierung; Resume/Next Up/Episodensuche über den Index |
 | VAULT (item-spezifisch) | `getItem(id)`, `getSeasons(S)`, `getEpisodes(S)`, NextUp(`seriesId`), `getItems(ids)`, Similar, Extras, InstantMix | Inhalte eines Vaults nur, wenn genau dieser Vault **entsperrt UND betreten** ist |
 
+### 5.1 Vault-Home
+
+Aufgebaut wie der Startbildschirm, aus dessen öffentlichen Bausteinen:
+
+* Vollbild-Backdrop des fokussierten Titels (`FullscreenBackdropSwitcher`)
+  mit derselben Abdunklung. Der Backdrop gehört dem Vault-Screen selbst,
+  nicht dem globalen `BackgroundService`, und verschwindet mit ihm.
+* `InfoArea` oben: Titel/Logo, Metadaten, Bewertungen, Beschreibung des
+  fokussierten Titels (kurz entprellt, damit schnelles Scrollen nicht
+  flackert).
+* Reihen als `LockedFocusRow` mit `MediaCard`: dieselbe Fokus-Führung,
+  Fokus-Vergrößerung und Größe wie im Home (`VaultCardMetrics`: Postergröße,
+  UI-Skalierung, TV-Faktor 0,8). Über den Karten bleibt Platz für die
+  Vergrößerung; vorher wurden fokussierte Karten oben abgeschnitten.
+* Hoch/Runter wechselt die Reihe, von der obersten Reihe nach oben geht es
+  zur Suche. Der Fokus startet auf der obersten Reihe mit Inhalt.
+* Lang drücken / Menütaste: das Kontextmenü des Home (als gesehen markieren,
+  aus *Weiterschauen* ausblenden, …). Danach werden die Reihen neu gelesen,
+  ohne dass die alten vorher verschwinden.
+* Bibliotheks-Raster und Suche nutzen dieselben Karten und Maße.
+
+Der Media-Bar-Slider des Home ist bewusst nicht dabei: er hängt an
+Trailer-Autoplay, Bildschirmschoner und Wiedergabe-Diensten, über die
+Vault-Inhalte nach außen gelangen könnten.
+
 Globale Listen erhalten **nie** eine Ausnahme. Der Vault-Kontext ist reiner
 In-Memory-Session-State; Routen (`/vault/<id>`) sind über den Router-Redirect
 an diesen State gebunden. Ein Deep Link / eine Push-Route auf `/vault/...`
@@ -314,7 +348,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 92 Tests
+flutter test test/custom/hidden_vault/     # 96 Tests
 flutter test                               # gesamte Suite
 ```
 
@@ -427,6 +461,8 @@ die APK debug-signiert, mit wechselndem Schlüssel pro Build.
 * Sync ist Last-Writer-Wins auf die ganze Config: wer auf zwei Geräten
   gleichzeitig offline ändert, behält die zuletzt gespeicherte Fassung.
 * Admin-Metadaten-Editor öffnet Hidden-Items nur aus dem Vault heraus.
+* Sind zusätzliche Bewertungen (MDBList) eingeschaltet, fragt der
+  Info-Bereich sie wie im Home auch für fokussierte Vault-Titel ab.
 
 ## 11. Upstream-Merge-Hinweise
 

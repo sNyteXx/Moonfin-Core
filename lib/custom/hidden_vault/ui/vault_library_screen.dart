@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
@@ -73,6 +75,20 @@ class _VaultLibraryGridState extends State<_VaultLibraryGrid> {
     _loadMore();
   }
 
+  /// After a change from the context menu (marked watched, say), page in
+  /// again from the start so the grid shows what the server now has.
+  void _reload() {
+    setState(() {
+      _items.clear();
+      _ids.clear();
+      _rawOffset = 0;
+      _total = null;
+      _done = false;
+      _error = null;
+    });
+    unawaited(_loadMore());
+  }
+
   Future<void> _loadMore() async {
     if (_loading || _done) return;
     setState(() => _loading = true);
@@ -145,25 +161,13 @@ class _VaultLibraryGridState extends State<_VaultLibraryGrid> {
       );
     }
     if (_items.isEmpty) return Center(child: Text(s.empty));
-    return FocusTraversalGroup(
-      child: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(48, 0, 48, 48),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 170,
-          childAspectRatio: 150 / 290,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: _items.length,
-        itemBuilder: (context, index) {
-          if (index >= _items.length - 12) _scheduleLoadMore();
-          return VaultItemCard(
-            item: _items[index],
-            images: widget.vault.client.imageApi,
-            autofocus: index == 0,
-          );
-        },
-      ),
+    return VaultCardGrid(
+      items: _items,
+      images: widget.vault.client.imageApi,
+      onBuildIndex: (index) {
+        if (index >= _items.length - 12) _scheduleLoadMore();
+      },
+      onChanged: _reload,
     );
   }
 }

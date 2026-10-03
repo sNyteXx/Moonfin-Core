@@ -58,6 +58,14 @@ class VaultRepository {
   Iterable<VaultLibrary> get libraries =>
       vault.libraries.where((l) => l.hasTags);
 
+  /// Asked for on every list query, so the server leaves watched titles out
+  /// and paging stays exact.
+  List<String>? get _playedFilter =>
+      service.config.settings.hideWatched ? const ['IsUnplayed'] : null;
+
+  String get _memoSuffix =>
+      service.config.settings.hideWatched ? ':unplayed' : '';
+
   static List<String> typesFor(VaultLibrary library) =>
       switch (library.collectionType) {
         'tvshows' => const ['Series'],
@@ -120,6 +128,7 @@ class VaultRepository {
       recursive: true,
       tags: library.normalizedTags.toList()..sort(),
       includeItemTypes: typesFor(library),
+      filters: _playedFilter,
       sortBy: sortBy,
       sortOrder: sortOrder,
       startIndex: startIndex,
@@ -143,26 +152,27 @@ class VaultRepository {
 
   /// The first row of a vault library on the vault's home.
   Future<List<AggregatedItem>> libraryRow(VaultLibrary library) => _cached(
-    'row:${library.libraryId}',
+    'row:${library.libraryId}$_memoSuffix',
     () async => (await libraryPage(library, limit: rowLimit)).items,
   );
 
-  Future<List<AggregatedItem>> recentlyAdded() => _cached('recent', () async {
-    final lists = await Future.wait([
-      for (final library in libraries)
-        libraryPage(
-          library,
-          limit: rowLimit,
-          sortBy: library.collectionType == 'tvshows'
-              ? 'DateLastContentAdded,DateCreated'
-              : 'DateCreated',
-          sortOrder: 'Descending',
-        ).then((p) => p.items),
-    ]);
-    final merged = lists.expand((e) => e).toList()
-      ..sort((a, b) => _dateOf(b).compareTo(_dateOf(a)));
-    return merged.take(rowLimit).toList();
-  });
+  Future<List<AggregatedItem>> recentlyAdded() =>
+      _cached('recent$_memoSuffix', () async {
+        final lists = await Future.wait([
+          for (final library in libraries)
+            libraryPage(
+              library,
+              limit: rowLimit,
+              sortBy: library.collectionType == 'tvshows'
+                  ? 'DateLastContentAdded,DateCreated'
+                  : 'DateCreated',
+              sortOrder: 'Descending',
+            ).then((p) => p.items),
+        ]);
+        final merged = lists.expand((e) => e).toList()
+          ..sort((a, b) => _dateOf(b).compareTo(_dateOf(a)));
+        return merged.take(rowLimit).toList();
+      });
 
   static String _dateOf(AggregatedItem item) =>
       item.rawData['DateLastContentAdded']?.toString() ??
@@ -232,6 +242,7 @@ class VaultRepository {
               searchTerm: term,
               tags: library.normalizedTags.toList()..sort(),
               includeItemTypes: typesFor(library),
+              filters: _playedFilter,
               limit: 40,
               fields: fields,
               enableImageTypes: _imageTypes,
@@ -252,6 +263,7 @@ class VaultRepository {
                 recursive: true,
                 searchTerm: term,
                 includeItemTypes: const ['Episode'],
+                filters: _playedFilter,
                 limit: 40,
                 fields: fields,
                 enableImageTypes: _imageTypes,

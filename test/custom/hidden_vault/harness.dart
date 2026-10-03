@@ -1,8 +1,10 @@
+import 'package:flutter_test/flutter_test.dart';
 import 'package:moonfin/custom/hidden_vault/data/hidden_content_service.dart';
 import 'package:server_core/server_core.dart';
 import 'package:moonfin/custom/hidden_vault/data/visibility_items_api.dart';
 import 'package:moonfin/custom/hidden_vault/data/vault_store.dart';
 import 'package:moonfin/custom/hidden_vault/model/vault_config.dart';
+import 'package:moonfin/data/services/media_server_client_factory.dart';
 
 import 'fake_server.dart';
 
@@ -138,6 +140,22 @@ class Harness {
 List<String> idsOf(Map<String, dynamic> response) => [
   for (final item in (response['Items'] as List)) (item as Map)['Id'] as String,
 ];
+
+/// One client for every server, as screens look it up by server id.
+class FakeClientFactory extends Fake implements MediaServerClientFactory {
+  final MediaServerClient client;
+
+  FakeClientFactory(this.client);
+
+  @override
+  MediaServerClient clientForServerOrActive(String? serverId) => client;
+
+  @override
+  MediaServerClient? getClientIfExists(String serverId) => client;
+
+  @override
+  MediaServerClient getActiveClient() => client;
+}
 
 /// Image urls that point nowhere; enough for screens to lay out.
 class FakeImageApi implements ImageApi {
