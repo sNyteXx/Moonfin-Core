@@ -136,6 +136,9 @@ dependencies:
     path: packages/preference
   moonfin_native_video:
     path: packages/moonfin_native_video
+  # hidden-vault: fingerprint / face unlock on phones and tablets.
+  vault_biometrics:
+    path: packages/vault_biometrics
   url_launcher: ^6.3.2
   file_picker: ^11.0.2
   emoji_picker_flutter: ^4.5.4

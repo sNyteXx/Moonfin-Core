@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:get_it/get_it.dart';
 
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../database/offline_database.dart';
 import '../repositories/offline_repository.dart';
 
 OfflineRepository get _repo => GetIt.instance<OfflineRepository>();
+
+// hidden-vault: saved copies of hidden content stay on disk but off the lists.
+List<DownloadedItem> _visible(List<DownloadedItem> rows) =>
+    HiddenVault.withoutHiddenDownloads(rows);
 
 /// Item types that are an actual file on disk.
 const downloadableItemTypes = <String>{
@@ -53,37 +58,41 @@ DownloadCatalog partitionDownloadCatalog(List<DownloadedItem> rows) {
 /// Watching the table rather than reading it once is what lets the list drop a
 /// row the moment a delete lands.
 final downloadedCatalogProvider = StreamProvider<DownloadCatalog>((ref) {
-  return _repo.watchItems(onlyCompleted: true).map(partitionDownloadCatalog);
+  return _repo
+      .watchItems(onlyCompleted: true)
+      .map((rows) => partitionDownloadCatalog(_visible(rows)));
 });
 
 final downloadedMoviesProvider = StreamProvider<List<DownloadedItem>>((ref) {
-  return _repo.watchItems(type: 'Movie', onlyCompleted: true);
+  return _repo.watchItems(type: 'Movie', onlyCompleted: true).map(_visible);
 });
 
 final downloadedSeriesProvider = StreamProvider<List<DownloadedItem>>((ref) {
-  return _repo.watchDownloadedSeries();
+  return _repo.watchDownloadedSeries().map(_visible);
 });
 
 final downloadedAudioProvider = StreamProvider<List<DownloadedItem>>((ref) {
-  return _repo.watchItems(type: 'Audio', onlyCompleted: true);
+  return _repo.watchItems(type: 'Audio', onlyCompleted: true).map(_visible);
 });
 
 final downloadedAudioBooksProvider = StreamProvider<List<DownloadedItem>>((ref) {
-  return _repo.watchItems(type: 'AudioBook', onlyCompleted: true);
+  return _repo
+      .watchItems(type: 'AudioBook', onlyCompleted: true)
+      .map(_visible);
 });
 
 final downloadedBooksProvider = StreamProvider<List<DownloadedItem>>((ref) {
-  return _repo.watchItems(type: 'Book', onlyCompleted: true);
+  return _repo.watchItems(type: 'Book', onlyCompleted: true).map(_visible);
 });
 
 final downloadedEpisodesProvider =
     StreamProvider.family<List<DownloadedItem>, String>((ref, seriesId) {
-  return _repo.watchSeriesEpisodes(seriesId);
+  return _repo.watchSeriesEpisodes(seriesId).map(_visible);
 });
 
 final downloadedSeasonEpisodesProvider =
     StreamProvider.family<List<DownloadedItem>, String>((ref, seasonId) {
-  return _repo.watchSeasonEpisodes(seasonId);
+  return _repo.watchSeasonEpisodes(seasonId).map(_visible);
 });
 
 final storageUsedProvider = StreamProvider<int>((ref) {

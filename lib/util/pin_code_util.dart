@@ -15,10 +15,23 @@ class PinCodeUtil {
   /// codes for the same user, so they need separate keys.
   final String _namespace;
 
-  PinCodeUtil(this._store, this._userId) : _namespace = 'user';
+  /// Mixed into the hash so the same digits never hash alike across PINs.
+  /// Empty for the PINs that predate it, so their stored hashes still verify.
+  final String _salt;
+
+  PinCodeUtil(this._store, this._userId) : _namespace = 'user', _salt = '';
 
   /// The PIN that unlocks Kids Mode, independent of the sign in PIN.
-  PinCodeUtil.kidsMode(this._store, this._userId) : _namespace = 'kids';
+  PinCodeUtil.kidsMode(this._store, this._userId)
+    : _namespace = 'kids',
+      _salt = '';
+
+  // hidden-vault: the vault PIN, separate from the sign in and Kids Mode PINs.
+  // [scope] names the server and user it belongs to.
+  PinCodeUtil.vault(this._store, String scope)
+    : _userId = scope,
+      _namespace = 'vault',
+      _salt = 'moonfin-vault:$scope:';
 
   String get _pinHashKey => '${_namespace}_pin_hash_$_userId';
   String get _pinEnabledKey => '${_namespace}_pin_enabled_$_userId';
@@ -62,7 +75,7 @@ class PinCodeUtil {
     if (isLockedOut) return false;
     final storedHash = _store.getString(_pinHashKey);
     if (storedHash == null || storedHash.isEmpty) return false;
-    return hashPin(pin) == storedHash;
+    return hashPin('$_salt$pin') == storedHash;
   }
 
   /// Records a wrong guess and returns how long the next one has to wait.
@@ -88,7 +101,7 @@ class PinCodeUtil {
 
   /// Set a new PIN (hashes and stores it).
   Future<void> setPin(String pin) async {
-    await _store.setString(_pinHashKey, hashPin(pin));
+    await _store.setString(_pinHashKey, hashPin('$_salt$pin'));
     await _store.setBool(_pinEnabledKey, true);
     await clearFailedAttempts();
   }
