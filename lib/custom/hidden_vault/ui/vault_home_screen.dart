@@ -40,12 +40,22 @@ class _RowSpec {
   final Future<List<AggregatedItem>> Function() load;
   final bool landscape;
   final VaultLibrary? library;
+  final bool isLibraryNavigation;
 
-  _RowSpec(this.title, this.load, {this.landscape = false, this.library});
+  _RowSpec(
+    this.title,
+    this.load, {
+    this.landscape = false,
+    this.library,
+    this.isLibraryNavigation = false,
+  });
 }
 
 /// The "see all" card at the end of a library row.
 const _seeAllPrefix = '__vault_see_all__:';
+
+/// A stable, UI-only shortcut to a configured library. Never sent to Jellyfin.
+const _libraryPrefix = '__vault_library__:';
 
 class _VaultHome extends StatefulWidget {
   final VaultContext vault;
@@ -61,6 +71,7 @@ class _VaultHomeState extends State<_VaultHome> {
 
   late List<_RowSpec> _specs;
   final List<List<AggregatedItem>?> _rows = [];
+  final List<bool> _rowFailed = [];
   final List<FocusNode> _rowNodes = [];
   final List<GlobalKey> _rowKeys = [];
   final FocusNode _searchNode = FocusNode(debugLabel: 'vault-search');
@@ -82,17 +93,35 @@ class _VaultHomeState extends State<_VaultHome> {
   void _load({bool keepRows = false}) {
     final s = VaultStrings.of(context);
     final repo = widget.vault.repository;
+    final libraries = repo.libraries.toList(growable: false);
     _specs = [
+      if (libraries.isNotEmpty)
+        _RowSpec(
+          s.libraries,
+          () async => [
+            for (final library in libraries)
+              AggregatedItem(
+                id: '$_libraryPrefix${library.libraryId}',
+                serverId: '',
+                rawData: {'Name': library.name},
+              ),
+          ],
+          landscape: true,
+          isLibraryNavigation: true,
+        ),
       _RowSpec(s.continueWatching, repo.continueWatching, landscape: true),
       _RowSpec(s.nextUp, repo.nextUp, landscape: true),
       _RowSpec(s.recentlyAdded, repo.recentlyAdded),
-      for (final library in repo.libraries)
+      for (final library in libraries)
         _RowSpec(
           library.name,
           () => repo.libraryRow(library),
           library: library,
         ),
     ];
+    _rowFailed
+      ..clear()
+      ..addAll(List.filled(_specs.length, false));
     final generation = ++_generation;
     if (!keepRows || _rows.length != _specs.length) {
       _rows
@@ -107,16 +136,25 @@ class _VaultHomeState extends State<_VaultHome> {
       unawaited(
         _specs[i].load().then(
           (items) => _rowLoaded(generation, i, items),
-          onError: (Object _) => _rowLoaded(generation, i, const []),
+          onError: (Object _) =>
+              _rowLoaded(generation, i, const [], failed: true),
         ),
       );
     }
   }
 
-  void _rowLoaded(int generation, int index, List<AggregatedItem> items) {
+  void _rowLoaded(
+    int generation,
+    int index,
+    List<AggregatedItem> items, {
+    bool failed = false,
+  }) {
     if (!mounted || generation != _generation) return;
     final hadFocus = _rowNodes[index].hasFocus;
-    setState(() => _rows[index] = items);
+    setState(() {
+      _rows[index] = items;
+      _rowFailed[index] = failed;
+    });
     if (hadFocus && items.isEmpty) _moveFocusFrom(index);
     _claimInitialFocus();
   }
@@ -174,7 +212,11 @@ class _VaultHomeState extends State<_VaultHome> {
   }
 
   void _onFocusItem(AggregatedItem item) {
-    if (item.id.startsWith(_seeAllPrefix)) return;
+    if (item.id.startsWith(_seeAllPrefix) ||
+        item.id.startsWith(_libraryPrefix)) {
+      _focusSettle?.cancel();
+      return;
+    }
     // Settles for a moment so fast scrolling doesn't swap the backdrop and
     // the info area for every card passed.
     _focusSettle?.cancel();
@@ -318,27 +360,60 @@ class _VaultHomeState extends State<_VaultHome> {
 
   Widget _rowsList(VaultStrings s) {
     final loading = _rows.any((r) => r == null);
+    final failed = _rowFailed.contains(true);
     final empty = !loading && _rows.every((r) => r!.isEmpty);
-    if (empty) return Center(child: Text(s.empty));
-    return FocusTraversalGroup(
-      child: ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.only(bottom: 48),
-        itemCount: _specs.length + (loading ? 1 : 0),
-        itemBuilder: (context, index) {
-          if (index == _specs.length) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final items = _rows[index];
-          if (items == null || items.isEmpty) return const SizedBox.shrink();
-          return _row(s, index, items);
-        },
-      ),
+    if (empty && !failed) return Center(child: Text(s.empty));
+    return Column(
+      children: [
+        if (failed)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(_sidePadding, 4, _sidePadding, 4),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    s.someRowsFailed,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                TextButton(onPressed: _reload, child: Text(s.retry)),
+              ],
+            ),
+          ),
+        Expanded(
+          child: FocusTraversalGroup(
+            child: ListView.builder(
+              controller: _scroll,
+              padding: const EdgeInsets.only(bottom: 48),
+              itemCount: _specs.length + (loading ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == _specs.length) {
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final items = _rows[index];
+                if (items == null || items.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return _row(s, index, items);
+              },
+            ),
+          ),
+        ),
+      ],
     );
   }
+
+  static IconData _iconForLibrary(VaultLibrary library) =>
+      switch (library.collectionType?.toLowerCase()) {
+        'tvshows' => Icons.tv_outlined,
+        'movies' => Icons.movie_outlined,
+        _ => Icons.video_library_outlined,
+      };
 
   Widget _row(VaultStrings s, int index, List<AggregatedItem> items) {
     final spec = _specs[index];
@@ -355,7 +430,15 @@ class _VaultHomeState extends State<_VaultHome> {
     ];
     final images = widget.vault.client.imageApi;
     void open(AggregatedItem item) {
-      if (item.id.startsWith(_seeAllPrefix)) {
+      if (spec.isLibraryNavigation) {
+        final libraryId = item.id.substring(_libraryPrefix.length);
+        final target = widget.vault.vault.library(libraryId);
+        if (target != null && target.hasTags) {
+          GoRouter.of(context).push(
+            VaultRoutes.library(widget.vault.vault.id, libraryId),
+          );
+        }
+      } else if (item.id.startsWith(_seeAllPrefix)) {
         GoRouter.of(
           context,
         ).push(VaultRoutes.library(widget.vault.vault.id, library!.libraryId));
@@ -398,10 +481,30 @@ class _VaultHomeState extends State<_VaultHome> {
           onVerticalNavigation: (isUp) => _onVerticalNavigation(index, isUp),
           onTap: (_, item) => open(item),
           onLongPress: (_, item) {
-            if (item.id.startsWith(_seeAllPrefix)) return;
+            if (spec.isLibraryNavigation ||
+                item.id.startsWith(_seeAllPrefix)) {
+              return;
+            }
             showVaultItemMenu(context, item, onChanged: _reload);
           },
           itemBuilder: (context, item, _, isFocused) {
+            if (spec.isLibraryNavigation) {
+              final libraryId = item.id.substring(_libraryPrefix.length);
+              final target = widget.vault.vault.library(libraryId);
+              if (target == null) return const SizedBox.shrink();
+              return Align(
+                alignment: Alignment.topCenter,
+                child: GridButtonCard(
+                  icon: _iconForLibrary(target),
+                  label: target.name,
+                  width: metrics.width,
+                  height: metrics.imageHeight,
+                  cardFocusExpansion: metrics.expansion,
+                  externalIsFocused: isFocused,
+                  onTap: () => open(item),
+                ),
+              );
+            }
             if (item.id.startsWith(_seeAllPrefix)) {
               return Align(
                 alignment: Alignment.topCenter,

@@ -96,6 +96,17 @@ jobs:
           fi
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Verify vault changes before publishing
+        run: |
+          flutter pub get
+          dart format --output=none --set-exit-if-changed \
+            lib/custom/hidden_vault/ui/vault_home_screen.dart \
+            lib/custom/hidden_vault/ui/vault_library_screen.dart \
+            lib/custom/hidden_vault/ui/vault_strings.dart \
+            test/custom/hidden_vault/private_area_test.dart \
+            test/custom/hidden_vault/fake_server.dart
+          flutter test test/custom/hidden_vault/
+
       - name: Build
         run: |
           chmod +x build-android.sh

@@ -160,14 +160,42 @@ class _VaultLibraryGridState extends State<_VaultLibraryGrid> {
         ),
       );
     }
-    if (_items.isEmpty) return Center(child: Text(s.empty));
-    return VaultCardGrid(
-      items: _items,
-      images: widget.vault.client.imageApi,
-      onBuildIndex: (index) {
-        if (index >= _items.length - 12) _scheduleLoadMore();
-      },
-      onChanged: _reload,
+    if (_items.isEmpty) {
+      final hideWatched =
+          widget.vault.repository.service.config.settings.hideWatched;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            hideWatched ? s.noUnwatchedTitles : s.noHiddenTitles,
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: VaultCardGrid(
+            items: _items,
+            images: widget.vault.client.imageApi,
+            onBuildIndex: (index) {
+              if (index >= _items.length - 12) _scheduleLoadMore();
+            },
+            onChanged: _reload,
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 24),
+            child: Row(
+              children: [
+                Expanded(child: Text(s.loadFailed)),
+                TextButton(onPressed: _loadMore, child: Text(s.retry)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

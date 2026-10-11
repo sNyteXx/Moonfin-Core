@@ -13,6 +13,8 @@ import 'package:moonfin/custom/hidden_vault/data/visibility_media_server_client.
 import 'package:moonfin/custom/hidden_vault/session/vault_session.dart';
 import 'package:moonfin/custom/hidden_vault/ui/vault_access.dart';
 import 'package:moonfin/custom/hidden_vault/ui/vault_home_screen.dart';
+import 'package:moonfin/custom/hidden_vault/ui/vault_library_screen.dart';
+import 'package:moonfin/custom/hidden_vault/model/vault_config.dart';
 import 'package:moonfin/custom/hidden_vault/ui/vault_routes.dart';
 import 'package:moonfin/custom/hidden_vault/ui/vault_settings_screen.dart';
 import 'package:moonfin/custom/hidden_vault/ui/widgets/vault_card_metrics.dart';
@@ -21,6 +23,7 @@ import 'package:moonfin/data/services/media_server_client_factory.dart';
 import 'package:moonfin/data/models/aggregated_item.dart';
 import 'package:moonfin/l10n/app_localizations.dart';
 import 'package:moonfin/preference/user_preferences.dart';
+import 'package:moonfin/ui/widgets/grid_button_card.dart';
 import 'package:moonfin/ui/widgets/info_area.dart';
 import 'package:moonfin/ui/widgets/pin_entry_dialog.dart';
 import 'package:server_core/server_core.dart';
@@ -40,6 +43,7 @@ class _Session extends Fake implements SessionRepository {
 /// area opens on its vaults, and each one leads to its own home.
 void main() {
   late VisibilityMediaServerClient client;
+  late Harness harness;
 
   setUp(() async {
     await GetIt.instance.reset();
@@ -51,7 +55,7 @@ void main() {
     GetIt.instance.registerSingleton<SessionRepository>(_Session());
     HiddenContentRegistry.debugReset(store: MemoryVaultStore());
     VaultSessionController.debugReset();
-    final harness = Harness()..seedStandard();
+    harness = Harness()..seedStandard();
     client = VisibilityMediaServerClient(
       FakeMediaServerClient(harness.server),
       serverId: scope.serverId,
@@ -153,8 +157,17 @@ void main() {
     AggregatedItem? focused() =>
         tester.widget<InfoArea>(find.byType(InfoArea)).item;
 
-    // Focus starts on the top row, continue watching, and the info area
-    // shows that title.
+    // Navigation shortcuts are the first row and never become media items.
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(focused(), isNull);
+    expect(
+      find.widgetWithText(GridButtonCard, 'Filme (Anime)'),
+      findsOneWidget,
+    );
+
+    // Down: continue watching.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 200));
     expect(['a2e1', 'm1'], contains(focused()?.id));
 
@@ -178,6 +191,72 @@ void main() {
     for (final id in ['a3', 'a5', 's1', 's2', 'f2']) {
       expect(find.text(id), findsNothing);
     }
+  });
+
+  testWidgets('library shortcuts stay available when all titles are watched', (
+    tester,
+  ) async {
+    for (final id in ['a1', 'a2', 'm1', 'm2']) {
+      harness.server.markPlayed(id);
+    }
+    await client.visibilityService!.saveConfig(
+      standardConfig().copyWith(
+        settings: const VaultSettings(hideWatched: true),
+      ),
+    );
+    await VaultAccess.pinFor(scope)!.setPin('1234');
+    final router = await pumpApp(tester);
+    await tester.tap(find.text('Version'));
+    await tester.pumpAndSettle();
+    await typePin(tester, '1234');
+    await tester.tap(find.text('Anime').first);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(GridButtonCard, 'Anime'), findsOneWidget);
+    expect(
+      find.widgetWithText(GridButtonCard, 'Filme (Anime)'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(GridButtonCard, 'Anime'));
+    await tester.pumpAndSettle();
+    expect(find.byType(VaultLibraryScreen), findsOneWidget);
+    expect(
+      router.routerDelegate.currentConfiguration.last.matchedLocation,
+      VaultRoutes.library('anime', 'lib-anime'),
+    );
+    expect(
+      find.text(
+        'No unwatched hidden titles. Turn off Hide watched to see watched titles.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('failed library queries show retry without hiding navigation', (
+    tester,
+  ) async {
+    harness.server.failTaggedLibraries.add('lib-anime');
+    await VaultAccess.pinFor(scope)!.setPin('1234');
+    await pumpApp(tester);
+    await tester.tap(find.text('Version'));
+    await tester.pumpAndSettle();
+    await typePin(tester, '1234');
+    await tester.tap(find.text('Anime').first);
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(GridButtonCard, 'Anime'), findsOneWidget);
+    expect(
+      find.text('Some rows could not be loaded. Libraries are still available.'),
+      findsOneWidget,
+    );
+    harness.server.failTaggedLibraries.clear();
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Some rows could not be loaded. Libraries are still available.'),
+      findsNothing,
+    );
+    expect(find.widgetWithText(GridButtonCard, 'Anime'), findsOneWidget);
   });
 
   testWidgets('the library grid and search lay out their cards', (

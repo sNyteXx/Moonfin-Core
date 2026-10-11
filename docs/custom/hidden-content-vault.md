@@ -47,6 +47,16 @@ PIN-geschützten, unsichtbar erreichbaren *Vault* zeigen.
 Im Startbildschirm gibt es keinen Einstieg und keine Geste; alle Kacheln
 verhalten sich wie im Original.
 
+Im **Vault-Home** steht als erste Reihe eine eigene, mit der Fernbedienung
+bedienbare **Bibliotheksnavigation**. Jede konfigurierte Bibliothek mit
+Versteck-Regeln hat eine Kachel, die direkt ihr vollständiges, seitenweise
+geladenes Vault-Raster öffnet – unabhängig davon, ob ihre Vorschau-Reihe
+Treffer liefert. Das gilt auch, wenn *Gesehene ausblenden* alle Treffer
+entfernt. Ein leeres Raster erklärt den Filterzustand; schlagen Abfragen
+fehl, erscheint im Vault-Home eine Warnung mit **Erneut versuchen** statt
+eines stillen Verschwindens der betreffenden Reihe. Einzelne fehlgeschlagene
+Raster-Folgeseiten sind ebenfalls wiederholbar.
+
 Abschnitt *Anzeige* (wird mit der Config synchronisiert):
 
 * **Gesehene ausblenden** (Default aus): Raster, Bibliotheks-Reihen,

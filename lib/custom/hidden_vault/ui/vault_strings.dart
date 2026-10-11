@@ -115,6 +115,18 @@ class VaultStrings {
   String get searchHint => _t('Search…', 'Suchen…');
   String get lock => _t('Lock', 'Sperren');
   String get empty => _t('Nothing here', 'Nichts vorhanden');
+  String get noHiddenTitles => _t(
+    'No matching hidden titles. Check this library\'s configured tags.',
+    'Keine passenden ausgeblendeten Titel. Prüfe die Tags dieser Bibliothek.',
+  );
+  String get noUnwatchedTitles => _t(
+    'No unwatched hidden titles. Turn off Hide watched to see watched titles.',
+    'Keine ungesehenen ausgeblendeten Titel. Deaktiviere Gesehene ausblenden, um gesehene Titel zu sehen.',
+  );
+  String get someRowsFailed => _t(
+    'Some rows could not be loaded. Libraries are still available.',
+    'Einige Reihen konnten nicht geladen werden. Bibliotheken bleiben erreichbar.',
+  );
   String get noResults => _t('No results', 'Keine Ergebnisse');
   String get loadFailed =>
       _t('Could not load this.', 'Konnte nicht geladen werden.');

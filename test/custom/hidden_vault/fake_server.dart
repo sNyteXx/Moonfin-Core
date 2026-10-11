@@ -29,6 +29,9 @@ class FakeJellyfin implements ItemsApi {
 
   final List<FakeCall> calls = [];
 
+  /// Simulate a failed tagged-library query without affecting other rows.
+  final Set<String> failTaggedLibraries = {};
+
   int count(String method) => calls.where((c) => c.method == method).length;
 
   /// Items sent back across all list responses, i.e. the payload size.
@@ -223,6 +226,12 @@ class FakeJellyfin implements ItemsApi {
         'includeItemTypes': includeItemTypes,
       }),
     );
+    if (parentId != null &&
+        tags != null &&
+        tags.isNotEmpty &&
+        failTaggedLibraries.contains(parentId)) {
+      throw StateError('Test: tagged library query failed');
+    }
     Iterable<Map<String, dynamic>> result = _all;
     if (ids != null && ids.isNotEmpty) {
       final wanted = ids.toSet();
