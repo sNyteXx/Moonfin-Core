@@ -133,6 +133,8 @@ jobs:
             echo "- **Android TV:** \`Moonfin_AndroidTV_${TAG}.apk\`"
             echo "- **Phone / tablet:** \`Moonfin_Android_${TAG}.apk\`"
             echo
+            echo "- Vault home: persistent library shortcuts, even for empty or watched-only rows. Clear filter guidance and retry for failed loading."
+            echo
             echo "Both use the package name of the official Moonfin with a different signature: if the official app is installed, uninstall it before the first install."
             echo
             if [ "$SIGNED" = "true" ]; then
