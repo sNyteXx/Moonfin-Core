@@ -367,7 +367,12 @@ class _VaultHomeState extends State<_VaultHome> {
       children: [
         if (failed)
           Padding(
-            padding: const EdgeInsets.fromLTRB(_sidePadding, 4, _sidePadding, 4),
+            padding: const EdgeInsets.fromLTRB(
+              _sidePadding,
+              4,
+              _sidePadding,
+              4,
+            ),
             child: Row(
               children: [
                 const Icon(Icons.error_outline, size: 20),
@@ -434,9 +439,8 @@ class _VaultHomeState extends State<_VaultHome> {
         final libraryId = item.id.substring(_libraryPrefix.length);
         final target = widget.vault.vault.library(libraryId);
         if (target != null && target.hasTags) {
-          GoRouter.of(context).push(
-            VaultRoutes.library(widget.vault.vault.id, libraryId),
-          );
+          GoRouter.of(context)
+              .push(VaultRoutes.library(widget.vault.vault.id, libraryId));
         }
       } else if (item.id.startsWith(_seeAllPrefix)) {
         GoRouter.of(
@@ -481,8 +485,7 @@ class _VaultHomeState extends State<_VaultHome> {
           onVerticalNavigation: (isUp) => _onVerticalNavigation(index, isUp),
           onTap: (_, item) => open(item),
           onLongPress: (_, item) {
-            if (spec.isLibraryNavigation ||
-                item.id.startsWith(_seeAllPrefix)) {
+            if (spec.isLibraryNavigation || item.id.startsWith(_seeAllPrefix)) {
               return;
             }
             showVaultItemMenu(context, item, onChanged: _reload);

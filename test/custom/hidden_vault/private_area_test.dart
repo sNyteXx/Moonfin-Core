@@ -246,14 +246,18 @@ void main() {
 
     expect(find.widgetWithText(GridButtonCard, 'Anime'), findsOneWidget);
     expect(
-      find.text('Some rows could not be loaded. Libraries are still available.'),
+      find.text(
+        'Some rows could not be loaded. Libraries are still available.',
+      ),
       findsOneWidget,
     );
     harness.server.failTaggedLibraries.clear();
     await tester.tap(find.text('Retry'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Some rows could not be loaded. Libraries are still available.'),
+      find.text(
+        'Some rows could not be loaded. Libraries are still available.',
+      ),
       findsNothing,
     );
     expect(find.widgetWithText(GridButtonCard, 'Anime'), findsOneWidget);
