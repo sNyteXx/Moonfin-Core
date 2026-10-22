@@ -217,7 +217,7 @@ class _VisibilityUserLibraryApi implements UserLibraryApi {
     await service.ensureReady();
     if (!service.isActive) return data;
     final verdict = (await service.settle([data])).single;
-    if (!verdict.isHidden) return data;
+    if (verdict.isVisible) return data;
     final vaultId = verdict.vaultId;
     if (vaultId != null && _context.enteredVaults.contains(vaultId)) {
       _context.noteVaultActivity(vaultId);

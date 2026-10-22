@@ -2108,10 +2108,18 @@ class PlaybackManager implements AudioOwnable {
     final queueFilter = _queueContentFilter;
     if (queueFilter != null && pendingItem != null) {
       if (queueFilter(pendingItem)) {
-        // Return before the bringup phase moves off `preparing`. A launcher
-        // holding a player route reads that as "nothing started" and closes
-        // it, which is exactly the refusal we want and costs no new UI.
-        return;
+        // An unresolved content check can become known on a retry. Resolve
+        // the selected item before rejecting it; never pass a pending item
+        // to playback or let it bypass the synchronous queue filter.
+        final refusal = _playContentRefusal;
+        if (refusal == null ||
+            await refusal(pendingItem) ||
+            queueFilter(pendingItem)) {
+          // Return before the bringup phase moves off `preparing`. A launcher
+          // holding a player route reads that as "nothing started" and closes
+          // it, which is exactly the refusal we want and costs no new UI.
+          return;
+        }
       }
       final allowed = items.where((i) => !queueFilter(i)).toList();
       if (allowed.length != items.length) {

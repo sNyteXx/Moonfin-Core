@@ -41,15 +41,15 @@ abstract final class HiddenContentGate {
   }
 
   /// From what is in hand, without network. Cheap enough to run over a whole
-  /// queue. Something not known yet reads as allowed here and is caught by
-  /// [isRefused] for the one item about to play.
+  /// queue. Unresolved entries are withheld until [isRefused] can look them
+  /// up; known visible items and the entered vault's own items stay allowed.
   static bool isRefusedNow(Object? item) {
     if (item is! AggregatedItem) return false;
     final client = _clientFor(item.serverId);
     final service = client?.visibilityService;
     if (client == null || service == null || !service.isActive) return false;
     final verdict = service.verdictOf(item.rawData);
-    if (!verdict.isHidden) return false;
+    if (verdict.isVisible) return false;
     return !_allowedInOpenVault(client, verdict);
   }
 
@@ -62,7 +62,7 @@ abstract final class HiddenContentGate {
     await service.ensureSynced();
     if (!service.isActive) return false;
     final verdict = await service.settledVerdict(item.rawData);
-    if (!verdict.isHidden) return false;
+    if (verdict.isVisible) return false;
     return !_allowedInOpenVault(client, verdict);
   }
 }

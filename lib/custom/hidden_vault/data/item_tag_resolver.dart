@@ -38,7 +38,9 @@ class ItemTagResolver {
           if (raw is! Map) continue;
           final id = raw['Id']?.toString() ?? '';
           if (id.isEmpty) continue;
-          result[id] = extractTags(raw) ?? const [];
+          final tags = extractTags(raw);
+          // Missing metadata is not an authoritative empty tag list.
+          if (tags != null) result[id] = tags;
         }
         return result;
       });
@@ -61,11 +63,10 @@ class ItemTagResolver {
       futures[id] = completer.future;
     }
     _flush ??= Timer(Duration.zero, _send);
-    final result = <String, List<String>?>{};
-    for (final entry in futures.entries) {
-      result[entry.key] = await entry.value;
-    }
-    return result;
+    // Attach a handler to every ID before a batch can fail. Sequential awaits
+    // leave the later completer errors unhandled when the first one throws.
+    final results = await Future.wait(futures.values);
+    return Map.fromIterables(futures.keys, results);
   }
 
   Future<void> _send() async {

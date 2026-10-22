@@ -12,7 +12,7 @@ import 'item_tag_resolver.dart';
 import 'vault_config_sync.dart';
 import 'vault_store.dart';
 
-enum VerdictKind { visible, hidden, unknown }
+enum VerdictKind { visible, hidden, unknown, unavailable }
 
 /// What the rules say about one server item.
 class ItemVerdict {
@@ -26,7 +26,7 @@ class ItemVerdict {
   /// placed the item in a covered library yet. Held back until it has.
   final String? suspectId;
 
-  /// For [VerdictKind.unknown]: whose tags still have to be read.
+  /// For unknown/unavailable verdicts: whose tags still have to be read.
   final String? resolveId;
 
   const ItemVerdict._(
@@ -47,7 +47,16 @@ class ItemVerdict {
   const ItemVerdict.unknown(String id)
     : this._(VerdictKind.unknown, resolveId: id);
 
+  /// A lookup failed or returned no tag metadata. This is not proof of a
+  /// hidden tag, but it cannot authorize normal visibility or vault access.
+  const ItemVerdict.unavailable(String id)
+    : this._(VerdictKind.unavailable, resolveId: id);
+
+  bool get isVisible => kind == VerdictKind.visible;
   bool get isHidden => kind == VerdictKind.hidden;
+  bool get isUnavailable => kind == VerdictKind.unavailable;
+  bool get needsLookup =>
+      kind == VerdictKind.unknown || kind == VerdictKind.unavailable;
   bool get isSuspect => suspectId != null;
 
   @override
@@ -93,6 +102,8 @@ class HiddenContentService extends ChangeNotifier {
   static const syncWait = Duration(seconds: 2);
   static const _suspectRefreshTimeout = Duration(seconds: 6);
   static const _maxStoredChecks = 20000;
+  // Earlier caches could mistake a missing lookup row for an empty tag list.
+  static const _checksVersion = 2;
 
   /// Containers sit in no library, so their own tags are the whole answer.
   static const _containerTypes = {'BoxSet', 'Playlist'};
@@ -122,6 +133,10 @@ class HiddenContentService extends ChangeNotifier {
   HiddenTagPolicy _policy = HiddenTagPolicy.none;
   HiddenContentIndex? _index;
   final Map<String, _TagCheck> _checks = {};
+  // Transient lookup failures are never persisted as "no matching tags".
+  // Remember them in memory so caches/queues also withhold the affected item
+  // until the next successful lookup, while other known items stay visible.
+  final Set<String> _unavailableChecks = {};
   final Set<String> _outOfScope = {};
   final Map<String, DateTime> _suspects = {};
   int _generation = 0;
@@ -207,7 +222,11 @@ class HiddenContentService extends ChangeNotifier {
     if (source == null || source.isEmpty) return;
     try {
       final json = jsonDecode(source);
-      if (json is! Map || json['fp'] != _policy.fingerprint) return;
+      if (json is! Map ||
+          json['v'] != _checksVersion ||
+          json['fp'] != _policy.fingerprint) {
+        return;
+      }
       final checks = json['c'];
       if (checks is Map) {
         checks.forEach((id, value) {
@@ -239,6 +258,7 @@ class HiddenContentService extends ChangeNotifier {
       }
     }
     final json = {
+      'v': _checksVersion,
       'fp': _policy.fingerprint,
       'c': {
         for (final e in _checks.entries)
@@ -317,6 +337,7 @@ class HiddenContentService extends ChangeNotifier {
       _policy = HiddenTagPolicy.fromConfig(saved);
       _index = null;
       _checks.clear();
+      _unavailableChecks.clear();
       _outOfScope.clear();
       _suspects.clear();
       await _store.remove(VaultStorageKeys.index(scope));
@@ -423,11 +444,16 @@ class HiddenContentService extends ChangeNotifier {
   }
 
   void _recordCheck(String id, List<String> tags) {
+    _unavailableChecks.remove(id);
     _checks[id] = _TagCheck(
       _policy.matchesAnyRule(tags),
       _now().millisecondsSinceEpoch,
     );
   }
+
+  ItemVerdict _unresolved(String id) => _unavailableChecks.contains(id)
+      ? ItemVerdict.unavailable(id)
+      : ItemVerdict.unknown(id);
 
   static String? _str(Object? value) {
     final text = value?.toString();
@@ -464,7 +490,7 @@ class HiddenContentService extends ChangeNotifier {
     final parent = seriesId ?? seasonId;
     if (parent != null && parent != id) {
       final check = _check(parent);
-      if (check == null) return ItemVerdict.unknown(parent);
+      if (check == null) return _unresolved(parent);
       if (check.matches) {
         if (index == null) return const ItemVerdict.hidden(null);
         if (!_outOfScope.contains(parent)) return ItemVerdict.suspect(parent);
@@ -473,7 +499,7 @@ class HiddenContentService extends ChangeNotifier {
 
     if (tags == null && id != null && _taggableTypes.contains(type)) {
       final check = _check(id);
-      if (check == null) return ItemVerdict.unknown(id);
+      if (check == null) return _unresolved(id);
       if (check.matches) {
         if (_containerTypes.contains(type) || index == null) {
           return const ItemVerdict.hidden(null);
@@ -484,17 +510,18 @@ class HiddenContentService extends ChangeNotifier {
     return ItemVerdict.visible;
   }
 
-  /// Whether the item is hidden in the normal context according to what is in
-  /// hand. Unknowns read as visible here; [settle] is the authoritative path.
-  bool isHiddenNow(Map<dynamic, dynamic> raw) => verdictOf(raw).isHidden;
+  /// Whether normal lists must withhold the item from what is in hand.
+  /// Pending and failed lookups cannot authorize visibility, including after
+  /// a restart. Known visible items keep working without a network request.
+  bool isHiddenNow(Map<dynamic, dynamic> raw) => !verdictOf(raw).isVisible;
 
-  /// Records the tags of series that came with them, so one listed next to
-  /// its own episodes never needs a lookup. Only series: nothing else is ever
-  /// looked up through a child. Only changes are written.
+  /// Records supplied tags so known items and the children of known series
+  /// remain usable in synchronous cache, queue and download checks. Only
+  /// changes are written; missing metadata never creates a negative check.
   void _learn(List<Map<dynamic, dynamic>> raws) {
     var learned = false;
     for (final raw in raws) {
-      if (raw['Type'] != 'Series') continue;
+      if (!_taggableTypes.contains(raw['Type'])) continue;
       final id = _str(raw['Id']);
       if (id == null) continue;
       final tags = extractTags(raw);
@@ -521,29 +548,30 @@ class HiddenContentService extends ChangeNotifier {
 
     final unknown = {
       for (final v in verdicts)
-        if (v.kind == VerdictKind.unknown) v.resolveId!,
+        if (v.needsLookup) v.resolveId!,
     };
-    final failed = <String>{};
     if (unknown.isNotEmpty) {
       try {
         final tags = await _resolver.resolve(unknown).timeout(_resolveTimeout);
         for (final id in unknown) {
-          _recordCheck(id, tags[id] ?? const []);
+          final resolved = tags[id];
+          if (resolved == null) {
+            _unavailableChecks.add(id);
+          } else {
+            _recordCheck(id, resolved);
+          }
         }
         _persistChecksSoon();
       } catch (error) {
-        // The list request that brought these in just worked, so this is
-        // rare. The index still answers for everything it knows.
+        // A successful list request says nothing about the missing tags.
+        // Keep affected items unavailable and retry on the next query;
+        // already known visible/hidden items retain their verdicts.
         debugPrint('[HiddenVault] tag lookup failed: $error');
-        failed.addAll(unknown);
+        _unavailableChecks.addAll(unknown);
       }
       verdicts = [
         for (var i = 0; i < raws.length; i++)
-          verdicts[i].kind == VerdictKind.unknown
-              ? (failed.contains(verdicts[i].resolveId)
-                    ? ItemVerdict.visible
-                    : verdictOf(raws[i]))
-              : verdicts[i],
+          verdicts[i].needsLookup ? verdictOf(raws[i]) : verdicts[i],
       ];
     }
 
@@ -558,10 +586,7 @@ class HiddenContentService extends ChangeNotifier {
           verdicts[i].isSuspect ? verdictOf(raws[i]) : verdicts[i],
       ];
     }
-    return [
-      for (final v in verdicts)
-        v.kind == VerdictKind.unknown ? ItemVerdict.visible : v,
-    ];
+    return verdicts;
   }
 
   /// Rebuilds the index so it can say whether [ids] sit in a covered library.
@@ -604,7 +629,7 @@ class HiddenContentService extends ChangeNotifier {
     final result = <T>[];
     for (var i = 0; i < raws.length; i++) {
       final verdict = verdicts[i];
-      if (!verdict.isHidden) {
+      if (verdict.isVisible) {
         result.add(raws[i]);
         continue;
       }

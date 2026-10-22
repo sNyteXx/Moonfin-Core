@@ -453,6 +453,20 @@ die APK debug-signiert, mit wechselndem Schlüssel pro Build.
 
 ## 10. Bekannte Grenzen
 
+* Schlägt ein zusätzlicher Tag-Lookup fehl, läuft er in ein Timeout oder
+  fehlen die angefragten Tag-Daten, bleiben nur die betroffenen ungeklärten
+  Items vorläufig verborgen. Bekannte sichtbare Inhalte bleiben sichtbar.
+  Der nächste Aufruf versucht die Prüfung erneut; ein Fehler wird nie als
+  „keine passenden Tags“ gespeichert und erlaubt auch keinen Detail- oder
+  Playback-Zugriff. Cache-, Download- und Queue-Filter halten auch noch
+  ungeklärte Prüfungen zurück, einschließlich nach einem Neustart. Ein
+  erfolgreiches Ergebnis hebt diese vorläufige Sperre auf. Alte Tag-Prüfcaches
+  werden einmalig verworfen, weil frühere Versionen fehlende Metadaten als
+  leere Tags speichern konnten.
+  Bei Downloads bleiben bekannte sichere Film-Tags und gültige Serienprüfungen
+  nutzbar; ungeklärte oder abgelaufene Serienprüfungen brauchen eine erneute
+  Online-Prüfung. Ein erneuter Play-Aufruf prüft den ausgewählten Eintrag,
+  bevor Queue oder Wiedergabe freigegeben werden.
 * Ein nach dem letzten Index-Refresh neu getaggtes Item wird über eigene Tags
   bzw. den Serien-Batch sofort erkannt; nur Endpunkte ohne `Fields`
   (Similar, Playlist-Items) verlassen sich bis zum nächsten Refresh

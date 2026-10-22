@@ -145,9 +145,10 @@ abstract final class HiddenVault {
     return [
       for (final row in rows)
         if (!service.isHiddenNow({
+          ...row.parsedMetadata,
           'Id': row.itemId,
-          'SeriesId': row.seriesId,
-          'SeasonId': row.seasonId,
+          if (row.seriesId != null) 'SeriesId': row.seriesId,
+          if (row.seasonId != null) 'SeasonId': row.seasonId,
           'Type': row.type,
         }))
           row,

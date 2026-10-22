@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:server_core/server_core.dart';
 
 /// One recorded API call.
@@ -31,6 +33,12 @@ class FakeJellyfin implements ItemsApi {
 
   /// Simulate a failed tagged-library query without affecting other rows.
   final Set<String> failTaggedLibraries = {};
+
+  /// Only affect the separate ID-based tag lookup, never the original list.
+  Object? tagLookupError;
+  Completer<void>? tagLookupGate;
+  final Set<String> omitTagLookupIds = {};
+  final Set<String> omitTagMetadataIds = {};
 
   int count(String method) => calls.where((c) => c.method == method).length;
 
@@ -143,7 +151,9 @@ class FakeJellyfin implements ItemsApi {
         fields.split(',').map((f) => f.trim()).contains('Tags');
     return {
       for (final e in item.entries)
-        if (!e.key.startsWith('_') && (e.key != 'Tags' || wantsTags))
+        if (!e.key.startsWith('_') &&
+            (e.key != 'Tags' ||
+                (wantsTags && !omitTagMetadataIds.contains(item['Id']))))
           e.key: e.value,
     };
   }
@@ -234,8 +244,13 @@ class FakeJellyfin implements ItemsApi {
     }
     Iterable<Map<String, dynamic>> result = _all;
     if (ids != null && ids.isNotEmpty) {
+      await tagLookupGate?.future;
+      final error = tagLookupError;
+      if (error != null) throw error;
       final wanted = ids.toSet();
-      result = result.where((i) => wanted.contains(i['Id']));
+      result = result.where(
+        (i) => wanted.contains(i['Id']) && !omitTagLookupIds.contains(i['Id']),
+      );
     }
     if (parentId != null) {
       result = result.where((i) {

@@ -160,7 +160,7 @@ class VisibilityItemsApi implements ItemsApi {
     await service.ensureReady();
     final data = await fetch();
     final verdict = (await service.settle([data])).single;
-    if (!verdict.isHidden) return data;
+    if (verdict.isVisible) return data;
     final vaultId = verdict.vaultId;
     if (vaultId != null && _allowed(_context.enteredVaults, vaultId)) {
       return data;

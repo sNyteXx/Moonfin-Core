@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
@@ -8,6 +10,7 @@ import 'package:moonfin/custom/hidden_vault/data/visibility_media_server_client.
 import 'package:moonfin/custom/hidden_vault/data/vault_store.dart';
 import 'package:moonfin/custom/hidden_vault/hidden_vault.dart';
 import 'package:moonfin/custom/hidden_vault/session/vault_session.dart';
+import 'package:moonfin/data/database/offline_database.dart';
 import 'package:moonfin/data/models/aggregated_item.dart';
 import 'package:moonfin/data/models/home_row.dart';
 import 'package:moonfin/data/repositories/item_mutation_repository.dart';
@@ -99,6 +102,9 @@ void main() {
         ),
         isTrue,
       );
+      // No metadata is still pending, not evidence that the item is visible.
+      expect(HiddenContentGate.isRefusedNow(_item('a5')), isTrue);
+      expect(await HiddenContentGate.isRefused(_item('a5')), isFalse);
       expect(HiddenContentGate.isRefusedNow(_item('a5')), isFalse);
       expect(await HiddenContentGate.isRefused(_item('a1')), isTrue);
       expect(
@@ -109,7 +115,9 @@ void main() {
       );
     });
 
-    test('a mixed queue keeps only what may play', () {
+    test('a mixed queue keeps only what may play', () async {
+      await client.itemsApi.getNextUp(limit: 15);
+      await client.itemsApi.getItem('m3');
       final queue = [
         _item('a5e1', seriesId: 'a5', type: 'Episode'),
         _item('a1e1', seriesId: 'a1', type: 'Episode'),
@@ -122,6 +130,33 @@ void main() {
           .toList();
       expect(allowed, ['a5e1', 'm3']);
     });
+
+    test(
+      'a failed lookup cannot play, and a later successful check recovers',
+      () async {
+        await client.itemsApi.getItem('a5');
+        server.series('lib-anime', 'new-series', tags: ['Ecchi']);
+        server.episode('lib-anime', 'new-episode', seriesId: 'new-series');
+        final item = _item(
+          'new-episode',
+          seriesId: 'new-series',
+          type: 'Episode',
+        );
+        server.tagLookupError = StateError('lookup failed');
+        session.unlock(scope, 'anime');
+        session.enter(scope, 'anime');
+
+        expect(await HiddenContentGate.isRefused(item), isTrue);
+        expect(HiddenContentGate.isRefusedNow(item), isTrue);
+        expect(HiddenContentGate.isRefusedNow(_item('a5')), isFalse);
+        expect(await HiddenContentGate.isRefused(_item('a5')), isFalse);
+
+        server.tagLookupError = null;
+        expect(await HiddenContentGate.isRefused(item), isFalse);
+        session.lock(scope, 'anime', VaultLockReason.manual);
+        expect(await HiddenContentGate.isRefused(item), isTrue);
+      },
+    );
 
     test('unlocking alone does not let anything play', () async {
       session.unlock(scope, 'anime');
@@ -174,6 +209,23 @@ void main() {
       expect(vm.state, ItemDetailState.blocked);
     });
 
+    test(
+      'unavailable parent tags block detail before any related data loads',
+      () async {
+        server.series('lib-anime', 'new-series', tags: ['Ecchi']);
+        server.episode('lib-anime', 'new-episode', seriesId: 'new-series');
+        server.tagLookupError = StateError('lookup failed');
+        final vm = detailFor('new-episode');
+
+        await vm.load();
+
+        expect(vm.state, ItemDetailState.blocked);
+        expect(vm.item, isNull);
+        expect(server.count('getEpisodes'), 0);
+        expect(server.count('getSimilarItems'), 0);
+      },
+    );
+
     test('inside the open vault the detail page opens', () async {
       session.unlock(scope, 'anime');
       session.enter(scope, 'anime');
@@ -186,6 +238,7 @@ void main() {
 
   group('normal screens', () {
     test('home rows read back from the cache are filtered again', () async {
+      await client.itemsApi.getItem('a5');
       final rows = [
         HomeRow(
           id: 'latest',
@@ -201,6 +254,78 @@ void main() {
       final filtered = HiddenVault.filterCachedRows(rows);
       expect(filtered.single.items.map((i) => i.id), ['a5']);
     });
+
+    test(
+      'cached rows withhold pending and failed items but keep known ones',
+      () async {
+        await client.itemsApi.getItem('a5');
+        server.series('lib-anime', 'new-series', tags: ['Ecchi']);
+        final pending = _item('new-series');
+        final rows = [
+          HomeRow(
+            id: 'latest',
+            title: 'Latest',
+            rowType: HomeRowType.latestMedia,
+            items: [_item('a5'), pending],
+          ),
+        ];
+        expect(
+          HiddenVault.filterCachedRows(rows).single.items.map((i) => i.id),
+          ['a5'],
+        );
+        server.tagLookupError = StateError('lookup failed');
+        expect(await HiddenContentGate.isRefused(pending), isTrue);
+        expect(
+          HiddenVault.filterCachedRows(rows).single.items.map((i) => i.id),
+          ['a5'],
+        );
+      },
+    );
+
+    test(
+      'download filtering uses saved tags and preserves series inheritance',
+      () async {
+        await client.itemsApi.getItem('a5');
+        DownloadedItem download(
+          String id, {
+          String type = 'Movie',
+          String? seriesId,
+          List<String>? tags,
+        }) => DownloadedItem(
+          itemId: id,
+          serverId: scope.serverId,
+          type: type,
+          name: id,
+          metadataJson: jsonEncode({'Tags': ?tags}),
+          downloadStatus: 2,
+          downloadProgress: 1,
+          fileSizeBytes: 1,
+          playbackPositionTicks: 0,
+          progressSynced: true,
+          qualityPreset: 'original',
+          seriesId: seriesId,
+          downloadSource: 'manual',
+        );
+        final rows = [
+          download('safe-movie', tags: []),
+          download('safe-episode', type: 'Episode', seriesId: 'a5', tags: []),
+          download('tagged-movie', tags: ['Ecchi']),
+          download('missing-metadata'),
+          download('hidden-episode', type: 'Episode', seriesId: 'a1', tags: []),
+          download(
+            'unknown-episode',
+            type: 'Episode',
+            seriesId: 'unknown',
+            tags: [],
+          ),
+        ];
+
+        expect(HiddenVault.withoutHiddenDownloads(rows).map((i) => i.itemId), [
+          'safe-movie',
+          'safe-episode',
+        ]);
+      },
+    );
 
     test('the cache token follows the rules', () async {
       final before = HiddenVault.cacheToken;
