@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
+import '../../util/focus/input_mode_tracker.dart';
 import '../mixins/focus_state_mixin.dart';
 
 class GridButtonCard extends StatefulWidget {
@@ -47,9 +48,12 @@ class _GridButtonCardState extends State<GridButtonCard> with FocusStateMixin {
     final borders = ThemeRegistry.active.borders;
     final externallyDriven = widget.externalIsFocused != null;
     final hasNodeFocus = widget.focusNode?.hasFocus ?? false;
-    final effectiveFocused = externallyDriven
-        ? (widget.externalIsFocused! || hovered)
-        : (hovered || focused || hasNodeFocus);
+    final keyboardFocused = externallyDriven
+        ? widget.externalIsFocused!
+        : (focused || hasNodeFocus);
+    final effectiveFocused = InputModeTracker.pointerIsLive(context)
+        ? hovered
+        : keyboardFocused;
     final focusedBackground = widget.focusColor ?? AppColorScheme.buttonFocused;
     final focusedBorderColor = widget.focusColor ?? borders.focusBorder.color;
     final focusedForeground =

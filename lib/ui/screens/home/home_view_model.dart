@@ -70,6 +70,9 @@ class HomeViewModel extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
   bool _bgMergeInFlight = false;
+  bool _bgMergeReloadRequested = false;
+  int _loadGeneration = 0;
+  bool _disposed = false;
   bool _bgResumeRefreshInFlight = false;
   bool _reloadRequestedWhileLoading = false;
   bool _pendingReloadPreserveExisting = true;
@@ -121,7 +124,7 @@ class HomeViewModel extends ChangeNotifier {
     return stored;
   }
 
-  String _homeCacheKey() {
+  String _homeConfigurationKey() {
     final userId = _ownerUserId;
     final sections = _prefs.get(UserPreferences.homeSectionsJson);
     final multiServer = _prefs.get(UserPreferences.enableMultiServerLibraries);
@@ -131,15 +134,40 @@ class HomeViewModel extends ChangeNotifier {
     // an offline home (and vice versa).
     final offline = _isOffline;
     final shape = RowDataSource.fieldShapeToken;
-    // hidden-vault: rows saved under other hiding rules never hydrate.
-    final hidden = HiddenVault.cacheToken;
-    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked|offline:$offline|fields:$shape|hv:$hidden';
+    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked|offline:$offline|fields:$shape';
+  }
+
+  // hidden-vault: rows saved under other hiding rules never hydrate.
+  String _homeCacheKey() =>
+      '${_homeConfigurationKey()}|hv:${HiddenVault.cacheToken}';
+
+  /// Session switches retain clients in the factory. Check both current
+  /// registrations as well as disposal; userId alone cannot prove ownership.
+  bool get _ownsActiveSession {
+    final getIt = GetIt.instance;
+    return !_disposed &&
+        _client.userId == _ownerUserId &&
+        getIt.isRegistered<MediaServerClient>() &&
+        identical(getIt<MediaServerClient>(), _client) &&
+        getIt.isRegistered<HomeViewModel>() &&
+        identical(getIt<HomeViewModel>(), this);
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _topShelf.dispose();
+    _watchNext.dispose();
+    super.dispose();
   }
 
   /// Called again when the resume and next up rows refresh on their own, or
   /// the next cold start paints the ones from before the last episode
   /// finished.
-  void _saveRowCache() => unawaited(_cacheStore.write(_homeCacheKey(), _rows));
+  void _saveRowCache() {
+    if (!_ownsActiveSession) return;
+    unawaited(_cacheStore.write(_homeCacheKey(), _rows));
+  }
 
   static bool _isFavoriteSectionType(HomeSectionType type) {
     return switch (type) {
@@ -367,6 +395,7 @@ class HomeViewModel extends ChangeNotifier {
   }) => canReachServer && !couldReachServer;
 
   Future<void> load({bool preserveExisting = false, bool forceRefresh = false}) async {
+    if (!_ownsActiveSession) return;
     _checkAndTriggerDailyExternalRowsRefresh();
     if (_isLoading) {
       _reloadRequestedWhileLoading = true;
@@ -377,6 +406,8 @@ class HomeViewModel extends ChangeNotifier {
       return;
     }
     _isLoading = true;
+    final loadGeneration = ++_loadGeneration;
+    final configuration = _homeConfigurationKey();
     _mediaBarViewModel.load(force: forceRefresh);
     notifyListeners();
     _rowOffsets.clear();
@@ -386,6 +417,7 @@ class HomeViewModel extends ChangeNotifier {
       var hydratedFromCache = false;
       if (_rows.isEmpty) {
         final cached = await _cacheStore.read(_homeCacheKey());
+        if (!_ownsActiveSession) return;
         if (cached != null && _rows.isEmpty) {
           // hidden-vault: the hidden set may have grown since these were saved.
           _rows = HiddenVault.filterCachedRows(cached);
@@ -563,6 +595,11 @@ class HomeViewModel extends ChangeNotifier {
           }
           sectionRows = const <HomeRow>[];
         }
+        if (!_ownsActiveSession ||
+            loadGeneration != _loadGeneration ||
+            configuration != _homeConfigurationKey()) {
+          return;
+        }
         final currentConfigs = _prefs.activeHomeSectionConfigs;
         final isStillActive = currentConfigs.any((c) => c.stableId == cfg.stableId);
         if (!isStillActive) return;
@@ -649,14 +686,17 @@ class HomeViewModel extends ChangeNotifier {
         (cfg) => loadConfigItem(cfg),
       );
 
+      if (!_ownsActiveSession || configuration != _homeConfigurationKey()) {
+        return;
+      }
       _saveRowCache();
       _topShelf.update(_rows);
       _watchNext.update(_rows);
       _tvChannels.update();
     } finally {
       _isLoading = false;
-      notifyListeners();
-      if (_reloadRequestedWhileLoading) {
+      if (_ownsActiveSession) notifyListeners();
+      if (_ownsActiveSession && _reloadRequestedWhileLoading) {
         final nextPreserveExisting = _pendingReloadPreserveExisting;
         final nextForceRefresh = _pendingReloadForceRefresh;
         _reloadRequestedWhileLoading = false;
@@ -671,6 +711,7 @@ class HomeViewModel extends ChangeNotifier {
   /// them. The home screen drives this so the listener lives and dies with the
   /// widget rather than with this singleton.
   void applyUserDataChanges() {
+    if (!_ownsActiveSession) return;
     List<HomeRow>? rows;
     for (var i = 0; i < _rows.length; i++) {
       final patched = userDataSync.applyAll(_rows[i].items);
@@ -878,6 +919,7 @@ class HomeViewModel extends ChangeNotifier {
   /// pagination, scroll, and focus state) untouched. A full [refresh] still runs
   /// on the Home button, pull-to-refresh, cold start, and periodic refresh.
   Future<void> refreshResumeAndNextUp() async {
+    if (!_ownsActiveSession) return;
     // A full load already covers these rows, so don't compete with it.
     if (_isLoading) return;
 
@@ -915,6 +957,7 @@ class HomeViewModel extends ChangeNotifier {
     } finally {
       _bgResumeRefreshInFlight = false;
     }
+    if (!_ownsActiveSession) return;
     _saveRowCache();
     _topShelf.update(_rows);
     _watchNext.update(_rows);
@@ -930,11 +973,18 @@ class HomeViewModel extends ChangeNotifier {
     List<AggregatedItem> Function(List<AggregatedItem>) filter,
   ) async {
     if (!_rows.any((r) => r.id == rowId)) return;
+    final loadGeneration = _loadGeneration;
+    final configuration = _homeConfigurationKey();
     final HomeRow fresh;
     try {
       fresh = await fetch();
     } catch (_) {
       // Transient failure: keep the existing row rather than wiping it.
+      return;
+    }
+    if (!_ownsActiveSession ||
+        loadGeneration != _loadGeneration ||
+        configuration != _homeConfigurationKey()) {
       return;
     }
     final index = _rows.indexWhere((r) => r.id == rowId);
@@ -950,8 +1000,11 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   Future<void> loadMoreForRow(int rowIndex) async {
+    if (!_ownsActiveSession) return;
     if (rowIndex < 0 || rowIndex >= _rows.length) return;
     final row = _rows[rowIndex];
+    final loadGeneration = _loadGeneration;
+    final configuration = _homeConfigurationKey();
     if (!row.hasMore || _inFlightPagingRowIds.contains(row.id)) return;
 
     _inFlightPagingRowIds.add(row.id);
@@ -983,6 +1036,7 @@ class HomeViewModel extends ChangeNotifier {
           offset: currentOffset,
         );
       }
+      if (!_isCurrentRowLoad(row, loadGeneration, configuration)) return;
       _rowOffsets[row.id] = currentOffset + _rowPageSize;
 
       final filteredItems = _filterEmptyElements(result.$1);
@@ -990,7 +1044,8 @@ class HomeViewModel extends ChangeNotifier {
           ? filteredItems.length
           : (result.$2 - (result.$1.length - filteredItems.length));
       _rows = List.of(_rows);
-      _rows[rowIndex] = row.copyWith(
+      final currentIndex = _rows.indexWhere((r) => r.id == row.id);
+      _rows[currentIndex] = row.copyWith(
         items: filteredItems,
         totalCount: newTotalCount,
       );
@@ -1000,6 +1055,12 @@ class HomeViewModel extends ChangeNotifier {
       _inFlightPagingRowIds.remove(row.id);
     }
   }
+
+  bool _isCurrentRowLoad(HomeRow row, int generation, String configuration) =>
+      _ownsActiveSession &&
+      generation == _loadGeneration &&
+      configuration == _homeConfigurationKey() &&
+      identical(_rows.firstWhereOrNull((r) => r.id == row.id), row);
 
   Future<List<HomeRow>> _loadConfig(HomeSectionConfig cfg, {bool forceRefresh = false}) async {
     if (cfg.isPluginDynamic) {
@@ -2141,39 +2202,82 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   Future<void> _loadResumeAndNextUpInBackground() {
-    if (_bgMergeInFlight) return Future<void>.value();
+    if (!_ownsActiveSession) return Future<void>.value();
+    if (_bgMergeInFlight) {
+      _bgMergeReloadRequested = true;
+      return Future<void>.value();
+    }
     _bgMergeInFlight = true;
+    final loadGeneration = _loadGeneration;
+    final configuration = _homeConfigurationKey();
     return () async {
       try {
-        // Fetched side by side but tolerated separately. A server that is
-        // slow to answer one of these must not take the other down with it,
-        // which would leave the merged row empty and drop it from the home
-        // screen.
-        if (_multiServerEnabled) {
-          final resumeFuture = _loadRowOrNull(
-            'resume',
-            () => _multiServerRepo.getAggregatedResume(),
+        // Each source has already passed the normal visibility filters.
+        // Publish the first nonempty answer while the other is still loading;
+        // waiting for both would hide valid Resume items behind slow Next Up.
+        final multiServer = _multiServerEnabled;
+        final clientsByServer = multiServer
+            ? {
+                for (final session in await _multiServerRepo.getLoggedInServers())
+                  session.server.id: session.client,
+              }
+            : {_serverId: _client};
+        final usersByClient = {
+          for (final client in clientsByServer.values) client: client.userId,
+        };
+        if (!_ownsActiveSession) return;
+        HomeRow? resumeRow;
+        HomeRow? nextUpRow;
+        var completedSources = 0;
+        void applyAvailableRows() {
+          completedSources++;
+          if (!_ownsActiveSession) return;
+          if (loadGeneration != _loadGeneration ||
+              configuration != _homeConfigurationKey() ||
+              usersByClient.entries.any((e) => e.key.userId != e.value)) {
+            _bgMergeReloadRequested = true;
+            return;
+          }
+          _applyMergedResumeRows(
+            resumeRow,
+            nextUpRow,
+            complete: completedSources == 2,
+            clientsByServer: clientsByServer,
           );
-          final nextUpFuture = _loadRowOrNull(
-            'next up',
-            () => _multiServerRepo.getAggregatedNextUp(),
-          );
-          _applyMergedResumeRows(await resumeFuture, await nextUpFuture);
-        } else {
-          final resumeFuture = _loadRowOrNull(
-            'resume',
-            () => _dataSource.loadResume(_serverId),
-          );
-          final nextUpFuture = _loadRowOrNull(
-            'next up',
-            () => _dataSource.loadNextUp(_serverId),
-          );
-          _applyMergedResumeRows(await resumeFuture, await nextUpFuture);
         }
+
+        await Future.wait([
+          _loadRowOrNull(
+            'resume',
+            () => multiServer
+                ? _multiServerRepo.getAggregatedResume()
+                : _dataSource.loadResume(_serverId),
+          ).then((row) {
+            resumeRow = row;
+            applyAvailableRows();
+          }),
+          _loadRowOrNull(
+            'next up',
+            () => multiServer
+                ? _multiServerRepo.getAggregatedNextUp()
+                : _dataSource.loadNextUp(_serverId),
+          ).then((row) {
+            nextUpRow = row;
+            applyAvailableRows();
+          }),
+        ]);
       } catch (e) {
         debugPrint('[Home] Merged resume and next up load failed: $e');
       } finally {
         _bgMergeInFlight = false;
+        if (_bgMergeReloadRequested) {
+          _bgMergeReloadRequested = false;
+          if (_ownsActiveSession &&
+              _prefs.effectiveMergeContinueWatchingNextUp &&
+              _rows.any((row) => row.id == 'resume')) {
+            await _loadResumeAndNextUpInBackground();
+          }
+        }
       }
     }();
   }
@@ -2223,8 +2327,22 @@ class HomeViewModel extends ChangeNotifier {
 
   /// Merges a fresh first page of Continue Watching and Next Up into the
   /// resume row. Resume items win the dedupe.
-  void _applyMergedResumeRows(HomeRow? resumeRow, HomeRow? nextUpRow) {
-    if (resumeRow == null && nextUpRow == null) return;
+  void _applyMergedResumeRows(
+    HomeRow? resumeRow,
+    HomeRow? nextUpRow, {
+    required bool complete,
+    required Map<String, MediaServerClient> clientsByServer,
+  }) {
+    final existing = _rows.firstWhereOrNull((r) => r.id == 'resume');
+    // Keep a populated cached/current row while only half its refresh is
+    // ready. A cold placeholder can already show the first safe result.
+    if (!complete && existing != null && !existing.isLoading) return;
+    if (resumeRow == null && nextUpRow == null) {
+      if (complete && existing?.isLoading == true) {
+        _applyMergedResumeResult(const []);
+      }
+      return;
+    }
     final merged = <String, AggregatedItem>{};
     for (final item in _prefs.filterContinueWatching(
       resumeRow?.items ?? const [],
@@ -2234,8 +2352,15 @@ class HomeViewModel extends ChangeNotifier {
     for (final item in _prefs.filterNextUp(nextUpRow?.items ?? const [])) {
       merged.putIfAbsent(item.id, () => item);
     }
-    final sorted = merged.values.toList()..sort(_byLastPlayedDate);
-    final existing = _rows.firstWhereOrNull((r) => r.id == 'resume');
+    // hidden-vault: the other source may have waited through an index rebuild.
+    // Recheck with each source's account before publishing or caching it.
+    final sorted = HiddenVault.recheckVisibleItems(
+      merged.values.toList(),
+      clientsByServer,
+    )..sort(_byLastPlayedDate);
+    // An empty source says nothing about the source that is still pending.
+    // Removing the row now would also prevent its late answer from appearing.
+    if (!complete && sorted.isEmpty) return;
     if (existing != null &&
         keepsPagedRow(
           pagedDuringLoad: _rowsPagedThisLoad.contains('resume'),
@@ -2247,10 +2372,13 @@ class HomeViewModel extends ChangeNotifier {
     // Each source contributed its first page, and the merged item count can't
     // stand in for a per source offset, so the paging cursor starts at one
     // page no matter how many unique items the merge kept.
-    _rowOffsets['resume'] = _rowPageSize;
+    if (complete) _rowOffsets['resume'] = _rowPageSize;
     _applyMergedResumeResult(
       sorted,
-      totalCount: (resumeRow?.totalCount ?? 0) + (nextUpRow?.totalCount ?? 0),
+      // Do not page a partial first page while its other source is pending.
+      totalCount: complete
+          ? (resumeRow?.totalCount ?? 0) + (nextUpRow?.totalCount ?? 0)
+          : sorted.length,
     );
   }
 
@@ -2282,6 +2410,8 @@ class HomeViewModel extends ChangeNotifier {
   /// the two report overlap, so a page that adds nothing new closes the row.
   Future<void> _loadMoreMergedResume(int rowIndex) async {
     final row = _rows[rowIndex];
+    final loadGeneration = _loadGeneration;
+    final configuration = _homeConfigurationKey();
     final offset = _rowOffsets[row.id] ?? row.items.length;
 
     final resumeFuture = _loadRowOrNull(
@@ -2294,6 +2424,7 @@ class HomeViewModel extends ChangeNotifier {
     );
     final resumeRow = await resumeFuture;
     final nextUpRow = await nextUpFuture;
+    if (!_isCurrentRowLoad(row, loadGeneration, configuration)) return;
     if (resumeRow == null && nextUpRow == null) return;
     _rowOffsets[row.id] = offset + _rowPageSize;
 
@@ -2303,7 +2434,9 @@ class HomeViewModel extends ChangeNotifier {
     ]);
     final addedNothing = appended.length == row.items.length;
 
-    final items = _filterEmptyElements(appended);
+    final items = _filterEmptyElements(
+      HiddenVault.recheckVisibleItems(appended, {_serverId: _client}),
+    );
     final index = _rows.indexWhere((r) => r.id == row.id);
     if (index < 0) return;
     _rows = List.of(_rows);
@@ -2466,7 +2599,10 @@ class HomeViewModel extends ChangeNotifier {
   /// which owns the in-flight guard and the `hasMore` check.
   Future<void> _loadMoreSeerrRow(int rowIndex, SeerrRowType type) async {
     final row = _rows[rowIndex];
+    final loadGeneration = _loadGeneration;
+    final configuration = _homeConfigurationKey();
     final repo = await GetIt.instance.getAsync<SeerrRepository>();
+    if (!_isCurrentRowLoad(row, loadGeneration, configuration)) return;
     final seerrPrefs = GetIt.instance<SeerrPreferences>();
     await repo.ensureInitialized();
     if (!repo.isAvailable) return;
@@ -2506,6 +2642,7 @@ class HomeViewModel extends ChangeNotifier {
       }
     }
 
+    if (!_isCurrentRowLoad(row, loadGeneration, configuration)) return;
     // Advance even when the page contributed nothing. Availability filtering can
     // empty a whole page, and holding the pointer back would refetch that same
     // page on every scroll instead of moving on.
@@ -2522,7 +2659,8 @@ class HomeViewModel extends ChangeNotifier {
     ];
 
     _rows = List.of(_rows);
-    _rows[rowIndex] = row.copyWith(
+    final currentIndex = _rows.indexWhere((r) => r.id == row.id);
+    _rows[currentIndex] = row.copyWith(
       items: items,
       totalCount: exhausted ? items.length : items.length + 1,
     );

@@ -620,20 +620,33 @@ class CustomTVTextFieldState extends State<CustomTVTextField>
                         ignoring: !_isSystemImeActive,
                         child: Opacity(
                           opacity: _isSystemImeActive ? 0.01 : 0.0,
-                          child: TextField(
-                            controller: widget.controller,
-                            focusNode: _systemInputFocusNode,
-                            readOnly: !_isSystemImeActive,
-                            showCursor: _isSystemImeActive,
-                            keyboardType: _systemKeyboardType(),
-                            textInputAction: TextInputAction.done,
-                            obscureText: widget.obscureText,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
+                          // TV containers often treat backspace as Back.
+                          // Let EditableText delete first and consume the key
+                          // before those outer navigation handlers see it.
+                          child: Shortcuts(
+                            shortcuts: const <ShortcutActivator, Intent>{
+                              SingleActivator(LogicalKeyboardKey.backspace):
+                                  DeleteCharacterIntent(forward: false),
+                              SingleActivator(
+                                LogicalKeyboardKey.backspace,
+                                shift: true,
+                              ): DeleteCharacterIntent(forward: false),
+                            },
+                            child: TextField(
+                              controller: widget.controller,
+                              focusNode: _systemInputFocusNode,
+                              readOnly: !_isSystemImeActive,
+                              showCursor: _isSystemImeActive,
+                              keyboardType: _systemKeyboardType(),
+                              textInputAction: TextInputAction.done,
+                              obscureText: widget.obscureText,
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                              onSubmitted: _submitSystemIme,
                             ),
-                            onSubmitted: _submitSystemIme,
                           ),
                         ),
                       ),

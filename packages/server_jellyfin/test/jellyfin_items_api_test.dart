@@ -14,6 +14,47 @@ class _FakeServer extends Interceptor {
 }
 
 void main() {
+  test(
+    'history queries allow slow catalog responses without changing other deadlines',
+    () async {
+      final requests = <RequestOptions>[];
+      final dio =
+          Dio(
+              BaseOptions(
+                connectTimeout: const Duration(seconds: 8),
+                receiveTimeout: const Duration(seconds: 30),
+              ),
+            )
+            ..interceptors.add(
+              _FakeServer((options, handler) {
+                requests.add(options);
+                handler.resolve(
+                  Response(
+                    requestOptions: options,
+                    data: <String, dynamic>{'Items': <dynamic>[]},
+                  ),
+                );
+              }),
+            );
+      final api = JellyfinItemsApi(dio, () => 'user-1');
+
+      await api.getResumeItems(limit: 15);
+      await api.getNextUp(limit: 15);
+      await api.getItems(ids: ['parent-series'], fields: 'Tags');
+
+      expect(requests.map((r) => r.receiveTimeout), const [
+        Duration(minutes: 1),
+        Duration(minutes: 1),
+        Duration(seconds: 30),
+      ]);
+      expect(
+        requests.every((r) => r.connectTimeout == const Duration(seconds: 8)),
+        isTrue,
+      );
+      expect(dio.options.receiveTimeout, const Duration(seconds: 30));
+    },
+  );
+
   test('item details request UserData', () async {
     RequestOptions? request;
     final dio = Dio()

@@ -135,6 +135,21 @@ abstract final class HiddenVault {
     ];
   }
 
+  /// Rechecks already filtered asynchronous results before they are shown.
+  /// Each item's original client supplies its current account's rules; the
+  /// active server's policy must not be applied to another server's items.
+  /// Unknown client scopes stay hidden. This never requests unfiltered data.
+  static List<AggregatedItem> recheckVisibleItems(
+    List<AggregatedItem> items,
+    Map<String, MediaServerClient> clientsByServer,
+  ) => [
+    for (final item in items)
+      if (clientsByServer[item.serverId] case final client?)
+        if (client is! VisibilityMediaServerClient ||
+            !(client.visibilityService?.isHiddenNow(item.rawData) ?? true))
+          item,
+  ];
+
   /// Downloaded rows minus hidden content. Saved copies stay on disk; they
   /// just never show up in the normal lists.
   static List<DownloadedItem> withoutHiddenDownloads(

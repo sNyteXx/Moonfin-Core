@@ -241,6 +241,7 @@ void _registerUserScopedSingletons() {
       mediaBarViewModel: _getIt<MediaBarViewModel>(),
       multiServerRepo: _getIt<MultiServerRepository>(),
     ),
+    dispose: (vm) => vm.dispose(),
   );
   _getIt.registerLazySingleton(
     () => ThemeMusicService(

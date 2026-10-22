@@ -1870,32 +1870,19 @@ class RowDataSource {
       mediaTypes: mediaTypes,
     );
     try {
-      final response = await _client.itemsApi
-          .getResumeItems(
-            parentId: parentId,
-            includeItemTypes: includeItemTypes,
-            mediaTypes: mediaTypes,
-            startIndex: startIndex,
-            limit: limit,
-            fields: isMusic ? _musicFields : _fields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-          )
-          .timeout(const Duration(seconds: 8));
-      return response;
-    } on TimeoutException {
-      final response = await _client.itemsApi
-          .getResumeItems(
-            parentId: parentId,
-            includeItemTypes: includeItemTypes,
-            mediaTypes: mediaTypes,
-            startIndex: startIndex,
-            limit: limit,
-            fields: isMusic ? _musicFallbackFields : _fallbackFields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-          )
-          .timeout(const Duration(seconds: 6));
+      // The API owns the network deadline. An outer Future.timeout also
+      // counts time waiting for the Vault index and does not cancel the
+      // request: retrying then duplicates work and loses its late answer.
+      final response = await _client.itemsApi.getResumeItems(
+        parentId: parentId,
+        includeItemTypes: includeItemTypes,
+        mediaTypes: mediaTypes,
+        startIndex: startIndex,
+        limit: limit,
+        fields: isMusic ? _musicFields : _fields,
+        enableImageTypes: _imageTypes,
+        imageTypeLimit: _imageTypeLimit,
+      );
       return response;
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode ?? 0;
@@ -1921,32 +1908,18 @@ class RowDataSource {
     bool? enableResumable,
   }) async {
     try {
-      final response = await _client.itemsApi
-          .getNextUp(
-            parentId: parentId,
-            startIndex: startIndex,
-            limit: limit,
-            fields: _fields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-            enableResumable: enableResumable,
-            nextUpDateCutoff: nextUpDateCutoff,
-          )
-          .timeout(const Duration(seconds: 8));
-      return response;
-    } on TimeoutException {
-      final response = await _client.itemsApi
-          .getNextUp(
-            parentId: parentId,
-            startIndex: startIndex,
-            limit: limit,
-            fields: _fallbackFields,
-            enableImageTypes: _imageTypes,
-            imageTypeLimit: _imageTypeLimit,
-            enableResumable: enableResumable,
-            nextUpDateCutoff: nextUpDateCutoff,
-          )
-          .timeout(const Duration(seconds: 6));
+      // Keep the original result even when index readiness or the server is
+      // slow. Only a completed server error warrants a reduced-fields retry.
+      final response = await _client.itemsApi.getNextUp(
+        parentId: parentId,
+        startIndex: startIndex,
+        limit: limit,
+        fields: _fields,
+        enableImageTypes: _imageTypes,
+        imageTypeLimit: _imageTypeLimit,
+        enableResumable: enableResumable,
+        nextUpDateCutoff: nextUpDateCutoff,
+      );
       return response;
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode ?? 0;

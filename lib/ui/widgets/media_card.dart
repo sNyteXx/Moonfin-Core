@@ -8,6 +8,7 @@ import 'seerr/seerr_media_type_badge.dart';
 import '../../preference/preference_constants.dart';
 import '../../util/platform_detection.dart';
 import '../../util/focus/dpad_keys.dart';
+import '../../util/focus/input_mode_tracker.dart';
 import '../../util/focus/key_event_utils.dart';
 import '../../util/item_watch_state.dart';
 import '../../util/focus/scroll_utils.dart';
@@ -335,13 +336,15 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
     final subtitleLineHeight = lineHeightFor(subtitleStyle);
     final externallyDriven = widget.externalIsFocused != null;
     final hasNodeFocus = widget.focusNode?.hasFocus ?? false;
-    final effectiveFocused = externallyDriven
-        ? (widget.externalIsFocused! || hovered)
+    final keyboardFocused = externallyDriven
+        ? widget.externalIsFocused!
         : (focused || hasNodeFocus);
-    final showMarquee = hovered || effectiveFocused;
-    final cardActive =
-        widget.cardFocusExpansion &&
-        (externallyDriven ? effectiveFocused : showFocusBorder);
+    // A stationary pointer must not leave a second marker when the D-pad
+    // moves focus. The active input owns the visual, as on game cards.
+    final pointerLive = InputModeTracker.pointerIsLive(context);
+    final effectiveFocused = pointerLive ? hovered : keyboardFocused;
+    final showMarquee = effectiveFocused;
+    final cardActive = widget.cardFocusExpansion && effectiveFocused;
     final inner = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => widget.onPressStart?.call(),
@@ -386,7 +389,7 @@ class _MediaCardState extends State<MediaCard> with FocusStateMixin {
                       playedPercentage: widget.playedPercentage,
                       watchedBehavior: widget.watchedBehavior,
                       focused: effectiveFocused,
-                      hovered: hovered,
+                      hovered: pointerLive && hovered,
                       focusColor: widget.focusColor,
                       suppressFocusBorder: widget.suppressImageFocusBorder,
                       suppressFocusGlow: widget.suppressFocusGlow,
