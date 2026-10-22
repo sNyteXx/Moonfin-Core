@@ -2044,6 +2044,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.5.3"
+  vault_biometrics:
+    dependency: "direct main"
+    description:
+      path: "packages/vault_biometrics"
+      relative: true
+    source: path
+    version: "0.1.0"
   vector_graphics:
     dependency: transitive
     description:

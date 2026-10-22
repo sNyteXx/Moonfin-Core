@@ -3,6 +3,7 @@ import 'package:server_core/server_core.dart';
 import 'package:server_emby/server_emby.dart';
 import 'package:server_jellyfin/server_jellyfin.dart';
 
+import '../../custom/hidden_vault/hidden_vault.dart';
 import '../../util/server_url.dart';
 import '../offline/connectivity_aware_media_server_client.dart';
 import '../offline/offline_catalog.dart';
@@ -33,10 +34,13 @@ class MediaServerClientFactory {
     return client.baseUrl;
   }
 
-  static MediaServerClient _unwrapped(MediaServerClient client) =>
-      client is ConnectivityAwareMediaServerClient
-      ? client.onlineClient
-      : client;
+  static MediaServerClient _unwrapped(MediaServerClient client) {
+    // hidden-vault: the visibility filter wraps the connectivity wrapper.
+    final inner = HiddenVault.unwrapClient(client);
+    return inner is ConnectivityAwareMediaServerClient
+        ? inner.onlineClient
+        : inner;
+  }
 
   MediaServerClient getClient({
     required String serverId,
@@ -46,6 +50,7 @@ class MediaServerClientFactory {
     final normalizedBaseUrl = normalizeServerBaseUrl(baseUrl);
     return _clients.putIfAbsent(serverId, () {
       return _createClient(
+        serverId: serverId,
         serverType: serverType,
         baseUrl: normalizedBaseUrl,
       );
@@ -83,6 +88,7 @@ class MediaServerClientFactory {
   }
 
   MediaServerClient _createClient({
+    required String serverId,
     required ServerType serverType,
     required String baseUrl,
   }) {
@@ -90,18 +96,27 @@ class MediaServerClientFactory {
     final getIt = GetIt.instance;
     // Background isolates skip the offline stack, so there's nothing to route
     // to and the raw client is all they need.
+    final MediaServerClient routed;
     if (!getIt.isRegistered<OfflineCatalog>() ||
         !getIt.isRegistered<StoragePathService>() ||
         !getIt.isRegistered<PendingRatingStore>()) {
-      return raw;
+      routed = raw;
+    } else {
+      routed = ConnectivityAwareMediaServerClient(
+        raw,
+        useOffline: shouldUseOfflineCatalog,
+        catalog: getIt<OfflineCatalog>(),
+        storagePath: getIt<StoragePathService>(),
+        pendingRatings: getIt<PendingRatingStore>(),
+        offlineRepo: getIt<OfflineRepository>(),
+      );
     }
-    return ConnectivityAwareMediaServerClient(
-      raw,
-      useOffline: shouldUseOfflineCatalog,
-      catalog: getIt<OfflineCatalog>(),
-      storagePath: getIt<StoragePathService>(),
-      pendingRatings: getIt<PendingRatingStore>(),
-      offlineRepo: getIt<OfflineRepository>(),
+    // hidden-vault: every client the app browses with filters hidden content,
+    // the background engines included.
+    return HiddenVault.wrapClient(
+      routed,
+      serverId: serverId,
+      onlineItemsApi: () => raw.itemsApi,
     );
   }
 

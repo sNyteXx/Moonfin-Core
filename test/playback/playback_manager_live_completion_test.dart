@@ -353,6 +353,43 @@ const _movie = <String, dynamic>{
 };
 
 void main() {
+  test('a retried content lookup reaches the backend only after verification',
+      () async {
+    final backend = _TestBackend();
+    final resolver = _TestResolver();
+    final service = _TestService();
+    final manager = _manager(backend, resolver, service, _Clock());
+    var verified = false;
+    var unavailable = true;
+    var checks = 0;
+    manager.setContentRefusal(
+      queueFilter: (_) => !verified,
+      playRefusal: (_) async {
+        checks++;
+        if (unavailable) return true;
+        verified = true;
+        return false;
+      },
+    );
+    try {
+      await manager.playItems(<dynamic>[_movie]);
+      expect(checks, 1);
+      expect(resolver.calls, 0);
+      expect(backend.playedUrls, isEmpty);
+      expect(service.events, isEmpty);
+      expect(manager.queueService.items, isEmpty);
+
+      unavailable = false;
+      await manager.playItems(<dynamic>[_movie]);
+      expect(checks, 3); // Retry preflight, then the existing playback gate.
+      expect(resolver.calls, 1);
+      expect(backend.playedUrls, hasLength(1));
+      expect(service.events, contains('start:session-1'));
+    } finally {
+      manager.dispose();
+    }
+  });
+
   group('live end-of-stream never means finished', () {
     for (final autoAdvance in <bool>[true, false]) {
       test(

@@ -1,0 +1,21 @@
+name: vault_biometrics
+description: "Fingerprint / face unlock for the hidden content vault on phones and tablets. Android uses the framework BiometricPrompt, so no FragmentActivity is needed; iOS uses LocalAuthentication."
+version: 0.1.0
+publish_to: 'none'
+
+environment:
+  sdk: ">=3.9.0 <4.0.0"
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: org.moonfin.vaultbiometrics
+        pluginClass: VaultBiometricsPlugin
+      ios:
+        pluginClass: VaultBiometricsPlugin

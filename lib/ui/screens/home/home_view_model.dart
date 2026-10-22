@@ -9,6 +9,7 @@ import 'package:get_it/get_it.dart';
 import 'package:server_core/server_core.dart';
 import 'package:collection/collection.dart';
 
+import '../../../custom/hidden_vault/hidden_vault.dart';
 import '../../../data/models/aggregated_item.dart';
 import '../../../data/models/aggregated_library.dart';
 import '../../../data/models/home_row.dart';
@@ -130,7 +131,9 @@ class HomeViewModel extends ChangeNotifier {
     // an offline home (and vice versa).
     final offline = _isOffline;
     final shape = RowDataSource.fieldShapeToken;
-    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked|offline:$offline|fields:$shape';
+    // hidden-vault: rows saved under other hiding rules never hydrate.
+    final hidden = HiddenVault.cacheToken;
+    return '$_serverId|$userId|$sections|$multiServer|$merge|$blocked|offline:$offline|fields:$shape|hv:$hidden';
   }
 
   /// Called again when the resume and next up rows refresh on their own, or
@@ -384,7 +387,8 @@ class HomeViewModel extends ChangeNotifier {
       if (_rows.isEmpty) {
         final cached = await _cacheStore.read(_homeCacheKey());
         if (cached != null && _rows.isEmpty) {
-          _rows = cached;
+          // hidden-vault: the hidden set may have grown since these were saved.
+          _rows = HiddenVault.filterCachedRows(cached);
           hydratedFromCache = true;
           notifyListeners();
         }

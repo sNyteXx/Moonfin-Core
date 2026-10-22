@@ -33,7 +33,9 @@ class _AboutCategoryScreen extends StatelessWidget {
                 title: Text(l10n.version),
                 subtitle: Text(appVersion),
                 trailing: const SizedBox.shrink(),
-                onTap: () {},
+                // hidden-vault: the private area, behind a plain tap and
+                // without any sign of a menu.
+                onTap: () => unawaited(VaultSettingsEntry.open(context)),
               ),
               if (AppDistribution.supportsInAppUpdates)
                 const _CheckForUpdatesTile(),
