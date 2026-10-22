@@ -2,6 +2,10 @@ import 'package:dio/dio.dart';
 import 'package:server_core/server_core.dart';
 
 class JellyfinItemsApi implements ItemsApi {
+  // History queries can scan a large catalog before returning their first
+  // byte. Keep one bounded request instead of abandoning a valid late page.
+  static const _historyReceiveTimeout = Duration(minutes: 1);
+
   final Dio _dio;
   final String Function() _getUserId;
 
@@ -219,6 +223,7 @@ class JellyfinItemsApi implements ItemsApi {
     final userId = _getUserId();
     final response = await _dio.get(
       '/Shows/NextUp',
+      options: Options(receiveTimeout: _historyReceiveTimeout),
       queryParameters: {
         'UserId': userId,
         'SeriesId': ?seriesId,
@@ -248,6 +253,7 @@ class JellyfinItemsApi implements ItemsApi {
   }) async {
     final response = await _dio.get(
       '/UserItems/Resume',
+      options: Options(receiveTimeout: _historyReceiveTimeout),
       queryParameters: {
         'ParentId': ?parentId,
         if (includeItemTypes != null)

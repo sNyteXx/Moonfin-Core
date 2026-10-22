@@ -13,7 +13,7 @@ import 'harness.dart';
 
 /// The server's per-user display preferences, shared by every device.
 class FakeDisplayPreferences implements DisplayPreferencesApi {
-  final Map<String, Map<String, String>> store = {};
+  final Map<String, Map<String, String?>> store = {};
   bool offline = false;
   Completer<void>? hold;
   int gets = 0;

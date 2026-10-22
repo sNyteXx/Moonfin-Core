@@ -57,6 +57,7 @@ import 'util/http_overrides_stub.dart'
 import 'util/game_core_licenses.dart';
 import 'util/device_performance.dart';
 import 'ui/navigation/app_router.dart';
+import 'ui/screens/auth/startup_loading_view.dart';
 import 'ui/screensaver/screensaver_controller.dart';
 import 'util/platform_detection.dart';
 import 'util/process_exit_reporter.dart';
@@ -834,6 +835,14 @@ Future<void> autoDownloadBackgroundMain() =>
 void main() async {
   configureHttpOverrides();
   ScrollSensitivityBinding.ensureInitialized();
+
+  // Device probes and dependency setup can take several seconds on TV boxes.
+  // Paint a standalone loading view before awaiting them. Do not wait for a
+  // rendered frame here: Android can also start this engine without a window
+  // for the audio service, which must still finish its initialization.
+  if (PlatformDetection.isAndroid) {
+    runApp(const StartupLoadingApp());
+  }
 
   // Pre-warms the liquid_glass_widgets shader programs so the first glass
   // pane doesn't white-flash. Cheap no-op on tiers where the package

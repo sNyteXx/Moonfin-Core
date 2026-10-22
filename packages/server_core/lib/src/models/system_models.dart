@@ -87,7 +87,7 @@ class DisplayPreferences {
   final String? sortBy;
   final String? sortOrder;
   final String? viewType;
-  final Map<String, String> customPrefs;
+  final Map<String, String?> customPrefs;
 
   const DisplayPreferences({
     required this.id,
@@ -104,7 +104,7 @@ class DisplayPreferences {
         sortOrder: json['SortOrder'] as String?,
         viewType: json['ViewType'] as String?,
         customPrefs: (json['CustomPrefs'] as Map<String, dynamic>?)
-                ?.map((k, v) => MapEntry(k, v as String)) ??
+                ?.map((k, v) => MapEntry(k, v as String?)) ??
             const {},
       );
 

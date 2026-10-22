@@ -19,11 +19,12 @@ class WatchNextService {
 
   Timer? _debounce;
   String? _lastPublishedSignature;
+  bool _disposed = false;
 
   bool get _enabled => PlatformDetection.isAndroid && PlatformDetection.isTV;
 
   void update(List<HomeRow> rows) {
-    if (!_enabled) return;
+    if (!_enabled || _disposed) return;
     _debounce?.cancel();
     _debounce = Timer(_debounceDelay, () => unawaited(_publish(rows)));
   }
@@ -33,6 +34,14 @@ class WatchNextService {
     _debounce?.cancel();
     _lastPublishedSignature = null;
     unawaited(_channel.invokeMethod('clear').catchError((_) {}));
+  }
+
+  /// A session's HomeViewModel must not publish its captured rows after it
+  /// has been replaced by another server or user.
+  void dispose() {
+    _disposed = true;
+    _debounce?.cancel();
+    _debounce = null;
   }
 
   void schedulePeriodicRefresh() {
@@ -47,12 +56,14 @@ class WatchNextService {
 
   Future<void> _publish(List<HomeRow> rows) async {
     try {
+      if (_disposed) return;
       // Built payloads embed DateTime.now() fallbacks, so change detection
       // uses the source rows instead.
       final signature = _signatureFor(rows);
       if (signature == _lastPublishedSignature) return;
 
       await CarArtwork.instance.ensureReady();
+      if (_disposed) return;
       final client = GetIt.instance<MediaServerClient>();
       final items = buildItems(rows, client);
 
@@ -63,6 +74,7 @@ class WatchNextService {
       }
 
       await CarArtwork.instance.persistHosts();
+      if (_disposed) return;
       await _channel.invokeMethod('publish', {'items': items});
       _lastPublishedSignature = signature;
     } catch (_) {}
