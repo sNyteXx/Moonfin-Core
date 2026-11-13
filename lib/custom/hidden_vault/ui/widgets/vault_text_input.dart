@@ -72,11 +72,9 @@ class _VaultTextInputState extends State<VaultTextInput> {
         ),
       );
     }
-    final preferIme =
-        GetIt.instance.isRegistered<UserPreferences>() &&
-        GetIt.instance<UserPreferences>().get(
-          UserPreferences.preferSystemImeKeyboard,
-        );
+    final keyboardStyle = GetIt.instance.isRegistered<UserPreferences>()
+        ? GetIt.instance<UserPreferences>().get(UserPreferences.keyboardStyle)
+        : KeyboardStyle.docked;
     return Focus(
       focusNode: _node,
       autofocus: widget.autofocus,
@@ -90,7 +88,7 @@ class _VaultTextInputState extends State<VaultTextInput> {
             controller: widget.controller,
             isFocused: focused,
             hint: widget.hint,
-            preferSystemIme: preferIme,
+            keyboardStyle: keyboardStyle,
             keyboardType: KeyboardType.alphabetic,
             filled: true,
             fillColor: focused

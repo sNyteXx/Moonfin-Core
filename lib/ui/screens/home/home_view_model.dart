@@ -235,6 +235,7 @@ class HomeViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _watchingNowTimer?.cancel();
     _topShelf.dispose();
     _watchNext.dispose();
     super.dispose();
@@ -3647,12 +3648,6 @@ class HomeViewModel extends ChangeNotifier {
         (items) => items,
       );
     });
-  }
-
-  @override
-  void dispose() {
-    _watchingNowTimer?.cancel();
-    super.dispose();
   }
 
   Future<List<HomeRow>> _loadSeasonalRow(

@@ -547,21 +547,47 @@ class VisibilityItemsApi implements ItemsApi {
     String playlistId, {
     int? startIndex,
     int? limit,
+    String? fields,
   }) async {
     final service = await _activeService();
+    final effectiveFields = service == null ? fields : _withTags(fields);
     Future<Map<String, dynamic>> call(int? start, int? lim) =>
-        _inner.getPlaylistItems(playlistId, startIndex: start, limit: lim);
+        _inner.getPlaylistItems(
+          playlistId,
+          startIndex: start,
+          limit: lim,
+          fields: effectiveFields,
+        );
     if (service == null) return call(startIndex, limit);
     await service.ensureReady();
     return _pager.page(
       signature: _signature('getPlaylistItems', {
         'playlistId': playlistId,
+        'fields': effectiveFields,
       }, service.generation),
       startIndex: startIndex,
       limit: limit,
       paged: true,
       fetch: call,
       visibleOf: _visibleOf(service, null),
+    );
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async {
+    final service = await _activeService();
+    if (service == null) return _inner.getAdditionalParts(itemId);
+    // A multi-part movie's additional files may not carry the same vault
+    // tags as the parent. Refuse a hidden parent before reading its parts.
+    await _guardItem(
+      service,
+      itemId,
+      () => _inner.getItem(itemId, fields: 'Tags'),
+    );
+    return _filterList(
+      service,
+      () => _inner.getAdditionalParts(itemId),
+      allow: _anyEnteredVault(),
     );
   }
 
