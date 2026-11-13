@@ -44,6 +44,13 @@ class BottomNavInsetScope extends InheritedWidget {
       height != oldWidget.height;
 }
 
+/// How much of the bottom of the screen is covered. That's the bottom navbar
+/// on screens that show it and the OS navigation buttons or home indicator
+/// everywhere else. The bar's height already includes the system inset.
+double bottomContentInset(BuildContext context) =>
+    BottomNavInsetScope.maybeOf(context) ??
+    MediaQuery.paddingOf(context).bottom;
+
 /// Bottom padding for a scrollable that may run under the bottom navbar:
 /// [fallback] where there is no bar, otherwise enough to clear it.
 double bottomNavContentPadding(BuildContext context, double fallback) {

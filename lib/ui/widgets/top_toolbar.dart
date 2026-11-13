@@ -20,6 +20,7 @@ import '../../data/services/plugin_sync_service.dart';
 import '../../preference/preference_constants.dart';
 import '../../preference/seerr_preferences.dart';
 import '../../preference/user_preferences.dart';
+import '../../util/audio_artwork_url.dart';
 import '../../util/clock_format.dart';
 import '../../util/game_library.dart';
 import '../../util/live_tv_library.dart';
@@ -37,7 +38,7 @@ import 'navigation_layout.dart';
 import 'settings/settings_panel.dart';
 import '../screens/downloads/downloads_panel.dart';
 import '../screens/settings/settings_side_panel.dart';
-import '../screens/syncplay/syncplay_screen.dart';
+import '../screens/watch_party/watch_together_route.dart';
 import 'seerr_icons.dart';
 import 'server_messages_dialog.dart';
 import 'server_messages_nav_slot.dart';
@@ -45,7 +46,6 @@ import 'shuffle_overlay.dart';
 import 'user_menu_dialog.dart';
 
 import 'offline_aware_image.dart';
-import 'paced_network_image.dart';
 import 'package:playback_core/playback_core.dart';
 import '../../data/models/aggregated_item.dart';
 import '../../data/services/media_server_client_factory.dart';
@@ -53,6 +53,7 @@ import '../../util/focus/dpad_keys.dart';
 import '../../util/focus/input_mode_tracker.dart';
 import '../navigation/app_router.dart';
 import 'adaptive/sf_symbol.dart';
+import 'user_avatar_image.dart';
 
 const _kToolbarHeightTV = 95.0;
 const _kToolbarHeightDesktop = 80.0;
@@ -930,25 +931,11 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
                   : null,
             ),
             child: ClipOval(
-              child: _userImageUrl != null
-                  ? Image(
-                      image: ResizeImage.resizeIfNeeded(
-                        ArtworkDecode.widthFor(
-                          avatarSize,
-                          MediaQuery.devicePixelRatioOf(context),
-                        ),
-                        null,
-                        PacedNetworkImage(
-                          _userImageUrl!,
-                          headers: serverImageHeaders,
-                        ),
-                      ),
-                      fit: BoxFit.cover,
-                      width: avatarSize,
-                      height: avatarSize,
-                      errorBuilder: (_, _, _) => _avatarFallback(),
-                    )
-                  : _avatarFallback(),
+              child: UserAvatarImage(
+                url: _userImageUrl,
+                size: avatarSize,
+                fallback: _avatarFallback(),
+              ),
             ),
           ),
         ),
@@ -995,8 +982,9 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
     final navLibraries = _navLibraries;
     final showLibraries =
         !kidsMode && _prefs.get(UserPreferences.showLibrariesInToolbar);
+    final showLibrariesIndividually =
+        _prefs.get(UserPreferences.showLibrariesIndividually);
     final alwaysExpanded = _prefs.get(UserPreferences.navbarAlwaysExpanded);
-    final showFolders = _prefs.get(UserPreferences.enableFolderView);
     final showSyncPlay =
         !kidsMode &&
         _prefs.get(UserPreferences.syncPlayEnabled) &&
@@ -1006,11 +994,16 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
         !kidsMode &&
         _prefs.get(UserPreferences.showSeerrButton) &&
         GetIt.instance<PluginSyncService>().seerrAvailable;
+    final showCalendar =
+        !kidsMode &&
+        _prefs.get(UserPreferences.showCalendarButton) &&
+        GetIt.instance<PluginSyncService>().calendarAvailable;
     final l10n = AppLocalizations.of(context);
     final seerrNavLabel = seerrPrefs.labelOrDefault(l10n.seerr);
     // Desktop/macOS keeps the dropdown; inline fan-out is only used where
     // horizontal scroll is natural (TV d-pad or touch).
     final useInlineLibraries =
+        !showLibrariesIndividually &&
         _prefs.get(UserPreferences.navbarPosition) == NavbarPosition.top &&
         ((alwaysExpanded &&
                 (PlatformDetection.isTV || PlatformDetection.useMobileUi)) ||
@@ -1045,7 +1038,7 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
                   focusNode: _homeFocus,
                   onPressed: () {
                     if (_isActive(Destinations.home)) {
-                      homeRefreshBus.request();
+                      homeRefreshBus.request(newMediaBar: true);
                       return;
                     }
                     homeRefreshBus.requestAfterNavigation();
@@ -1139,23 +1132,6 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
                   ),
                 ),
               ],
-              if (showFolders) ...[
-                _gap(),
-                _orderButton(
-                  order: (order++).toDouble(),
-                  child: ExpandableIconButton(
-                    key: const ValueKey('toolbar_folders'),
-                    forceExpanded: alwaysExpanded,
-                    icon: Icons.folder_rounded,
-                    label: l10n.folders,
-                    baseColor: nextNavColor(),
-                    onPressed: () {
-                      if (_isActive(Destinations.folderView)) return;
-                      context.navigateTopLevel(Destinations.folderView);
-                    },
-                  ),
-                ),
-              ],
               if (showSyncPlay) ...[
                 _gap(),
                 _orderButton(
@@ -1164,11 +1140,11 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
                     key: const ValueKey('toolbar_syncplay'),
                     forceExpanded: alwaysExpanded,
                     icon: Icons.groups_rounded,
-                    label: l10n.syncPlay,
+                    label: l10n.watchParties,
                     baseColor: nextNavColor(),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => const SyncPlayScreen(),
+                        builder: (_) => watchTogetherScreen(),
                       ),
                     ),
                   ),
@@ -1193,7 +1169,41 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
                   ),
                 ),
               ],
-              if (showLibraries && navLibraries.isNotEmpty) ...[
+              if (showCalendar) ...[
+                _gap(),
+                _orderButton(
+                  order: (order++).toDouble(),
+                  child: ExpandableIconButton(
+                    key: const ValueKey('toolbar_calendar'),
+                    forceExpanded: alwaysExpanded,
+                    baseColor: nextNavColor(),
+                    icon: Icons.calendar_month_rounded,
+                    label: l10n.calendar,
+                    onPressed: () {
+                      if (_isActive(Destinations.calendar)) return;
+                      context.navigateTopLevel(Destinations.calendar);
+                    },
+                  ),
+                ),
+              ],
+              if (showLibraries && showLibrariesIndividually)
+                for (final lib in navLibraries) ...[
+                  _gap(),
+                  _orderButton(
+                    order: (order++).toDouble(),
+                    child: ExpandableIconButton(
+                      // Two servers can share a library id, so the key is the
+                      // library itself.
+                      key: ObjectKey(lib),
+                      forceExpanded: alwaysExpanded,
+                      icon: libraryIcon(lib),
+                      label: lib.name,
+                      baseColor: nextNavColor(),
+                      onPressed: () => _openLibrary(lib),
+                    ),
+                  ),
+                ]
+              else if (showLibraries && navLibraries.isNotEmpty) ...[
                 _gap(),
                 _orderButton(
                   order: (order++).toDouble(),
@@ -1333,6 +1343,17 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
     );
   }
 
+  void _openLibrary(AggregatedLibrary lib) {
+    context.navigateTopLevel(
+      libraryRoute(
+        lib.id,
+        lib.collectionType,
+        lib.name,
+        serverId: lib.serverId,
+      ),
+    );
+  }
+
   Widget _buildLibrariesButton({
     Color? iconColor,
     bool alwaysExpanded = false,
@@ -1344,16 +1365,7 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
       surfaceColor: _toolbarSurfaceColor(),
       iconColor: iconColor,
       alwaysExpanded: alwaysExpanded,
-      onLibraryTap: (lib) {
-        context.navigateTopLevel(
-          libraryRoute(
-            lib.id,
-            lib.collectionType,
-            lib.name,
-            serverId: lib.serverId,
-          ),
-        );
-      },
+      onLibraryTap: _openLibrary,
     );
   }
 
@@ -1371,16 +1383,7 @@ class _TopToolbarState extends State<TopToolbar> with RouteAware {
       alwaysExpanded: alwaysExpanded,
       triggerFocusNode: _inlineLibrariesTriggerFocus,
       onExitForward: _focusAfterInlineLibraries,
-      onLibraryTap: (lib) {
-        context.navigateTopLevel(
-          libraryRoute(
-            lib.id,
-            lib.collectionType,
-            lib.name,
-            serverId: lib.serverId,
-          ),
-        );
-      },
+      onLibraryTap: _openLibrary,
     );
   }
 
@@ -2294,7 +2297,7 @@ class _LibrariesDropdownState extends State<_LibrariesDropdown> {
         },
         child: ExpandableIconButton(
           baseColor: widget.iconColor,
-          forceExpanded: widget.alwaysExpanded,
+          forceExpanded: widget.alwaysExpanded || _overlayEntry != null,
           focusNode: _buttonFocusNode,
           onFocusChanged: (_) => _handleManagedFocusChange(),
           onKeyEvent: (_, event) {
@@ -2461,30 +2464,8 @@ class _TopMusicBarState extends State<TopMusicBar> {
     return raw is AggregatedItem ? raw : null;
   }
 
-  String? _artUrl(AggregatedItem item) {
-    try {
-      final client =
-          _clientFactory.getClientIfExists(item.serverId) ??
-          GetIt.instance<MediaServerClient>();
-      final albumTag = item.albumPrimaryImageTag;
-      final albumId = item.albumId;
-      if (item.type == 'Audio' && albumTag != null && albumId != null) {
-        return client.imageApi.getPrimaryImageUrl(
-          albumId,
-          maxHeight: 120,
-          tag: albumTag,
-        );
-      }
-      if (item.primaryImageTag != null) {
-        return client.imageApi.getPrimaryImageUrl(
-          item.id,
-          maxHeight: 120,
-          tag: item.primaryImageTag,
-        );
-      }
-    } catch (_) {}
-    return null;
-  }
+  String? _artUrl(AggregatedItem item) =>
+      audioArtUrl(item, clientFactory: _clientFactory, maxHeight: 120);
 
   Widget _buildBarButton({
     required IconData icon,

@@ -11,6 +11,165 @@ class _HomeScreenCategoryScreen extends StatefulWidget {
 class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
   final _prefs = GetIt.instance<UserPreferences>();
 
+  bool _radarrInstalled = false;
+  bool _sonarrInstalled = false;
+  bool _checkingServices = true;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_prefs.reconcileMediaPreviewMode());
+    unawaited(_prefs.reconcileHomeBackdropStyle());
+    // The calendars come from Seerr's Radarr and Sonarr servers, so there is
+    // nothing to ask when Seerr isn't set up.
+    if (GetIt.instance<PluginSyncService>().seerrAvailable) {
+      _checkServices();
+    } else {
+      _checkingServices = false;
+    }
+  }
+
+  Future<void> _checkServices() async {
+    try {
+      final repo = GetIt.instance<SeerrRepository>();
+      // Seerr only lets admins read settings/*, while the calendars work for
+      // every user, so ask the service list any signed in user can read.
+      final radarr = await repo.getRadarrServers();
+      final sonarr = await repo.getSonarrServers();
+      if (mounted) {
+        setState(() {
+          _radarrInstalled = radarr.isNotEmpty;
+          _sonarrInstalled = sonarr.isNotEmpty;
+          _checkingServices = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _checkingServices = false;
+        });
+      }
+    }
+  }
+
+  // Older apps only read the switch, so it follows the mode.
+  Future<void> _onMediaPreviewModeChanged() async {
+    await _prefs.set(
+      UserPreferences.episodePreviewEnabled,
+      _prefs.get(UserPreferences.mediaPreviewMode) !=
+          UserPreferences.mediaPreviewOff,
+    );
+    _pushPersonalizationSync();
+  }
+
+  Future<void> _onHomeBackdropStyleChanged() async {
+    await _prefs.set(
+      UserPreferences.homeBackdropEnabled,
+      _prefs.get(UserPreferences.homeBackdropStyle) !=
+          UserPreferences.homeBackdropOff,
+    );
+    _pushPersonalizationSync();
+  }
+
+  String _mediaTypeBadgeBehaviorLabel(
+    AppLocalizations l10n,
+    MediaTypeBadgeBehavior behavior,
+  ) => switch (behavior) {
+    MediaTypeBadgeBehavior.always => l10n.always,
+    MediaTypeBadgeBehavior.mixedRowsOnly => l10n.mixedRowsOnly,
+    MediaTypeBadgeBehavior.never => l10n.never,
+  };
+
+  Future<void> _refreshCustomRows() async {
+    bool dialogDismissed = false;
+    unawaited(
+      showFocusRestoringDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return withCleanSettingsTypography(
+            ctx,
+            PopScope(
+              canPop: false,
+              child: const AlertDialog(
+                title: Text('Refreshing Custom Rows'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(height: 8),
+                    SizedBox(
+                      width: 50,
+                      height: 50,
+                      child: CircularProgressIndicator(),
+                    ),
+                    SizedBox(height: 24),
+                    Text(
+                      'Refreshing your custom rows and updating their caches...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ).then((_) {
+        dialogDismissed = true;
+      }),
+    );
+
+    try {
+      final customService = GetIt.instance<CustomExternalListsService>();
+      await Future.wait([
+        for (final config in _prefs.homeSectionsConfig)
+          if (config.pluginSource == HomeSectionPluginSource.custom &&
+              config.enabled)
+            () async {
+              try {
+                final items = await customService.fetchCustomRow(
+                  config,
+                  forceRefresh: true,
+                );
+                if (items.isNotEmpty) {
+                  await customService.saveCustomRowToCache(config, items);
+                }
+              } catch (e) {
+                debugPrint(
+                  '[RefreshCustomRows] Failed to refresh ${config.pluginSection}: $e',
+                );
+              }
+            }(),
+      ]);
+
+      await _prefs.set(
+        UserPreferences.lastExternalRowsRefreshTime,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+      _reloadHomeRows();
+
+      if (mounted && !dialogDismissed) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Refreshed your custom rows.')),
+        );
+      }
+    } catch (e) {
+      if (mounted && !dialogDismissed) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      if (mounted) {
+        final detail = describeError(e, AppLocalizations.of(context));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to refresh custom rows: $detail')),
+        );
+      }
+    }
+  }
+
   String _rowsStyleLabel(AppLocalizations l10n, HomeRowsStyle style) =>
       switch (style) {
         HomeRowsStyle.v1 => l10n.homeRowsStyleClassic,
@@ -35,11 +194,47 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
         rowsStyle == HomeRowsStyle.v1 &&
         _prefs.get(UserPreferences.homeRowInfoOverlay);
     final isPaddingEnabled = !isFullScreenRows && !isInfoOverlayOn;
+    final syncService = GetIt.instance<PluginSyncService>();
+    final pluginAvailable = syncService.pluginAvailable;
+    final seerrAvailable = syncService.seerrAvailable;
+    final tmdbAvailable = syncService.tmdbAvailable;
+    final showUpcomingCalendars =
+        seerrAvailable &&
+        !_checkingServices &&
+        (_radarrInstalled || _sonarrInstalled);
     return Scaffold(
       appBar: buildSettingsAppBar(context, Text(l10n.homeScreen)),
       body: ListView(
         children: [
-          _SectionHeader(l10n.homeRowDisplay),
+          _SectionHeader(l10n.settingsContentsSection),
+          adaptiveListSection(
+            children: [
+              _TvSettingsListTile(
+                autofocus: true,
+                leading: const Icon(Icons.list),
+                title: Text(l10n.homeRows),
+                subtitle: Text(l10n.homeRowsSubtitle),
+                onTap: () =>
+                    context.pushSettingsScreen(const HomeSectionsScreen()),
+              ),
+              _TvSettingsListTile(
+                leading: const Icon(Icons.tune),
+                title: Text(l10n.rowOptions),
+                subtitle: Text(l10n.rowOptionsSubtitle),
+                onTap: () =>
+                    context.pushSettingsScreen(const HomeRowTogglesScreen()),
+              ),
+              _TvSettingsListTile(
+                leading: const Icon(Icons.featured_play_list),
+                title: Text(l10n.mediaBar),
+                subtitle: Text(l10n.featuredContentAppearance),
+                onTap: () =>
+                    context.pushSettingsScreen(const MediaBarSettingsScreen()),
+              ),
+            ],
+          ),
+
+          _SectionHeader(l10n.settingsLooksSection),
           adaptiveListSection(
             children: [
               EnumPreferenceTile<HomeRowsStyle>(
@@ -68,18 +263,29 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     setState(() {});
                   },
                 ),
-              EnumPreferenceTile<PosterSize>(
-                preference: UserPreferences.posterSize,
-                title: l10n.cardSize,
-                icon: Icons.photo_size_select_large,
-                labelOf: (v) => switch (v) {
-                  PosterSize.small => l10n.small,
-                  PosterSize.medium => l10n.medium,
-                  PosterSize.large => l10n.large,
-                  PosterSize.extraLarge => l10n.extraLarge,
-                },
-                onChanged: _pushPersonalizationSync,
-              ),
+              if (rowsStyle == HomeRowsStyle.v2 && !isMobileUi) ...[
+                EnumPreferenceTile<ModernCardTransitionSpeed>(
+                  preference: UserPreferences.modernCardTransitionSpeed,
+                  title: l10n.modernCardsTransitionSpeed,
+                  description: l10n.modernCardsTransitionSpeedSubtitle,
+                  icon: Icons.auto_awesome_motion_outlined,
+                  labelOf: (v) => switch (v) {
+                    ModernCardTransitionSpeed.extraSlow =>
+                      l10n.animationSpeedExtraSlow,
+                    ModernCardTransitionSpeed.slow => l10n.animationSpeedSlow,
+                    ModernCardTransitionSpeed.medium =>
+                      l10n.animationSpeedMedium,
+                    ModernCardTransitionSpeed.fast => l10n.animationSpeedFast,
+                    ModernCardTransitionSpeed.off => l10n.animationSpeedOff,
+                  },
+                ),
+                SwitchPreferenceTile(
+                  preference: UserPreferences.delayCardExpansionOnRapidScroll,
+                  title: l10n.delayCardExpansionOnRapidScroll,
+                  subtitle: l10n.delayCardExpansionOnRapidScrollSubtitle,
+                  icon: Icons.hourglass_empty_rounded,
+                ),
+              ],
               SliderPreferenceTile(
                 preference: rowsStyle == HomeRowsStyle.v2
                     ? UserPreferences.modernHomeRowsPadding
@@ -105,43 +311,28 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     setState(() {});
                   },
                 ),
-            ],
-          ),
-
-          _SectionHeader(l10n.continueWatchingAndNextUpHeader),
-          adaptiveListSection(
-            children: [
-              SwitchPreferenceTile(
-                preference: UserPreferences.mergeContinueWatchingNextUp,
-                title: l10n.mergeContinueWatchingAndNextUp,
-                subtitle: l10n.combineBothRows,
-                icon: Icons.merge_type,
+              EnumPreferenceTile<PosterSize>(
+                preference: UserPreferences.posterSize,
+                title: l10n.cardSize,
+                icon: Icons.photo_size_select_large,
+                labelOf: (v) => switch (v) {
+                  PosterSize.small => l10n.small,
+                  PosterSize.medium => l10n.medium,
+                  PosterSize.large => l10n.large,
+                  PosterSize.extraLarge => l10n.extraLarge,
+                  PosterSize.grandparents => l10n.uiScaleGrandparents,
+                },
                 onChanged: _pushPersonalizationSync,
               ),
-              IntPickerPreferenceTile(
-                preference: UserPreferences.nextUpMaxDays,
-                title: l10n.nextUpMaxDays,
-                description: l10n.nextUpMaxDaysDescription,
-                icon: Icons.event_busy,
-                options: {
-                  0: l10n.noLimit,
-                  30: l10n.daysValue(30),
-                  90: l10n.daysValue(90),
-                  180: l10n.daysValue(180),
-                  365: l10n.daysValue(365),
-                  730: l10n.daysValue(730),
-                },
-                onChanged: () {
-                  _pushPersonalizationSync();
-                  _reloadHomeRows();
-                },
-              ),
-            ],
-          ),
-
-          _SectionHeader(l10n.mediaDetailsAndSpoilers),
-          adaptiveListSection(
-            children: [
+              if (rowsStyle == HomeRowsStyle.v1)
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.image_outlined),
+                  title: Text(l10n.imageTypePerRow),
+                  subtitle: Text(l10n.configureImageTypeForEachRow),
+                  onTap: () => context.pushSettingsScreen(
+                    const HomeRowsImageTypeScreen(),
+                  ),
+                ),
               SwitchPreferenceTile(
                 preference: UserPreferences.seriesThumbnailsEnabled,
                 title: l10n.seriesThumbnails,
@@ -161,6 +352,28 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                     setState(() {});
                   },
                 ),
+              if (isMobileUi)
+                SwitchPreferenceTile(
+                  preference: UserPreferences.homeBackdropEnabled,
+                  title: l10n.homeScreenBackdrop,
+                  icon: Icons.photo,
+                  onChanged: _pushPersonalizationSync,
+                )
+              else
+                StringPickerPreferenceTile(
+                  preference: UserPreferences.homeBackdropStyle,
+                  title: l10n.homeScreenBackdrop,
+                  icon: Icons.photo,
+                  options: {
+                    UserPreferences.homeBackdropOff: l10n.off,
+                    UserPreferences.homeBackdropFullScreen:
+                        l10n.homeScreenBackdropFullScreen,
+                    UserPreferences.homeBackdropCorner:
+                        l10n.homeScreenBackdropCorner,
+                    UserPreferences.homeBackdropTop: l10n.homeScreenBackdropTop,
+                  },
+                  onChanged: _onHomeBackdropStyleChanged,
+                ),
               SwitchPreferenceTile(
                 preference: UserPreferences.hideHomeMediaDescription,
                 title: l10n.hideHomeMediaDescription,
@@ -168,47 +381,167 @@ class _HomeScreenCategoryScreenState extends State<_HomeScreenCategoryScreen> {
                 icon: Icons.description_outlined,
                 onChanged: _pushPersonalizationSync,
               ),
+              SwitchPreferenceTile(
+                preference: UserPreferences.hideHomeWatchProgress,
+                title: l10n.hideHomeWatchProgress,
+                subtitle: l10n.hideHomeWatchProgressSubtitle,
+                icon: Icons.linear_scale,
+                onChanged: _pushPersonalizationSync,
+              ),
+              SwitchPreferenceTile(
+                preference: UserPreferences.hideHomeUnwatchedCount,
+                title: l10n.hideHomeUnwatchedCount,
+                subtitle: l10n.hideHomeUnwatchedCountSubtitle,
+                icon: Icons.filter_9_plus_outlined,
+                onChanged: _pushPersonalizationSync,
+              ),
+              StringPickerPreferenceTile(
+                preference: UserPreferences.mediaPreviewMode,
+                title: l10n.mediaPreview,
+                description: l10n.mediaPreviewDescription,
+                icon: Icons.ondemand_video,
+                options: {
+                  UserPreferences.mediaPreviewOff: l10n.off,
+                  UserPreferences.mediaPreviewMedia: l10n.mediaPreview,
+                  UserPreferences.mediaPreviewTrailer: l10n.trailerPreview,
+                },
+                onChanged: _onMediaPreviewModeChanged,
+              ),
+              SwitchPreferenceTile(
+                preference: UserPreferences.previewAudioEnabled,
+                title: l10n.previewAudio,
+                subtitle: l10n.enablePreviewAudio,
+                icon: Icons.volume_up,
+                onChanged: _pushPersonalizationSync,
+              ),
+              SliderPreferenceTile(
+                preference: UserPreferences.previewVolume,
+                title: l10n.previewVolume,
+                description: l10n.previewVolumeDescription,
+                icon: Icons.volume_down,
+                min: 0,
+                max: 100,
+                divisions: 20,
+                labelOf: (v) => '$v%',
+                onChangeEnd: _pushPersonalizationSync,
+              ),
             ],
           ),
 
-          _SectionHeader(l10n.homeRowSections),
+          _SectionHeader(l10n.ratings),
           adaptiveListSection(
-            children: [
-              _TvSettingsListTile(
-                autofocus: true,
-                leading: const Icon(Icons.list),
-                title: Text(l10n.homeSections),
-                subtitle: Text(l10n.reorderToggleHomeRows),
-                onTap: () => context.pushSettingsScreen(
-                  const HomeSectionsScreen(showGeneralOptions: false),
-                ),
-              ),
-              _TvSettingsListTile(
-                leading: const Icon(Icons.tune),
-                title: Text(l10n.homeRowToggles),
-                subtitle: Text(l10n.homeRowTogglesSubtitle),
-                onTap: () =>
-                    context.pushSettingsScreen(const HomeRowTogglesScreen()),
-              ),
-              if (rowsStyle == HomeRowsStyle.v1)
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.image_outlined),
-                  title: Text(l10n.perRowImageTypeSelection),
-                  subtitle: Text(l10n.configureImageTypeForEachRow),
-                  onTap: () => context.pushSettingsScreen(
-                    const HomeRowsImageTypeScreen(),
-                  ),
-                ),
-              if (GetIt.instance<PluginSyncService>().seerrAvailable)
-                _TvSettingsListTile(
-                  leading: const Icon(Icons.link),
-                  title: const Text('External Home Rows'),
-                  subtitle: const Text('Set-up external sources for Home Rows (e.g., Seerr, IMDb, Letterboxd, and more!)'),
-                  onTap: () =>
-                      context.pushSettingsScreen(const _ExternalListsScreen()),
-                ),
-            ],
+            children: _ratingsSettingsTiles(
+              context,
+              l10n,
+              UserPreferences.homeRowsRatings,
+            ),
           ),
+
+          // Every source here needs the Moonbase plugin. Seerr's rows and the
+          // Radarr and Sonarr calendars also need Seerr.
+          if (pluginAvailable) ...[
+            _SectionHeader(l10n.externalSources),
+            adaptiveListSection(
+              children: [
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.movie_outlined),
+                  title: const Text('IMDb Lists'),
+                  subtitle: const Text('Sort the IMDb chart rows.'),
+                  onTap: () =>
+                      context.pushSettingsScreen(const _ImdbListsScreen()),
+                ),
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.trending_up),
+                  title: const Text('TMDB Lists'),
+                  subtitle: Text(
+                    tmdbAvailable
+                        ? 'Sort the TMDB chart rows.'
+                        : 'TMDB API key must be configured in Moonbase settings to use this feature.',
+                  ),
+                  onTap: tmdbAvailable
+                      ? () => context.pushSettingsScreen(const _TmdbListsScreen())
+                      : null,
+                ),
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.celebration_outlined),
+                  title: Text(l10n.seasonalRow),
+                  subtitle: Text(seerrBrand(l10n.seasonalRowDescription)),
+                  onTap: () =>
+                      context.pushSettingsScreen(const _SeasonalRowScreen()),
+                ),
+                if (showUpcomingCalendars)
+                  _TvSettingsListTile(
+                    leading: const Icon(Icons.calendar_month),
+                    title: Text(l10n.upcomingCalendars),
+                    subtitle: Text(l10n.upcomingCalendarsDescription),
+                    onTap: () => context.pushSettingsScreen(
+                      const _UpcomingCalendarsScreen(),
+                    ),
+                  ),
+                if (seerrAvailable)
+                  _TvSettingsListTile(
+                    leading: Image.asset(
+                      'assets/icons/seerr.png',
+                      width: 24,
+                      height: 24,
+                    ),
+                    title: const Text('Seerr Rows'),
+                    subtitle: const Text('Configure Seerr Discovery Rows.'),
+                    onTap: () =>
+                        context.pushSettingsScreen(const _SeerrListsScreen()),
+                  ),
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.tune_outlined),
+                  title: const Text('Custom Rows'),
+                  subtitle: const Text(
+                    'ADVANCED: Configure customized home rows from a variety of sources.',
+                  ),
+                  onTap: () =>
+                      context.pushSettingsScreen(const _CustomListsScreen()),
+                ),
+                EnumPreferenceTile<MediaTypeBadgeBehavior>(
+                  preference: UserPreferences.mediaTypeBadgeBehavior,
+                  title: 'Media type badges',
+                  description:
+                      'Show MOVIE / SERIES labels on external home-row cards',
+                  icon: Icons.info_outline,
+                  labelOf: (behavior) =>
+                      _mediaTypeBadgeBehaviorLabel(l10n, behavior),
+                  onChanged: () {
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                ),
+                _TvSettingsListTile(
+                  leading: const Icon(Icons.refresh),
+                  title: const Text('Refresh Custom Rows'),
+                  subtitle: const Text(
+                    'Force a full update of the custom row caches.',
+                  ),
+                  onTap: _refreshCustomRows,
+                ),
+              ],
+            ),
+          ],
+
+          if (PlatformDetection.isAppleTV) ...[
+            _SectionHeader(l10n.appleTvHomeScreen),
+            adaptiveListSection(
+              children: [
+                EnumPreferenceTile<TopShelfContent>(
+                  preference: UserPreferences.topShelfContent,
+                  title: l10n.topShelf,
+                  description: l10n.topShelfDescription,
+                  icon: Icons.tv,
+                  labelOf: (v) => switch (v) {
+                    TopShelfContent.latestMedia => l10n.topShelfLatestMedia,
+                    TopShelfContent.appBanner => l10n.topShelfAppBanner,
+                  },
+                  onChanged: TopShelfService().refresh,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 32),
         ],
       ),

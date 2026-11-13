@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:get_it/get_it.dart';
@@ -11,14 +10,10 @@ import 'package:server_core/server_core.dart';
 import '../../auth/repositories/session_repository.dart';
 import '../../util/platform_detection.dart';
 import 'sync_service.dart';
+import 'remove_watched_service.dart';
 
 class ConnectivityService extends ChangeNotifier {
   final Connectivity _connectivity;
-  final Dio _pingDio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 5),
-    receiveTimeout: const Duration(seconds: 5),
-    followRedirects: false,
-  ));
   StreamSubscription<List<ConnectivityResult>>? _subscription;
   Timer? _recheckDebounce;
 
@@ -44,6 +39,10 @@ class ConnectivityService extends ChangeNotifier {
   bool get serverReachable => _serverReachable;
 
   bool get canReachServer => _isOnline && _serverReachable;
+
+  /// Whether the reconnect sync (ratings, progress, metadata, then removing
+  /// watched downloads) is running.
+  bool get isSyncing => _inFlightSync != null;
 
   /// Whether the only link is mobile data. Read by prefetchers that should
   /// not spend a metered connection on artwork the user may never scroll to.
@@ -85,10 +84,7 @@ class ConnectivityService extends ChangeNotifier {
     @visibleForTesting Connectivity? connectivity,
     @visibleForTesting Duration retryBase = const Duration(seconds: 5),
   }) : _connectivity = connectivity ?? Connectivity(),
-       _retryBase = retryBase {
-    configureServerDio(_pingDio);
-    _pingDio.interceptors.add(redirectInterceptor(_pingDio));
-  }
+       _retryBase = retryBase;
 
   void initialize() {
     if (!PlatformDetection.isAppleTV) {
@@ -221,6 +217,14 @@ class ConnectivityService extends ChangeNotifier {
           (_) => syncService.syncPlaybackProgress(client, serverId: serverId),
         )
         .then((_) => syncService.refreshMetadata(client, serverId: serverId))
+        // Last, so it judges the played state the refresh just pulled in.
+        .then((_) async {
+          if (!getIt.isRegistered<RemoveWatchedService>()) return;
+          await getIt<RemoveWatchedService>().runSafely(
+            client,
+            serverId: serverId,
+          );
+        })
         .catchError((Object e) {
           ServerLog.network(
             'Progress sync failed',
@@ -261,35 +265,25 @@ class ConnectivityService extends ChangeNotifier {
     if (!GetIt.instance.isRegistered<MediaServerClient>()) return;
     final client = GetIt.instance<MediaServerClient>();
     final wasReachable = _serverReachable;
-    Object? failure;
+    var reachable = false;
     // A pooled connection the server already dropped fails exactly like a
     // server that went away, and sending the whole app to the downloads
     // catalog over one of those is worse than asking twice. The failure takes
     // the bad connection with it, so the second try needs no wait in front.
-    for (var attempt = 0; attempt < _probeAttempts; attempt++) {
+    // Each server type pings its own route (Silo has no /System/Ping), and
+    // the client's ping counts a 401 as an answer (see SystemApi.ping).
+    for (var attempt = 0; attempt < _probeAttempts && !reachable; attempt++) {
       try {
-        await _pingDio.get('${client.baseUrl}/System/Ping');
-        failure = null;
-        break;
-      } on DioException catch (e) {
-        // The probe carries no token, and Emby only lets that through from its
-        // own network, so a remote server turns it down with a 401. That
-        // refusal still came from the server.
-        if (e.response?.statusCode == 401) {
-          failure = null;
-          break;
-        }
-        failure = e;
-      } catch (e) {
-        failure = e;
+        reachable = await client.systemApi.ping();
+      } catch (_) {
+        // Ping shouldn't throw, but a client that does still means no answer.
       }
     }
-    _serverReachable = failure == null;
+    _serverReachable = reachable;
     if (!_serverReachable && wasReachable) {
       ServerLog.network(
         'Server marked unreachable, every probe failed',
         level: ServerLogLevel.warning,
-        error: failure,
       );
     }
     if (_serverReachable) {

@@ -33,9 +33,12 @@ class JellyfinMediaServerClient extends MediaServerClient {
   @override
   final DeviceInfo deviceInfo;
 
+  /// [interceptors] run after the client's own, so a test or a diagnostics
+  /// harness sees each request as sent, auth header included.
   JellyfinMediaServerClient({
     required String baseUrl,
     required this.deviceInfo,
+    List<Interceptor> interceptors = const [],
   }) : _dio = Dio(BaseOptions(
          baseUrl: baseUrl,
          followRedirects: false,
@@ -47,6 +50,7 @@ class JellyfinMediaServerClient extends MediaServerClient {
     _baseUrl = baseUrl;
     configureServerDio(_dio);
     _setupInterceptors();
+    _dio.interceptors.addAll(interceptors);
   }
 
   late String _baseUrl;
@@ -66,6 +70,17 @@ class JellyfinMediaServerClient extends MediaServerClient {
   bool _progressPingIsDue() {
     _progressPings++;
     return _progressPings % _progressPingLogInterval == 1;
+  }
+
+  static String _clientErrorBody(Response<dynamic>? response) {
+    final status = response?.statusCode ?? 0;
+    final data = response?.data;
+    if (status < 400 || status >= 500 || (data is! String && data is! Map)) {
+      return '';
+    }
+    final text = '$data'.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isEmpty) return '';
+    return ' ${text.length > 500 ? '${text.substring(0, 500)}...' : text}';
   }
 
   void _setupInterceptors() {
@@ -94,7 +109,8 @@ class JellyfinMediaServerClient extends MediaServerClient {
       onError: (error, handler) {
         ServerLog.network(
           '✗ ${error.requestOptions.method} ${error.requestOptions.uri} '
-          '(${error.response?.statusCode ?? error.type.name})',
+          '(${error.response?.statusCode ?? error.type.name})'
+          '${_clientErrorBody(error.response)}',
           level: ServerLogLevel.error,
           error: error.message ?? error.toString(),
         );

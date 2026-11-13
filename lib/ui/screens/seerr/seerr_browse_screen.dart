@@ -22,6 +22,7 @@ import '../../util/error_message.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/quick_return_wrapper.dart';
 import '../../widgets/skeleton/skeleton_library_grid.dart';
+import '../../../preference/seerr_preferences.dart';
 
 const _tmdbPosterBase = 'https://image.tmdb.org/t/p/w342';
 Color get _navyBackground => AppColorScheme.background;
@@ -58,6 +59,11 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
   final _scrollController = ScrollController();
   final _prefs = GetIt.instance<UserPreferences>();
   SeerrDiscoverItem? _focusedItem;
+
+  double get _cardWidth {
+    final size = _prefs.resolveScreenPosterSize(UserPreferences.seerrPosterSize);
+    return size.portraitHeight * (2 / 3);
+  }
 
   final _allLetterFocusNode = FocusNode(debugLabel: 'seerr_alpha_all_letter');
 
@@ -174,8 +180,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
     final l10n = AppLocalizations.of(context);
     final vm = _vm;
     if (_initializing || vm == null || (vm.state.isLoading && vm.state.items.isEmpty)) {
-      final cardWidth =
-          _prefs.resolveLibraryPosterSize().portraitHeight * (2 / 3);
+      final cardWidth = _cardWidth;
       return SkeletonLibraryGrid(
         cardWidth: cardWidth,
         aspectRatio: 2 / 3,
@@ -221,8 +226,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
       );
     }
 
-    final cardWidth =
-      _prefs.resolveLibraryPosterSize().portraitHeight * (2 / 3);
+    final cardWidth = _cardWidth;
     final cardExpansion = GetIt.instance<UserPreferences>()
         .get(UserPreferences.cardFocusExpansion);
 
@@ -300,7 +304,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
                       if (PlatformDetection.isTV &&
                           event.isActionable &&
                           event.logicalKey.isBackKey &&
-                          _allLetterFocusNode.context != null) {
+                          _allLetterFocusNode.context?.mounted == true) {
                         _allLetterFocusNode.requestFocus();
                         return KeyEventResult.handled;
                       }
@@ -323,7 +327,7 @@ class _SeerrBrowseScreenState extends State<SeerrBrowseScreen> {
                             ? null
                             : () => setState(() => _focusedItem = null),
                     onTap: () {
-                      final mt = item.mediaType ?? widget.mediaType ?? 'movie';
+                      final mt = item.mediaType ?? _vm!.mediaType;
                       context.push(
                         Destinations.seerrMedia(
                           item.id.toString(),
@@ -1068,6 +1072,24 @@ class _SeerrSortDialogState extends State<_SeerrSortDialog> {
   ) {
     final divider = Divider(color: AppColorScheme.onSurface.withAlpha(20));
     return [
+      if (vm.filterType == 'genre' || vm.filterType == 'keyword') ...[
+        divider,
+        _sectionHeader(l10n.type),
+        for (final (type, label) in [
+          ('movie', l10n.movies),
+          ('tv', l10n.tvShows),
+        ])
+          _radioTile(
+            label: label,
+            selected: vm.mediaType == type,
+            onTap: () {
+              if (_popped) return;
+              _popped = true;
+              vm.setMediaType(type);
+              Navigator.of(context).pop();
+            },
+          ),
+      ],
       if (vm.filterGenres.isNotEmpty) ...[
         divider,
         _expanderTile(
@@ -1360,7 +1382,8 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final current = widget.prefs.resolveLibraryPosterSize();
+    final current =
+        widget.prefs.resolveScreenPosterSize(UserPreferences.seerrPosterSize);
     final dialogWidth = (MediaQuery.sizeOf(context).width - 32).clamp(
       280.0,
       380.0,
@@ -1381,7 +1404,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: Text(
-                l10n.seerrSettings,
+                seerrBrand(l10n.seerrSettings),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
@@ -1400,7 +1423,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
               ),
             ),
             Divider(color: AppColorScheme.onSurface.withAlpha(20)),
-            for (final option in PosterSize.values)
+            for (final option in PosterSize.gridValues)
               _settingsRadioTile(
                 label: _posterSizeLabel(option, l10n),
                 selected: current == option,
@@ -1408,7 +1431,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
                   if (_popped) return;
                   _popped = true;
                   await widget.prefs.set(
-                    UserPreferences.libraryPosterSize,
+                    UserPreferences.seerrPosterSize,
                     option,
                   );
                   if (context.mounted) {
@@ -1426,7 +1449,7 @@ class _SeerrSettingsDialogState extends State<_SeerrSettingsDialog> {
     PosterSize.small => l10n.small,
     PosterSize.medium => l10n.medium,
     PosterSize.large => l10n.large,
-    PosterSize.extraLarge => l10n.extraLarge,
+    PosterSize.extraLarge || PosterSize.grandparents => l10n.extraLarge,
   };
 
   Widget _settingsRadioTile({

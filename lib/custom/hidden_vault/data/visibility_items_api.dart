@@ -456,6 +456,7 @@ class VisibilityItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
     bool recursive = false,
+    bool? hideWatched,
   }) async {
     final service = await _activeService();
     final effectiveFields = service == null ? fields : _withTags(fields);
@@ -468,6 +469,7 @@ class VisibilityItemsApi implements ItemsApi {
           enableImageTypes: enableImageTypes,
           imageTypeLimit: imageTypeLimit,
           recursive: recursive,
+          hideWatched: hideWatched,
         );
     if (service == null) return call(null, limit);
     await service.ensureReady();

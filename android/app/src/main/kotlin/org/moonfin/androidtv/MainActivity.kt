@@ -32,6 +32,7 @@ import android.os.SystemClock
 import android.util.Rational
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.WindowManager
 import androidx.mediarouter.media.MediaRouteSelector
 import androidx.mediarouter.media.MediaRouter
 import com.google.android.gms.cast.CastMediaControlIntent
@@ -84,6 +85,7 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
     }
 
     private var methodChannel: MethodChannel? = null
+    private var discoveryMulticastLock: android.net.wifi.WifiManager.MulticastLock? = null
     private var castChannel: MethodChannel? = null
     private var castEventsChannel: EventChannel? = null
     private var castEventsSink: EventChannel.EventSink? = null
@@ -303,6 +305,15 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             runCatching { window.colorMode = ActivityInfo.COLOR_MODE_HDR }
         }
+        // Android 14 and older keep a fullscreen landscape window clear of the
+        // camera cutout, which leaves a black strip beside the video. Android
+        // 15 draws under it already.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
         deepLinkFrom(intent)?.let { pendingDeepLink = it }
         gameInputManager?.registerInputDeviceListener(gameInputDeviceListener, null)
     }
@@ -408,8 +419,27 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
                     val trigger = call.argument<String>("trigger") ?: "pull"
                     result.success(DisplayCapabilities.query(this, trigger))
                 }
+                // Server discovery's mDNS browse (Silo's _silo._tcp): Wi-Fi
+                // drops multicast packets unless a lock is held.
+                "acquireMulticastLock" -> {
+                    val lock = discoveryMulticastLock
+                        ?: (applicationContext.getSystemService(Context.WIFI_SERVICE)
+                            as android.net.wifi.WifiManager)
+                            .createMulticastLock("moonfin_server_discovery")
+                            .also {
+                                it.setReferenceCounted(false)
+                                discoveryMulticastLock = it
+                            }
+                    lock.acquire()
+                    result.success(null)
+                }
+                "releaseMulticastLock" -> {
+                    discoveryMulticastLock?.let { if (it.isHeld) it.release() }
+                    result.success(null)
+                }
                 "buildFingerprint" -> result.success(Build.FINGERPRINT)
                 "uptimeMillis" -> result.success(SystemClock.uptimeMillis())
+                "renderer" -> result.success(MoonfinApplication.rendererSummary)
                 "dolbyVisionCodecCapabilities" -> {
                     result.success(MediaCodecCapabilities.queryDolbyVisionCapabilities())
                 }
@@ -601,10 +631,10 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
                     }
                 }
                 "stopGoogleCastSession" -> {
-                    withRemoteMediaClient(result) { remoteClient ->
-                        remoteClient.stop()
-                        result.success(null)
-                    }
+                    // Stopping only the media leaves the session up, and with it the
+                    // receiver, the cast icon and the notification.
+                    runCatching { CastContext.getSharedInstance(this).sessionManager.endCurrentSession(true) }
+                    result.success(null)
                 }
                 "getGoogleCastVolume" -> {
                     val session = getCurrentCastSession()
@@ -914,7 +944,7 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
         // pure dead work. The registration method itself stays: the plugin
         // casts this Activity to GamepadsCompatibleActivity and calls it
         // unconditionally, so the interface member must remain implemented.
-        return super.dispatchKeyEvent(event)
+        return super.dispatchKeyEvent(ModifierScanCodePolicy.forFlutter(event))
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
@@ -1104,6 +1134,7 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
     }
 
     override fun onDestroy() {
+        discoveryMulticastLock?.let { if (it.isHeld) it.release() }
         val shouldTerminateProcess = isFinishing && !isChangingConfigurations
         // Process-wide InputManager registration: without this the listener
         // keeps this Activity alive across every recreation.
@@ -1581,8 +1612,10 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
                 emitGoogleCastEvent("error", "Failed to start cast session: $error")
             }
 
+            // The SDK tries to resume the last session on launch, and failing that
+            // just means there's nothing left to rejoin.
             override fun onSessionResumeFailed(session: CastSession, error: Int) {
-                emitGoogleCastEvent("error", "Failed to resume cast session: $error")
+                emitGoogleCastEvent("disconnected")
             }
 
             override fun onSessionEnding(session: CastSession) {}
@@ -1775,7 +1808,7 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
             return
         }
 
-        startExternalPlayerProxy(launchIntent, result)
+        startExternalPlayer(launchIntent, args, result)
     }
 
     private fun chooseAndLaunchExternalPlayer(args: Map<*, *>, result: MethodChannel.Result) {
@@ -1805,7 +1838,36 @@ class MainActivity : AudioServiceActivity(), GamepadsCompatibleActivity {
         }
 
         val chooserIntent = Intent.createChooser(baseIntent, EXTERNAL_PLAYER_CHOOSER_TITLE)
-        startExternalPlayerProxy(chooserIntent, result)
+        startExternalPlayer(chooserIntent, args, result)
+    }
+
+    // A player that relaunches itself, as VLC does for a live stream, answers
+    // a waiting proxy at once and brings Moonfin back over it. A detached
+    // launch runs in its own task instead and the app waits for the viewer
+    // to come back.
+    private fun startExternalPlayer(
+        intent: Intent,
+        args: Map<*, *>,
+        result: MethodChannel.Result,
+    ) {
+        if (args["detached"] != true) {
+            startExternalPlayerProxy(intent, result)
+            return
+        }
+        try {
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            result.success(
+                mapOf(
+                    "completed" to false,
+                    "hasError" to false,
+                    "resultCode" to Activity.RESULT_OK,
+                ),
+            )
+        } catch (error: ActivityNotFoundException) {
+            result.error("PLAYER_NOT_FOUND", error.message, null)
+        } catch (error: Exception) {
+            result.error("LAUNCH_FAILED", error.message, null)
+        }
     }
 
     private fun startExternalPlayerProxy(

@@ -16,10 +16,19 @@ class _AboutCategoryScreen extends StatelessWidget {
             child: Image.asset('assets/images/logo_and_text.png', height: 72),
           ),
           const SizedBox(height: 8),
-          Center(
-            child: Text(
-              l10n.versionValue(appVersion),
-              style: Theme.of(context).textTheme.bodyMedium,
+          // hidden-vault: retain the unobtrusive Version tile as the Vault
+          // entry. The upstream seven-press After Hours trigger remains
+          // available on this focusable, visually unchanged version label.
+          InkWell(
+            onTap: () => AfterHoursTrigger.press(context),
+            focusColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            splashColor: Colors.transparent,
+            child: Center(
+              child: Text(
+                l10n.versionValue(appVersion),
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
             ),
           ),
           const SizedBox(height: 16),

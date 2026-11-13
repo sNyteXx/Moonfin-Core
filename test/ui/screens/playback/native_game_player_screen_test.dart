@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -72,17 +73,21 @@ class _FakeGamesApi extends GamesApi {
     String? system,
   }) async => const [];
 
+  /// What getGame answers and downloadRom writes, so a test can swap in
+  /// another system's game.
+  GameDetail detail = const GameDetail(
+    id: 'game1',
+    title: 'Test Game',
+    system: 'snes',
+    core: 'snes',
+    fileName: 'game.sfc',
+    sizeBytes: 3,
+    bios: [],
+  );
+  List<int> romBytes = const [1, 2, 3];
+
   @override
-  Future<GameDetail?> getGame(String libraryId, String gameId) async =>
-      const GameDetail(
-        id: 'game1',
-        title: 'Test Game',
-        system: 'snes',
-        core: 'snes',
-        fileName: 'game.sfc',
-        sizeBytes: 3,
-        bios: [],
-      );
+  Future<GameDetail?> getGame(String libraryId, String gameId) async => detail;
 
   @override
   Future<GameDetail?> setGameCoreOverride(
@@ -115,6 +120,7 @@ class _FakeGamesApi extends GamesApi {
     String? gameName,
     bool includeSaveUrl = false,
     String? saveId,
+    bool includeSramUrl = false,
   }) => '';
 
   @override
@@ -124,7 +130,7 @@ class _FakeGamesApi extends GamesApi {
     String destPath, {
     void Function(int received, int total)? onProgress,
   }) async {
-    await File(destPath).writeAsBytes([1, 2, 3]);
+    await File(destPath).writeAsBytes(romBytes);
   }
 
   @override
@@ -164,6 +170,23 @@ class _FakeNativeGamePlayer implements NativeGamePlayer {
   @override
   Stream<Map<String, dynamic>> get events => _eventsController.stream;
 
+  @override
+  Future<void> setPadState(
+    int port,
+    int lx,
+    int ly,
+    int rx,
+    int ry, {
+    int l2 = 0,
+    int r2 = 0,
+  }) async {}
+
+  @override
+  Future<int> analogStickPorts() async => 0;
+
+  @override
+  Future<void> setPointer(int port, bool pressed, int x, int y) async {}
+
   void emitError(String message) {
     _eventsController.add({'event': 'error', 'message': message});
   }
@@ -197,6 +220,7 @@ class _FakeNativeGamePlayer implements NativeGamePlayer {
   /// The settings the screen resolved for this game and handed to the core.
   Map<String, String>? loadOptions;
   bool? hardwareRenderingEnabled;
+  String? romPath;
   List<GameCoreOption> options = const [];
 
   @override
@@ -212,6 +236,7 @@ class _FakeNativeGamePlayer implements NativeGamePlayer {
   }) async {
     loadOptions = options;
     this.hardwareRenderingEnabled = hardwareRenderingEnabled;
+    this.romPath = romPath;
     return const GameLoadInfo(
       textureId: 7,
       width: 256,
@@ -241,8 +266,15 @@ class _FakeNativeGamePlayer implements NativeGamePlayer {
     stopCount++;
   }
 
+  /// Null captures nothing; a completer lets a test hold the save in flight.
+  Completer<Uint8List?>? pendingSaveState;
+  int saveStateCount = 0;
+
   @override
-  Future<Uint8List?> saveState() async => null;
+  Future<Uint8List?> saveState() {
+    saveStateCount++;
+    return pendingSaveState?.future ?? Future.value(null);
+  }
   @override
   Future<bool> loadState(Uint8List data) async => false;
   @override
@@ -666,6 +698,93 @@ void main() {
     },
   );
 
+  group('PlayStation discs', () {
+    // Opens a zipped PlayStation game through the real _prepare() flow and
+    // waits until it either starts or shows an error.
+    Future<void> openZippedDisc(
+      WidgetTester tester,
+      Map<String, List<int>> files,
+    ) async {
+      final zip = Archive();
+      files.forEach((name, bytes) => zip.add(ArchiveFile.bytes(name, bytes)));
+      gamesApi.romBytes = ZipEncoder().encodeBytes(zip);
+      gamesApi.detail = const GameDetail(
+        id: 'game1',
+        title: 'Crash Bandicoot (USA)',
+        system: 'PlayStation',
+        core: 'psx',
+        fileName: 'Crash Bandicoot (USA).zip',
+        sizeBytes: 0,
+        bios: [],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: NativeGamePlayerScreen(
+            libraryId: 'lib1',
+            gameId: 'game1',
+            core: 'psx',
+            startFresh: true,
+            hardwareRenderingEnabled: false,
+            player: player,
+          ),
+        ),
+      );
+      for (
+        var i = 0;
+        i < 60 &&
+            find.byType(Texture).evaluate().isEmpty &&
+            find.textContaining('PlayStation disc image').evaluate().isEmpty;
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+    }
+
+    testWidgets('a cue/bin zip unpacks every track and loads the .cue', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        await openZippedDisc(tester, {
+          'Crash Bandicoot (USA).cue': utf8.encode(
+            'FILE "Crash Bandicoot (USA).bin" BINARY\n',
+          ),
+          'Crash Bandicoot (USA).bin': List<int>.filled(4096, 7),
+        });
+
+        expect(find.byType(Texture), findsOneWidget);
+        expect(player.romPath, endsWith('Crash Bandicoot (USA).cue'));
+        final bin = File(
+          '${File(player.romPath!).parent.path}/Crash Bandicoot (USA).bin',
+        );
+        expect(await tester.runAsync(bin.length), 4096);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('a zip with no disc image says so instead of starting', (
+      tester,
+    ) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      try {
+        await openZippedDisc(tester, {
+          'GZnkJzlCwmDBOkwvDBGq.pkg': List<int>.filled(4096, 7),
+        });
+
+        expect(find.textContaining('PlayStation disc image'), findsOneWidget);
+        expect(player.romPath, isNull);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+  });
+
   testWidgets('Save & exit keeps the game running when the save fails', (
     tester,
   ) async {
@@ -761,6 +880,82 @@ void main() {
             'warning is about',
       );
       expect(find.byType(NativeGamePlayerScreen), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('Save & exit shows a saving indicator and saves the state once', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    try {
+      final router = GoRouter(
+        initialLocation: '/home',
+        routes: [
+          GoRoute(
+            path: '/home',
+            builder: (context, state) => const Scaffold(body: Text('home')),
+          ),
+          GoRoute(
+            path: '/game',
+            builder: (context, state) => NativeGamePlayerScreen(
+              libraryId: 'lib1',
+              gameId: 'game1',
+              core: 'snes',
+              startFresh: true,
+              player: player,
+            ),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      router.push('/game');
+      await tester.pump();
+      for (var i = 0; i < 60 && find.byType(Texture).evaluate().isEmpty; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(find.byType(Texture), findsOneWidget);
+
+      player.emitMenuPressed();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Exit'),
+        200,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Exit'));
+      await tester.pumpAndSettle();
+
+      final pending = Completer<Uint8List?>();
+      player.pendingSaveState = pending;
+      await tester.tap(find.text('Save & exit'));
+      await tester.pump();
+
+      expect(find.text('Saving…'), findsOneWidget);
+      expect(find.byType(NativeGamePlayerScreen), findsOneWidget);
+
+      pending.complete(Uint8List.fromList([1, 2, 3]));
+      // The indicator's spinner never settles, so pump in steps.
+      for (var i = 0; i < 20 && find.text('home').evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(find.text('home'), findsOneWidget);
+      expect(player.saveStateCount, 1);
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }

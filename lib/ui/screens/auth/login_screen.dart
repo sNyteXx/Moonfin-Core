@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
@@ -16,31 +17,100 @@ import '../../../auth/models/login_state.dart';
 import '../../../auth/models/server.dart';
 import '../../../auth/repositories/auth_repository.dart';
 import '../../../auth/repositories/server_repository.dart';
+import '../../../auth/repositories/server_user_repository.dart';
 import '../../../auth/repositories/session_repository.dart';
 import '../../../auth/store/authentication_store.dart';
+import '../../../auth/store/client_certificate_store.dart';
 import '../../../data/services/media_server_client_factory.dart';
+import '../../../data/services/pin_guard.dart';
+import '../../../data/services/server_pin_service.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/pin_code_util.dart';
 import '../../../util/platform_detection.dart';
+import '../../../util/server_url.dart';
+import '../../../util/silo_failure_message.dart';
 import '../../../util/web_diagnostics_failure.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/allow_self_signed_dialog.dart';
+import '../../widgets/client_certificate_dialog.dart';
 import '../../widgets/login_scaffold.dart';
 import '../../widgets/pin_entry_dialog.dart';
+import '../../widgets/sign_in_qr_code.dart';
+import 'silo_password_change_dialog.dart';
 
 final _kAccent = AppColorScheme.accent;
+
+/// Asks for the PIN after a sign in when the user set one. A sign in that
+/// proved who this is clears a forgotten PIN instead of asking for it again,
+/// otherwise Forgot PIN would lead right back to the same prompt.
+@visibleForTesting
+Future<bool> passesPinCheckAfterSignIn({
+  required PinCodeUtil pinUtil,
+  required bool forgotPin,
+  required bool canResetPin,
+  required Future<bool> Function(VoidCallback onForgotPin) askForPin,
+  Future<bool> Function()? resetPin,
+}) async {
+  if (!pinUtil.isPinEnabled) return true;
+  var forgot = forgotPin;
+  if (!forgot || !canResetPin) {
+    if (await askForPin(() => forgot = true)) return true;
+    if (!forgot || !canResetPin) return false;
+  }
+  if (resetPin != null) return resetPin();
+  await pinUtil.removePin();
+  return true;
+}
+
+/// Whether the Quick Connect QR sits beside the code and the buttons, which
+/// takes a card with room to the side: a TV, or a wide landscape window. In a
+/// small or portrait window it goes under the code.
+@visibleForTesting
+bool quickConnectQrBeside({required bool isTV, required Size screen}) =>
+    isTV || (screen.shortestSide >= 600 && screen.width > screen.height);
+
+/// A sign-in code as people read it: Jellyfin's six digits as 3+3, Silo's
+/// eight as 4+4 (Silo sends `4821-7730` and the dash is dropped).
+@visibleForTesting
+String formatQuickConnectCode(String code) {
+  final digits = code.replaceAll(RegExp(r'[\s-]'), '');
+  if (digits.length == 6) {
+    return '${digits.substring(0, 3)} ${digits.substring(3)}';
+  }
+  if (digits.length == 8) {
+    return '${digits.substring(0, 4)} ${digits.substring(4)}';
+  }
+  return code;
+}
+
+/// A verification page as it is shown for typing: without `https://` and a
+/// trailing slash (`silo.example/activate`).
+@visibleForTesting
+String quickConnectDisplayUri(String uri) => uri
+    .replaceFirst(RegExp(r'^https?://', caseSensitive: false), '')
+    .replaceFirst(RegExp(r'/$'), '');
 
 class LoginScreen extends StatefulWidget {
   final String serverId;
   final String? prefillUsername;
   final bool hasPassword;
 
+  /// Set when the user list had nobody to show and sent us straight here, so
+  /// going back to it would only bounce back to this screen.
+  final bool backToServerList;
+
+  /// Set when Forgot PIN sent us here, so signing in clears the PIN instead of
+  /// asking for it again.
+  final bool resetPin;
+
   const LoginScreen({
     super.key,
     required this.serverId,
     this.prefillUsername,
     this.hasPassword = true,
+    this.backToServerList = false,
+    this.resetPin = false,
   });
 
   @override
@@ -63,23 +133,47 @@ class _LoginScreenState extends State<LoginScreen> {
   final _signInFocus = FocusNode();
   final _backFocus = FocusNode();
   final _qcBtnFocus = FocusNode();
+  final _newCodeFocus = FocusNode();
   final _pwBtnFocus = FocusNode();
   final _allowCertFocus = FocusNode();
+  final _clientCertFocus = FocusNode();
 
   Server? _server;
   MediaServerClient? _client;
   bool _isLoading = false;
   String? _errorMessage;
+
+  /// Set when Forgot PIN could not clear the PIN on the server, which is not
+  /// the same as having typed it wrong.
+  bool _pinResetRefused = false;
   bool _untrustedCertificate = false;
+  bool _clientCertificateRequired = false;
   List<String> _recentUsernames = const [];
 
   bool _supportsQuickConnect = false;
   bool _showQuickConnect = true;
+  bool _quickConnectWebLink = false;
   bool _tvKeyboardVisible = false;
 
   Timer? _quickConnectTimer;
   String? _quickConnectCode;
   String? _quickConnectSecret;
+
+  /// Optional extras a server sends with the code ([QuickConnectKeys], which
+  /// Silo sends and Jellyfin doesn't): the page to enter it on, the same with
+  /// the code filled in for the QR code, and whether someone has opened it.
+  String? _quickConnectUri;
+  String? _quickConnectUriComplete;
+  bool _quickConnectOpened = false;
+
+  /// The code was declined: polling stopped, and the screen offers a new one.
+  bool _quickConnectEnded = false;
+
+  /// Bumped whenever a code is replaced or dropped, so a poll that was on its
+  /// way for the old code neither signs in nor schedules another.
+  int _quickConnectGeneration = 0;
+
+  bool get _isSilo => _server?.serverType == ServerType.silo;
 
   bool get _hasUsername => widget.prefillUsername != null;
   bool get _hasPassword => widget.hasPassword;
@@ -130,8 +224,10 @@ class _LoginScreenState extends State<LoginScreen> {
     _signInFocus.dispose();
     _backFocus.dispose();
     _qcBtnFocus.dispose();
+    _newCodeFocus.dispose();
     _pwBtnFocus.dispose();
     _allowCertFocus.dispose();
+    _clientCertFocus.dispose();
     _quickConnectTimer?.cancel();
     super.dispose();
   }
@@ -257,6 +353,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _client = client;
         _supportsQuickConnect = supportsQC;
         _showQuickConnect = supportsQC;
+        _quickConnectWebLink = features.supportsQuickConnectWebLink;
       });
       if (supportsQC) {
         _startQuickConnect(isInitial: true);
@@ -284,8 +381,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _showQuickConnect = true;
       _errorMessage = null;
       _untrustedCertificate = false;
+      _clientCertificateRequired = false;
     });
-    if (_quickConnectTimer == null) _startQuickConnect();
+    if (_quickConnectCode == null) _startQuickConnect();
   }
 
   void _selectPassword() {
@@ -295,6 +393,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _showQuickConnect = false;
       _errorMessage = null;
       _untrustedCertificate = false;
+      _clientCertificateRequired = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -306,9 +405,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _startQuickConnect({bool isInitial = false}) async {
     final client = _client;
     if (client == null) return;
+    final generation = ++_quickConnectGeneration;
+    _quickConnectTimer?.cancel();
+    _quickConnectTimer = null;
 
     try {
       final result = await client.authApi.initiateQuickConnect();
+      if (generation != _quickConnectGeneration) return;
       final code = result['Code'] as String?;
       final secret = result['Secret'] as String?;
       if (code == null || secret == null) return;
@@ -317,15 +420,32 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() {
           _quickConnectCode = code;
           _quickConnectSecret = secret;
+          _quickConnectUri =
+              result[QuickConnectKeys.verificationUri] as String?;
+          _quickConnectUriComplete =
+              result[QuickConnectKeys.verificationUriComplete] as String?;
+          _quickConnectOpened = false;
+          _quickConnectEnded = false;
+          _errorMessage = null;
         });
       }
 
-      _quickConnectTimer = Timer.periodic(
-        const Duration(seconds: 5),
-        (_) => _pollQuickConnect(),
-      );
+      _scheduleQuickConnectPoll(generation, result);
+    } on QuickConnectUnavailableError {
+      if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
+      setState(() {
+        _errorMessage = _isSilo
+            ? l10n.siloCodeSignInOff
+            : l10n.quickConnectDisabled;
+      });
+      if (isInitial) _selectPassword();
     } on DioException catch (e) {
       if (!mounted) return;
+      if (isClientCertificateRejected(e)) {
+        unawaited(_showClientCertificateRequired());
+        return;
+      }
       if (isUntrustedCertificate(e)) {
         _showUntrustedCertificate();
         return;
@@ -345,6 +465,11 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       final l10n = AppLocalizations.of(context);
+      final siloFailure = SiloFailure.of(e);
+      if (siloFailure != null) {
+        setState(() => _errorMessage = siloFailure.message(l10n));
+        return;
+      }
       final isQcDisabled = status == 401 ||
           detail.toLowerCase().contains('disabled') ||
           detail.toLowerCase().contains('quickconnect is disabled') ||
@@ -368,75 +493,138 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
       setState(
-        () => _errorMessage =
-            l10n.quickConnectUnavailable(describeError(e, l10n)),
+        () => _errorMessage = l10n.quickConnectUnavailable(
+          describeError(e, l10n),
+        ),
       );
     }
   }
 
-  Future<void> _pollQuickConnect() async {
+  /// The next check, after the wait the server asked for (Silo:
+  /// `poll_after`), or 5 seconds. Checks follow each other instead of running
+  /// on a fixed clock, so a slow answer never overlaps the next.
+  void _scheduleQuickConnectPoll(int generation, Map<String, dynamic> answer) {
+    if (generation != _quickConnectGeneration || !mounted) return;
+    final seconds = answer[QuickConnectKeys.pollAfterSeconds];
+    final wait = seconds is num && seconds > 0
+        ? Duration(milliseconds: (seconds * 1000).round())
+        : const Duration(seconds: 5);
+    _quickConnectTimer?.cancel();
+    _quickConnectTimer = Timer(wait, () => _pollQuickConnect(generation));
+  }
+
+  Future<void> _pollQuickConnect(int generation) async {
     final client = _client;
     final secret = _quickConnectSecret;
     if (client == null || secret == null) return;
+    if (generation != _quickConnectGeneration) return;
 
+    Map<String, dynamic> result;
     try {
-      final result = await client.authApi.checkQuickConnect(secret);
-      final authenticated = result['Authenticated'] as bool? ?? false;
-      if (authenticated) {
+      result = await client.authApi.checkQuickConnect(secret);
+    } catch (_) {
+      // A network blip: keep the code and ask again.
+      _scheduleQuickConnectPoll(generation, const {});
+      return;
+    }
+    if (generation != _quickConnectGeneration || !mounted) return;
+
+    final authenticated = result['Authenticated'] as bool? ?? false;
+    if (authenticated) {
+      _stopQuickConnect();
+      await _signInWithQuickConnect(client, secret);
+      return;
+    }
+
+    switch (result[QuickConnectKeys.status]) {
+      case QuickConnectKeys.statusDenied:
         _stopQuickConnect();
-        final authResult = await _authRepo.authenticateWithQuickConnect(
-          client: client,
-          serverId: _server!.id,
-          secret: secret,
-        );
-        if (authResult is Authenticated && mounted) {
-          await _sessionRepo.switchCurrentSession(
-            serverId: authResult.serverId,
-            userId: authResult.userId,
-          );
-          if (mounted) {
-            final store = GetIt.instance<PreferenceStore>();
-            final pinUtil = PinCodeUtil(store, authResult.userId);
+        setState(() {
+          _quickConnectEnded = true;
+          _errorMessage = AppLocalizations.of(context).siloCodeSignInDenied;
+        });
+        return;
+      case QuickConnectKeys.statusExpired || QuickConnectKeys.statusUsed:
+        unawaited(_startQuickConnect());
+        return;
+    }
 
-            if (pinUtil.isPinEnabled) {
-              final verified = await PinEntryDialog.show(
-                context,
-                mode: PinEntryMode.verify,
-                onVerify: pinUtil.verifyPin,
-                onForgotPin: () {
-                  if (mounted) context.go(Destinations.serverSelect);
-                },
-              );
+    final opened = result[QuickConnectKeys.opened] == true;
+    if (opened != _quickConnectOpened) {
+      setState(() => _quickConnectOpened = opened);
+    }
+    _scheduleQuickConnectPoll(generation, result);
+  }
 
-              if (!verified) {
-                // For quick connect, if PIN verification fails, go back to login screen
-                // to allow user to try with different credentials or method
-                if (mounted) context.go('${Destinations.login}?serverId=${_server!.id}');
-                return;
-              }
-            }
-
-            if (mounted) context.go(Destinations.home);
-          }
+  Future<void> _signInWithQuickConnect(
+    MediaServerClient client,
+    String secret,
+  ) async {
+    final authResult = await _authRepo.authenticateWithQuickConnect(
+      client: client,
+      serverId: _server!.id,
+      secret: secret,
+    );
+    if (!mounted) return;
+    if (authResult case SiloChooseProfile(:final serverId)) {
+      _openProfileChoice(serverId);
+      return;
+    }
+    if (authResult is! Authenticated) {
+      final l10n = AppLocalizations.of(context);
+      setState(() {
+        _quickConnectEnded = true;
+        _errorMessage = switch (authResult) {
+          SignInForbidden() => l10n.loginForbidden,
+          SiloCodeSignInPasswordChangeRequired() =>
+            l10n.siloCodeSignInPasswordChangeRequired,
+          ServerUnavailable() => l10n.serverUnavailable,
+          SiloRequestRefused(:final failure) => failure.message(l10n),
+          ApiClientError(:final error) => error,
+          _ => l10n.loginFailed,
+        };
+      });
+      return;
+    }
+    await _sessionRepo.switchCurrentSession(
+      serverId: authResult.serverId,
+      userId: authResult.userId,
+    );
+    if (mounted) {
+      if (!await _passesPinCheck(authResult.userId, canResetPin: true)) {
+        if (mounted && _pinResetRefused) {
+          _finishLoginWithError(AppLocalizations.of(context).pinResetFailed);
+          return;
         }
+        // A failed PIN goes back to sign in, where another account or
+        // method can be tried.
+        if (mounted) context.go('${Destinations.login}?serverId=${_server!.id}');
+        return;
       }
-    } catch (_) {}
+
+      if (mounted) context.go(Destinations.home);
+    }
   }
 
   void _stopQuickConnect() {
+    _quickConnectGeneration++;
     _quickConnectTimer?.cancel();
     _quickConnectTimer = null;
     if (mounted) {
       setState(() {
         _quickConnectCode = null;
         _quickConnectSecret = null;
+        _quickConnectUri = null;
+        _quickConnectUriComplete = null;
+        _quickConnectOpened = false;
+        _quickConnectEnded = false;
       });
     }
   }
 
   void _navigateBack() {
     final server = _server;
-    if (server == null) {
+    if (server == null || widget.backToServerList) {
       context.go(Destinations.serverSelect);
       return;
     }
@@ -456,15 +644,53 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _allowSelfSignedAndRetry() async {
     if (!await confirmAllowSelfSignedCertificates(context) || !mounted) return;
+    await _retrySignIn();
+  }
+
+  Future<void> _retrySignIn() async {
     setState(() {
       _errorMessage = null;
       _untrustedCertificate = false;
+      _clientCertificateRequired = false;
     });
     if (_showQuickConnect) {
       await _startQuickConnect();
     } else {
       await _login();
     }
+  }
+
+  Future<void> _showClientCertificateRequired() async {
+    final l10n = AppLocalizations.of(context);
+    final host = Uri.tryParse(_server?.address ?? '')?.host ?? '';
+    final stored = await GetIt.instance<ClientCertificateStore>().get(host);
+    if (!mounted) return;
+    final expired = stored != null && stored.notAfter.isBefore(DateTime.now());
+    setState(() {
+      _isLoading = false;
+      _clientCertificateRequired = true;
+      _errorMessage = expired
+          ? l10n.clientCertExpired(
+              MaterialLocalizations.of(
+                context,
+              ).formatMediumDate(stored.notAfter.toLocal()),
+            )
+          : l10n.clientCertRequired;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _clientCertFocus.requestFocus();
+    });
+  }
+
+  Future<void> _importClientCertAndLogin() async {
+    final server = _server;
+    if (server == null) return;
+    final saved = await showClientCertificateDialog(
+      context: context,
+      host: Uri.tryParse(server.address)?.host ?? server.address,
+    );
+    if (saved == null || !mounted) return;
+    await _retrySignIn();
   }
 
   void _finishLoginWithError(String message) {
@@ -512,6 +738,54 @@ class _LoginScreenState extends State<LoginScreen> {
     return true;
   }
 
+  Future<bool> _passesPinCheck(
+    String userId, {
+    required bool canResetPin,
+  }) async {
+    final serverId = _server?.id;
+    final guard = PinGuard.forAccount(
+      store: GetIt.instance<PreferenceStore>(),
+      service: GetIt.instance<ServerPinService>(),
+      userId: userId,
+      server: _server,
+      accessToken: serverId == null
+          ? null
+          : GetIt.instance<ServerUserRepository>()
+                .getStoredServerUsers(serverId)
+                .where((stored) => stored.id == userId)
+                .map((stored) => stored.accessToken)
+                .firstOrNull,
+    );
+    _pinResetRefused = false;
+    // A device that has not seen this user's PIN learns of it here.
+    await guard.refresh();
+    if (!mounted) return false;
+    return passesPinCheckAfterSignIn(
+      pinUtil: guard.pin,
+      forgotPin: widget.resetPin,
+      canResetPin: canResetPin,
+      resetPin: () async {
+        final cleared = await guard.resetForgotten(userId);
+        if (!cleared) _pinResetRefused = true;
+        return cleared;
+      },
+      askForPin: (onForgotPin) => PinEntryDialog.show(
+        context,
+        mode: PinEntryMode.verify,
+        onVerifyAsync: guard.verify,
+        onForgotPin: onForgotPin,
+      ),
+    );
+  }
+
+  /// A Silo account with several household profiles (or a PIN-locked one)
+  /// signed in: its profiles are stored as the server's users, so the
+  /// server's user grid is the "who's watching" picker.
+  void _openProfileChoice(String serverId) {
+    setState(() => _isLoading = false);
+    context.go('${Destinations.server}?serverId=$serverId');
+  }
+
   Future<void> _login() async {
     // The sign in button goes dead once this is running, but the flag only
     // reaches it on the next build, and the password field submits straight
@@ -524,10 +798,11 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
       _errorMessage = null;
       _untrustedCertificate = false;
+      _clientCertificateRequired = false;
     });
 
     try {
-      final result = await _authRepo.authenticate(
+      var result = await _authRepo.authenticate(
         client: _client!,
         serverId: _server!.id,
         username: username,
@@ -535,6 +810,30 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (!mounted) return;
+
+      if (result case SiloPasswordChangeRequired(
+        :final minimumLength,
+        :final maximumBytes,
+      )) {
+        final outcome = await SiloPasswordChangeDialog.show(
+          context,
+          minimumLength: minimumLength,
+          maximumBytes: maximumBytes,
+          temporaryPassword: _passwordController.text,
+          onSubmit: _authRepo.changeRequiredSiloPassword,
+          onCancel: _authRepo.cancelRequiredSiloPasswordChange,
+        );
+        if (!mounted) return;
+        if (outcome == null) {
+          // Canceling ended the login, so go back to the form.
+          setState(() => _isLoading = false);
+          return;
+        }
+        // From here on the new password is the one that signs in (and the
+        // one handed on after sign-in, for Seerr).
+        _passwordController.text = outcome.newPassword;
+        result = outcome.state;
+      }
 
       final l10n = AppLocalizations.of(context);
       switch (result) {
@@ -547,27 +846,21 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           if (!mounted) return;
           if (switched) {
-            final store = GetIt.instance<PreferenceStore>();
-            final pinUtil = PinCodeUtil(store, result.userId);
-
-            if (pinUtil.isPinEnabled) {
-              final verified = await PinEntryDialog.show(
-                context,
-                mode: PinEntryMode.verify,
-                onVerify: pinUtil.verifyPin,
-                onForgotPin: () {
-                  if (mounted) context.go(Destinations.serverSelect);
-                },
-              );
-
-              if (!verified) {
-                // Lands back on a screen that has to take another attempt.
-                if (mounted) {
-                  setState(() => _isLoading = false);
-                  context.go('${Destinations.login}?serverId=${_server!.id}');
-                }
+            final passed = await _passesPinCheck(
+              result.userId,
+              canResetPin: _passwordController.text.isNotEmpty,
+            );
+            if (!passed) {
+              if (mounted && _pinResetRefused) {
+                _finishLoginWithError(l10n.pinResetFailed);
                 return;
               }
+              // Lands back on a screen that has to take another attempt.
+              if (mounted) {
+                setState(() => _isLoading = false);
+                context.go('${Destinations.login}?serverId=${_server!.id}');
+              }
+              return;
             }
 
             if (mounted) context.go(Destinations.home);
@@ -586,10 +879,22 @@ class _LoginScreenState extends State<LoginScreen> {
             return;
           }
           _finishLoginWithError(error);
+        case SignInForbidden():
+          _finishLoginWithError(l10n.loginForbidden);
         case ServerUnavailable():
           _finishLoginWithError(l10n.serverUnavailable);
+        case SiloRequestRefused(:final failure):
+          _finishLoginWithError(failure.message(l10n));
+        case SiloChooseProfile(:final serverId):
+          _openProfileChoice(serverId);
         case UntrustedCertificate():
           _showUntrustedCertificate();
+        case ClientCertificateRequired():
+          unawaited(_showClientCertificateRequired());
+        case SiloPasswordChangeUnavailable():
+          _finishLoginWithError(l10n.siloPasswordChangeUnavailable);
+        case SiloPasswordChangedSignInAgain():
+          _finishLoginWithError(l10n.siloPasswordChangedSignInAgain);
         default:
           _finishLoginWithError(l10n.loginFailed);
       }
@@ -602,19 +907,18 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     if (_server == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return SignInBackScope(
+        onBack: _navigateBack,
+        child: const Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
     }
 
     final l10n = AppLocalizations.of(context);
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _navigateBack();
-      },
+    return SignInBackScope(
+      onBack: _navigateBack,
       child: LoginScaffold(
-        maxWidth: 600,
+        maxWidth: _quickConnectQrBeside ? 900 : 600,
         header: Padding(
           padding: const EdgeInsets.only(bottom: 24),
           child: Image.asset('assets/images/logo_and_text.png', height: 64),
@@ -623,35 +927,50 @@ class _LoginScreenState extends State<LoginScreen> {
           duration: const Duration(milliseconds: 180),
           height: PlatformDetection.isTV && _tvKeyboardVisible ? 280 : 0,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              l10n.signIn,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              l10n.connectingToServer(_server!.name),
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: _loginForeground(0.5)),
-            ),
-            const SizedBox(height: 24),
-            if (_supportsQuickConnect) ...[
-              _buildToggleRow(),
+        child: _withQuickConnectQrBeside(
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.signIn,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                l10n.connectingToServer(_server!.name),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: _loginForeground(0.5)),
+              ),
               const SizedBox(height: 24),
-              if (_showQuickConnect)
-                _buildQuickConnectContent()
-              else
+              if (_supportsQuickConnect) ...[
+                _buildToggleRow(),
+                const SizedBox(height: 24),
+                if (_showQuickConnect)
+                  _buildQuickConnectContent()
+                else
+                  _buildCredentialsContent(),
+              ] else
                 _buildCredentialsContent(),
-            ] else
-              _buildCredentialsContent(),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _withQuickConnectQrBeside(Widget content) {
+    if (!_quickConnectQrBeside) return content;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Flexible(child: content),
+        const SizedBox(width: 40),
+        _buildQuickConnectQr(_quickConnectQrUrl!),
+      ],
     );
   }
 
@@ -663,7 +982,7 @@ class _LoginScreenState extends State<LoginScreen> {
       runSpacing: 12,
       children: [
         _buildToggleButton(
-          label: l10n.quickConnect,
+          label: _isSilo ? l10n.siloCodeSignIn : l10n.quickConnect,
           isSelected: _showQuickConnect,
           focusNode: _qcBtnFocus,
           onPressed: _selectQuickConnect,
@@ -737,22 +1056,102 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  /// Where a phone that is already signed in can approve the code. Null on a
+  /// phone or tablet, since that's the device that would scan it, or when the
+  /// server's web client can't open it with the code filled in.
+  String? get _quickConnectApprovalUrl {
+    final server = _server;
+    final code = _quickConnectCode;
+    if (PlatformDetection.isMobile ||
+        server == null ||
+        code == null ||
+        !_quickConnectWebLink) {
+      return null;
+    }
+    return quickConnectApprovalUrl(server.address, code);
+  }
+
+  /// What the QR opens: Silo's verification page with the code filled in, or
+  /// the web client's Quick Connect page where it can take the code.
+  String? get _quickConnectQrUrl =>
+      _quickConnectUriComplete ?? _quickConnectApprovalUrl;
+
+  bool get _quickConnectQrBeside =>
+      _showQuickConnect &&
+      _quickConnectQrUrl != null &&
+      quickConnectQrBeside(
+        isTV: PlatformDetection.isTV,
+        screen: MediaQuery.sizeOf(context),
+      );
+
+  Widget _buildQuickConnectQr(String approvalUrl) {
+    final l10n = AppLocalizations.of(context);
+    // A TV has no browser to open and no pointer to tap with. Anywhere else the
+    // QR is also a button, since the device showing it can approve the code
+    // itself in its own browser.
+    final tappable = !PlatformDetection.isTV;
+    final qr = SignInQrCode(
+      data: approvalUrl,
+      size: _quickConnectQrBeside ? 200 : 140,
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (tappable)
+          Semantics(
+            button: true,
+            label: l10n.quickConnectTapOrScanHint,
+            child: InkWell(
+              borderRadius: AppRadius.circular(12),
+              onTap: () => launchUrl(
+                Uri.parse(approvalUrl),
+                mode: LaunchMode.externalApplication,
+              ),
+              child: qr,
+            ),
+          )
+        else
+          qr,
+        const SizedBox(height: 8),
+        SizedBox(
+          width: _quickConnectQrBeside ? 220 : null,
+          child: Text(
+            tappable
+                ? l10n.quickConnectTapOrScanHint
+                : l10n.quickConnectScanHint,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: _loginForeground(0.5)),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildQuickConnectContent() {
     final l10n = AppLocalizations.of(context);
+    final code = _quickConnectCode;
+    final uri = _quickConnectUri;
+    final qrUrl = _quickConnectQrUrl;
+    final qrBeside = _quickConnectQrBeside;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          l10n.quickConnectInstruction,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: _loginForeground(0.7)),
+          !_isSilo
+              ? l10n.quickConnectInstruction
+              : uri != null
+              ? l10n.siloCodeSignInInstruction(quickConnectDisplayUri(uri))
+              : l10n.siloCodeSignInInstructionNoLink,
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: _loginForeground(0.7)),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 20),
-        if (_quickConnectCode != null) ...[
+        if (code != null) ...[
           Text(
-            _formatCode(_quickConnectCode!),
+            formatQuickConnectCode(code),
             textAlign: TextAlign.center,
             // The space between the digit groups is bidi neutral, so an RTL
             // paragraph swaps the groups and shows a code the server never
@@ -766,6 +1165,10 @@ class _LoginScreenState extends State<LoginScreen> {
               fontFamily: 'monospace',
             ),
           ),
+          if (!qrBeside && qrUrl != null) ...[
+            const SizedBox(height: 20),
+            _buildQuickConnectQr(qrUrl),
+          ],
           const SizedBox(height: 20),
           SizedBox(
             height: 24,
@@ -777,18 +1180,32 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            l10n.waitingForAuthorization,
+            _quickConnectOpened
+                ? l10n.siloCodeSignInOpened
+                : l10n.waitingForAuthorization,
+            textAlign: TextAlign.center,
             style: Theme.of(
               context,
             ).textTheme.bodySmall?.copyWith(color: _loginForeground(0.5)),
           ),
         ] else ...[
-          if (_errorMessage == null)
-            const CircularProgressIndicator(),
+          if (_errorMessage == null) const CircularProgressIndicator(),
         ],
         if (_errorMessage != null) ...[
           const SizedBox(height: 16),
-          Text(_errorMessage!, style: TextStyle(color: _loginErrorColor)),
+          Text(
+            _errorMessage!,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _loginErrorColor),
+          ),
+        ],
+        if (_quickConnectEnded) ...[
+          const SizedBox(height: 12),
+          _buildActionButton(
+            label: l10n.siloCodeSignInNewCode,
+            focusNode: _newCodeFocus,
+            onPressed: _startQuickConnect,
+          ),
         ],
         if (_untrustedCertificate) ...[
           const SizedBox(height: 12),
@@ -796,6 +1213,14 @@ class _LoginScreenState extends State<LoginScreen> {
             label: l10n.settingsAllowSelfSignedCerts,
             focusNode: _allowCertFocus,
             onPressed: _allowSelfSignedAndRetry,
+          ),
+        ],
+        if (_clientCertificateRequired) ...[
+          const SizedBox(height: 12),
+          _buildActionButton(
+            label: l10n.clientCertAddButton,
+            focusNode: _clientCertFocus,
+            onPressed: _importClientCertAndLogin,
           ),
         ],
         const SizedBox(height: 24),
@@ -850,6 +1275,14 @@ class _LoginScreenState extends State<LoginScreen> {
             onPressed: _allowSelfSignedAndRetry,
           ),
         ],
+        if (_clientCertificateRequired) ...[
+          const SizedBox(height: 12),
+          _buildActionButton(
+            label: l10n.clientCertAddButton,
+            focusNode: _clientCertFocus,
+            onPressed: _importClientCertAndLogin,
+          ),
+        ],
         const SizedBox(height: 24),
         Wrap(
           alignment: WrapAlignment.center,
@@ -900,8 +1333,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ? InputPurpose.password
                   : InputPurpose.username,
               recentSuggestions: recentSuggestions,
-              preferSystemIme: _userPreferences.get(
-                UserPreferences.preferSystemImeKeyboard,
+              keyboardStyle: _userPreferences.get(
+                UserPreferences.keyboardStyle,
               ),
               hint: label,
               filled: true,
@@ -984,10 +1417,5 @@ class _LoginScreenState extends State<LoginScreen> {
             )
           : Text(label),
     );
-  }
-
-  String _formatCode(String code) {
-    if (code.length == 6) return '${code.substring(0, 3)} ${code.substring(3)}';
-    return code;
   }
 }

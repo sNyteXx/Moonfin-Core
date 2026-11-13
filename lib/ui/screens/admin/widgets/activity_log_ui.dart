@@ -3,6 +3,7 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:server_core/server_core.dart';
 
 import '../../../../l10n/app_localizations.dart';
+import '../../../../util/calendar_days.dart';
 
 String activityBucketLabel(DateTime date, AppLocalizations l10n, {DateTime? now}) {
   final reference = now ?? DateTime.now();
@@ -15,13 +16,11 @@ String activityBucketLabel(DateTime date, AppLocalizations l10n, {DateTime? now}
     return l10n.adminActivityLastHour;
   }
 
-  final local = date.toLocal();
-  final today = DateTime(reference.year, reference.month, reference.day);
-  final entryDay = DateTime(local.year, local.month, local.day);
-  if (!entryDay.isBefore(today)) {
+  final daysAgo = calendarDaysBetween(date.toLocal(), reference.toLocal());
+  if (daysAgo <= 0) {
     return l10n.adminActivityToday;
   }
-  if (diff.inDays < 2) {
+  if (daysAgo == 1) {
     return l10n.adminActivityYesterday;
   }
   return l10n.adminActivityOlder;
@@ -55,7 +54,8 @@ String activityTimeAgo(DateTime date, AppLocalizations l10n, {bool compact = tru
     if (diff.inMinutes < 60) return l10n.adminActivityMinutesShort(diff.inMinutes);
     if (diff.inHours < 24) return l10n.adminActivityHoursShort(diff.inHours);
     if (diff.inDays < 7) return l10n.adminActivityDaysShort(diff.inDays);
-    return l10n.adminActivityDateShort(date.month, date.day);
+    final local = date.toLocal();
+    return l10n.adminActivityDateShort(local.month, local.day);
   }
 
   if (diff.inDays > 0) return l10n.adminActivityDaysAgo(diff.inDays);
@@ -64,9 +64,33 @@ String activityTimeAgo(DateTime date, AppLocalizations l10n, {bool compact = tru
   return l10n.adminActivityJustNow;
 }
 
+/// The server's LogLevel names, in the order the severity filter lists them.
+const activitySeverities = [
+  'Trace',
+  'Debug',
+  'Information',
+  'Warning',
+  'Error',
+  'Critical',
+  'None',
+];
+
+String activitySeverityLabel(String severity, AppLocalizations l10n) =>
+    switch (severity) {
+      'Trace' => l10n.adminLogLevelTrace,
+      'Debug' => l10n.adminLogLevelDebug,
+      'Information' => l10n.adminLogLevelInformation,
+      'Warning' => l10n.adminLogLevelWarning,
+      'Error' => l10n.adminLogLevelError,
+      'Critical' => l10n.adminLogLevelCritical,
+      'None' => l10n.adminLogLevelNone,
+      _ => severity,
+    };
+
 (Color, Widget) activitySeverityIndicator(String severity, ThemeData theme) {
   switch (severity.toLowerCase()) {
     case 'error':
+    case 'critical':
       return (
         theme.colorScheme.error,
         Icon(Icons.error_outline, size: 15, color: theme.colorScheme.error),
@@ -74,11 +98,11 @@ String activityTimeAgo(DateTime date, AppLocalizations l10n, {bool compact = tru
     case 'warning':
     case 'warn':
       return (
-        AppColorScheme.statusPending,
+        AppColorScheme.recordingScheduled,
         Icon(
           Icons.warning_amber,
           size: 15,
-          color: AppColorScheme.statusPending,
+          color: AppColorScheme.recordingScheduled,
         ),
       );
     case 'information':

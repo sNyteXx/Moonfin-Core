@@ -21,10 +21,17 @@ class JellyfinSystemApi implements SystemApi {
   @override
   Future<bool> ping() async {
     try {
-      final response = await _dio.get('/System/Ping');
+      final response = await _dio.get(
+        '/System/Ping',
+        options: Options(
+          responseType: ResponseType.plain,
+          receiveTimeout: SystemApi.pingTimeout,
+        ),
+      );
       return response.statusCode == 200;
-    } catch (_) {
-      return false;
+    } catch (e) {
+      // A refusal for the token (revoked, say) still came from the server.
+      return pingAnsweredDespite(e);
     }
   }
 }

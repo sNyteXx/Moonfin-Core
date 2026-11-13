@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../widgets/bottom_nav/bottom_navbar.dart';
 import '../detail_layout_metrics.dart';
 
 /// Arranges the Modern detail pieces for portrait phones and tablets: a
@@ -34,8 +35,10 @@ class ModernPortraitLayout extends StatelessWidget {
       children: [
         backdrop,
         SafeArea(
+          bottom: false,
           child: SingleChildScrollView(
             controller: scrollController,
+            padding: EdgeInsets.only(bottom: bottomContentInset(context)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

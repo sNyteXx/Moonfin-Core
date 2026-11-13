@@ -83,6 +83,41 @@ void main() {
     expect(request()?.queryParameters['Fields'], 'PrimaryImageTag,ImageTags');
   });
 
+  test('asking for UserData also asks Emby for the last played date', () async {
+    final (dio, request) = _recordingDio();
+    final api = EmbyItemsApi(dio, () => 'user-1');
+
+    await api.getResumeItems(fields: 'DateCreated,UserData');
+    expect(
+      request()?.queryParameters['Fields'],
+      'DateCreated,UserData,UserDataLastPlayedDate',
+    );
+
+    await api.getNextUp(fields: 'UserData,ItemCounts');
+    expect(
+      request()?.queryParameters['Fields'],
+      'UserData,UserDataLastPlayedDate',
+    );
+
+    await api.getItems(fields: 'UserData,UserDataLastPlayedDate');
+    expect(
+      request()?.queryParameters['Fields'],
+      'UserData,UserDataLastPlayedDate',
+    );
+  });
+
+  test('grouping into collections uses the name Emby reads', () async {
+    final (dio, request) = _recordingDio();
+
+    await EmbyItemsApi(dio, () => 'user-1').getItems(collapseBoxSetItems: true);
+
+    expect(request()?.queryParameters['GroupItemsIntoCollections'], isTrue);
+    expect(
+      request()?.queryParameters.containsKey('CollapseBoxSetItems'),
+      isFalse,
+    );
+  });
+
   // Emby serves the same remote subtitle routes as Jellyfin. It ignores
   // MediaSourceId, so sending one buys nothing.
   group('remote subtitles', () {
@@ -235,5 +270,30 @@ void main() {
       request()?.queryParameters.containsKey('LegacyNextUp'),
       isFalse,
     );
+  });
+
+  test('a new playlist sends its items as a comma list', () async {
+    final (dio, request) = _recordingDio();
+
+    await EmbyItemsApi(
+      dio,
+      () => 'user-1',
+    ).createPlaylist(name: 'Mix', itemIds: ['a', 'b']);
+
+    expect(request()?.method, 'POST');
+    expect(request()?.path, '/Playlists');
+    expect(request()?.queryParameters, {'Name': 'Mix', 'Ids': 'a,b'});
+  });
+
+  test('a rename posts the whole item back with the new name', () async {
+    final (dio, request) = _recordingDio(
+      data: const {'Id': 'pl-1', 'Name': 'Old', 'Type': 'Playlist'},
+    );
+
+    await EmbyItemsApi(dio, () => 'user-1').renamePlaylist('pl-1', 'New');
+
+    expect(request()?.method, 'POST');
+    expect(request()?.path, '/Items/pl-1');
+    expect(request()?.data, {'Id': 'pl-1', 'Name': 'New', 'Type': 'Playlist'});
   });
 }

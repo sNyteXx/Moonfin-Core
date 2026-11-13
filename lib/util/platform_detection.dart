@@ -11,6 +11,12 @@ class PlatformDetection {
 
   static const double _mobileFormFactorBreakpoint = 600;
 
+  /// Whether a touch screen of this size has room for the layouts desktop
+  /// uses, as a tablet or an opened folding phone does. Takes the live size,
+  /// since a fold changes it while the app runs.
+  static bool hasTabletSizedScreen(Size size) =>
+      size.shortestSide >= _mobileFormFactorBreakpoint;
+
   static const bool isAppleTV = bool.fromEnvironment('MOONFIN_TVOS');
 
   /// True for the dedicated Android TV flavor produced by the Android TV
@@ -35,6 +41,11 @@ class PlatformDetection {
   static bool get isLinux =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
   static bool get isWeb => kIsWeb;
+
+  /// The ID this Flatpak was installed under, or null outside a Flatpak.
+  /// Flathub's ID isn't the native org.moonfin.linux.
+  static String? get flatpakAppId => isLinux ? linuxFlatpakAppId() : null;
+  static bool get isFlatpak => flatpakAppId != null;
 
   static String get linuxSessionType => '';
 
@@ -83,6 +94,7 @@ class PlatformDetection {
   static final Map<String, dynamic> _deviceMemory = <String, dynamic>{};
   static int? _uptimeAtProbeMs;
   static final Stopwatch _sinceUptimeProbe = Stopwatch();
+  static String? _renderer;
   static final Map<String, dynamic> _audioCapabilities = <String, dynamic>{};
   static bool _hasDisplayHdrCapabilities = false;
   static bool _hasDolbyVisionCodecCapabilities = false;
@@ -140,6 +152,8 @@ class PlatformDetection {
   static bool get supportsHevcMain10 => _capabilityBool('supportsHevcMain10');
   static int get hevcMainLevel => _capabilityInt('hevcMainLevel');
   static int get hevcMain10Level => _capabilityInt('hevcMain10Level');
+  static bool get offersHevcSoftwareDecode =>
+      _capabilityBool('offersHevcSoftwareDecode');
   static bool get supportsHevcDolbyVision =>
       _capabilityBool('supportsHevcDolbyVision');
   static bool get supportsHevcDolbyVisionEl =>
@@ -155,6 +169,8 @@ class PlatformDetection {
   static bool get supportsAv1Hdr10 => _capabilityBool('supportsAv1Hdr10');
   static bool get supportsAv1Hdr10Plus =>
       _capabilityBool('supportsAv1Hdr10Plus');
+  static bool get offersAv1SoftwareUhd =>
+      (isIOS || isAppleTV) && supportsAv1 && maxResolutionAv1Height < 2160;
 
   static bool get supportsVc1 => _capabilityBool('supportsVc1');
   static bool get supportsMpeg4 => _capabilityBool('supportsMpeg4');
@@ -214,6 +230,10 @@ class PlatformDetection {
   static String? get deviceBoard => _capabilityString('deviceBoard');
   static String? get deviceHardware => _capabilityString('deviceHardware');
   static String? get deviceSocModel => _capabilityString('deviceSocModel');
+
+  /// Amazon starts every Fire TV model name with AFT.
+  static bool get isFireTv =>
+      isAndroid && (deviceModel?.toUpperCase().startsWith('AFT') ?? false);
 
   static void setDisplayHdrTypes(Iterable<String>? values) {
     _hasDisplayHdrCapabilities = values != null;
@@ -280,6 +300,13 @@ class PlatformDetection {
       ..reset()
       ..start();
   }
+
+  /// Which renderer Android asked the engine for at launch and why, as the
+  /// platform side words it. Null until the probe answers, and on other
+  /// platforms.
+  static String? get renderer => _renderer;
+
+  static void setRenderer(String? value) => _renderer = value;
 
   static bool _capabilityBool(String key) {
     return _asBool(_mediaCodecCapabilities[key]);
@@ -397,9 +424,9 @@ class PlatformDetection {
   /// Windows user picking the TV layout would activate this by accident.
   ///
   /// This only says the platform is capable. Whether the window is actually
-  /// used is decided per session from the content, the display's HDR state and
-  /// [UserPreferences.nativeHdrOutput] - see `HdrOutputController`. That
-  /// preference is the off switch; there is deliberately no compile-time one.
+  /// used is decided per session - see `HdrOutputController`.
+  /// [UserPreferences.videoRenderer] is the off switch. There is deliberately
+  /// no compile-time one.
   static bool get supportsNativeHdrWindow => isWindows;
 
   /// Apple platforms use the shared AVPlayer-based preview/theme channels

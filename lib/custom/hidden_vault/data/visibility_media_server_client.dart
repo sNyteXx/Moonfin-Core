@@ -69,7 +69,9 @@ class VisibilityMediaServerClient implements MediaServerClient {
     final inner = _inner.userLibraryApi;
     return _userLibraryApis.putIfAbsent(
       inner,
-      () => _VisibilityUserLibraryApi(inner, _context),
+      () => inner is ResumeVisibilityApi
+          ? _VisibilityResumeUserLibraryApi(inner, _context)
+          : _VisibilityUserLibraryApi(inner, _context),
     );
   }
 
@@ -170,6 +172,11 @@ class VisibilityMediaServerClient implements MediaServerClient {
   @override
   AdminItemsApi get adminItemsApi => _inner.adminItemsApi;
 
+  // hidden-vault: keep optional 3.1 server APIs available through the
+  // visibility wrapper instead of silently degrading Emby administration.
+  @override
+  EmbyAdminApi? get embyAdminApi => _inner.embyAdminApi;
+
   @override
   SyncPlayApi? get syncPlayApi => _inner.syncPlayApi;
 
@@ -242,6 +249,12 @@ class _VisibilityUserLibraryApi implements UserLibraryApi {
   Future<void> unmarkPlayed(String itemId) => _inner.unmarkPlayed(itemId);
 
   @override
+  Future<void> updatePlayedPosition(
+    String itemId, {
+    required int positionTicks,
+  }) => _inner.updatePlayedPosition(itemId, positionTicks: positionTicks);
+
+  @override
   Future<void> updateUserRating(String itemId, {required bool likes}) =>
       _inner.updateUserRating(itemId, likes: likes);
 
@@ -254,6 +267,20 @@ class _VisibilityUserLibraryApi implements UserLibraryApi {
   @override
   Future<void> deleteUserRating(String itemId) =>
       _inner.deleteUserRating(itemId);
+}
+
+/// Retain Emby's optional "hide from Continue Watching" API without
+/// advertising it on servers that do not implement the capability.
+class _VisibilityResumeUserLibraryApi extends _VisibilityUserLibraryApi
+    implements ResumeVisibilityApi {
+  _VisibilityResumeUserLibraryApi(super.inner, super.context);
+
+  @override
+  Future<void> setHiddenFromResume(String itemId, {required bool hidden}) =>
+      (_inner as ResumeVisibilityApi).setHiddenFromResume(
+        itemId,
+        hidden: hidden,
+      );
 }
 
 class _VisibilityInstantMixApi implements InstantMixApi {

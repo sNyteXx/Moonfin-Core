@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import '../../../../preference/preference_constants.dart';
 import '../../../../preference/user_preferences.dart';
 import '../../../../util/platform_detection.dart';
+import '../../../widgets/bottom_nav/bottom_navbar.dart';
 
 /// Arranges the Modern detail pieces for landscape (TV, desktop, any landscape
 /// device): full-bleed backdrop, a left hero column, a floating Up Next card on
@@ -61,10 +62,14 @@ class ModernLandscapeLayout extends StatelessWidget {
       children: [
         backdrop,
         SafeArea(
+          bottom: false,
           child: SingleChildScrollView(
             controller: scrollController,
             physics: PlatformDetection.isTV ? const NeverScrollableScrollPhysics() : const ScrollPhysics(),
-            padding: EdgeInsets.only(top: (hasUpNext ? topInset - 24 : topInset - 12) / scale),
+            padding: EdgeInsets.only(
+              top: (hasUpNext ? topInset - 24 : topInset - 12) / scale,
+              bottom: bottomContentInset(context),
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

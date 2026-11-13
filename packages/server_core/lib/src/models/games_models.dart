@@ -66,18 +66,23 @@ class GameArtworkCapabilities {
   final bool priorityHints;
   final bool systemPreviews;
 
+  /// Protocol 3: descriptors carry artwork width/height.
+  final bool dimensions;
+
   const GameArtworkCapabilities({
     this.protocolVersion = 1,
     this.manifest = false,
     this.versionedAssets = false,
     this.priorityHints = false,
     this.systemPreviews = false,
+    this.dimensions = false,
   });
 
   bool get supportsManifest => protocolVersion >= 2 && manifest;
   bool get supportsVersionedAssets => protocolVersion >= 2 && versionedAssets;
   bool get supportsPriorityHints => protocolVersion >= 2 && priorityHints;
   bool get supportsSystemPreviews => protocolVersion >= 2 && systemPreviews;
+  bool get supportsDimensions => protocolVersion >= 3 && dimensions;
 
   factory GameArtworkCapabilities.fromJson(Map<String, dynamic> json) =>
       GameArtworkCapabilities(
@@ -92,6 +97,9 @@ class GameArtworkCapabilities {
         systemPreviews: json['systemPreviews'] is bool
             ? json['systemPreviews'] as bool
             : false,
+        dimensions: json['dimensions'] is bool
+            ? json['dimensions'] as bool
+            : false,
       );
 }
 
@@ -103,13 +111,26 @@ class GameArtworkDescriptor {
   final int? retryAfterSeconds;
   final int? refreshAfterSeconds;
 
+  /// Source artwork size; use for shape only, the served thumbnail may be smaller.
+  final int? width;
+  final int? height;
+
   const GameArtworkDescriptor({
     required this.state,
     this.url,
     this.revision,
     this.retryAfterSeconds,
     this.refreshAfterSeconds,
+    this.width,
+    this.height,
   });
+
+  double? get aspectRatio {
+    final w = width;
+    final h = height;
+    if (w == null || h == null || w <= 0 || h <= 0) return null;
+    return w / h;
+  }
 
   bool get isRenderable =>
       (state == 'thumbnailReady' || state == 'originalReady') &&
@@ -123,6 +144,8 @@ class GameArtworkDescriptor {
         revision: _stringValue(json['revision']),
         retryAfterSeconds: _intValue(json['retryAfterSeconds']),
         refreshAfterSeconds: _intValue(json['refreshAfterSeconds']),
+        width: _intValue(json['width']),
+        height: _intValue(json['height']),
       );
 }
 
@@ -407,4 +430,66 @@ class GameDetail {
     overview: json['overview'] as String?,
     rating: (json['rating'] as num?)?.toDouble(),
   );
+}
+
+/// The signed-in user's RomM link, from /Moonfin/Games/Romm/Account.
+class RommAccount {
+  /// False when the server has no RomM library to link to.
+  final bool available;
+  final bool linked;
+  final String? username;
+
+  /// The code waiting for approval in RomM, while a link is in progress.
+  final RommLinkCode? pending;
+
+  /// `expired`, `denied` or `unreachable`, set on the answer right after it
+  /// happened.
+  final String? error;
+
+  const RommAccount({
+    required this.available,
+    required this.linked,
+    this.username,
+    this.pending,
+    this.error,
+  });
+
+  static const unavailable = RommAccount(available: false, linked: false);
+
+  factory RommAccount.fromJson(Map<String, dynamic> json) => RommAccount(
+    available: json['available'] == true,
+    linked: json['linked'] == true,
+    username: _stringValue(json['username']),
+    pending: json['pending'] is Map
+        ? RommLinkCode.fromJson((json['pending'] as Map).cast<String, dynamic>())
+        : null,
+    error: _stringValue(json['error']),
+  );
+}
+
+class RommLinkCode {
+  final String userCode;
+  final String verificationUrl;
+
+  /// [verificationUrl] with the code filled in, for a QR or a link.
+  final String verificationUrlComplete;
+  final int intervalSeconds;
+
+  const RommLinkCode({
+    required this.userCode,
+    required this.verificationUrl,
+    required this.verificationUrlComplete,
+    required this.intervalSeconds,
+  });
+
+  factory RommLinkCode.fromJson(Map<String, dynamic> json) {
+    final url = _stringValue(json['verificationUrl']) ?? '';
+    return RommLinkCode(
+      userCode: _stringValue(json['userCode']) ?? '',
+      verificationUrl: url,
+      verificationUrlComplete:
+          _stringValue(json['verificationUrlComplete']) ?? url,
+      intervalSeconds: _intValue(json['intervalSeconds']) ?? 5,
+    );
+  }
 }

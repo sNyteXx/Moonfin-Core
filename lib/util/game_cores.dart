@@ -19,6 +19,28 @@ import 'platform_detection.dart';
 /// system's single-file ROMs.
 bool isArcadeFamilyCore(String core) => core == 'arcade' || core == 'mame';
 
+/// Whether [name] is a file the PlayStation core opens, going by the
+/// extensions pcsx_rearmed lists.
+bool isPlayStationDiscFile(String name) {
+  final dot = name.lastIndexOf('.');
+  return dot >= 0 &&
+      _playStationDiscExtensions.contains(name.substring(dot).toLowerCase());
+}
+
+const Set<String> _playStationDiscExtensions = {
+  '.bin',
+  '.cue',
+  '.img',
+  '.mdf',
+  '.pbp',
+  '.toc',
+  '.cbn',
+  '.m3u',
+  '.chd',
+  '.iso',
+  '.exe',
+};
+
 /// Preference key holding the list of downloaded core ids on Android and
 /// desktop.
 const String installedCoresPreferenceKey = 'installed_libretro_cores';
@@ -406,6 +428,18 @@ const Map<String, Map<String, String>> coreOptionDefaults = {
     // 1500 reached a stable plateau in the measured N64 runs.
     'mupen64plus-MaxTxCacheSize': '1500',
   },
+  // The core's default is a relative mouse, which the touch pad can't drive.
+  // Touch reads the pointer the pad sends for the lower screen.
+  'melonds': {'melonds_touch_mode': 'Touch'},
+};
+
+/// Additions to [coreOptionDefaults] for the Windows and Linux hosts.
+const Map<String, Map<String, String>> softwareOnlyCoreOptionDefaults = {
+  'mupen64plus_next': {
+    // Neither host has an OpenGL backend, so the GLideN64 default can't render.
+    'mupen64plus-rdp-plugin': 'angrylion',
+    'mupen64plus-rsp-plugin': 'parallel',
+  },
 };
 
 /// Apply app defaults without overriding stored user settings.
@@ -413,8 +447,12 @@ Map<String, String>? withCoreOptionDefaults(
   String coreId,
   Map<String, String>? settings,
 ) {
-  final defaults = coreOptionDefaults[coreId];
-  if (defaults == null || defaults.isEmpty) return settings;
+  final defaults = {
+    ...?coreOptionDefaults[coreId],
+    if (PlatformDetection.isWindows || PlatformDetection.isLinux)
+      ...?softwareOnlyCoreOptionDefaults[coreId],
+  };
+  if (defaults.isEmpty) return settings;
   return {...defaults, ...?settings};
 }
 

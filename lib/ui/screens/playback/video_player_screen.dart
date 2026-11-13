@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -12,32 +12,47 @@ import 'package:moonfin_design/moonfin_design.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:moonfin_native_video/moonfin_native_video.dart';
 import 'package:playback_core/playback_core.dart';
+import 'package:playback_silo/playback_silo.dart'
+    show
+        siloEndedOnServerMessage,
+        siloPlaybackUnavailableMessage,
+        siloUpgradeRequiredMessage;
 import 'package:server_core/server_core.dart';
 import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:volume_controller/volume_controller.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../../data/utils/chapter_markers.dart';
-import '../../../data/utils/video_range_label.dart';
+import '../../../data/utils/episode_cast_utils.dart';
+import '../../../data/utils/server_trickplay.dart';
+import '../../../data/utils/trickplay_headers.dart';
 import '../../../playback/subtitle_style.dart';
+import '../../../playback/subtitle_view_config.dart';
+import '../../../playback/system_volume.dart';
 import '../../../util/fullscreen_helper.dart';
 import '../../../util/scroll_sensitivity_binding.dart';
+import '../../widgets/image_source.dart';
+import '../../widgets/marquee_text.dart';
 import '../../widgets/player_volume_control.dart';
 import '../../widgets/playback/playback_time_row.dart';
 import '../../widgets/playback/player_logo.dart';
 import '../../widgets/playback/seek_icons.dart';
+import '../../widgets/playback/track_picker.dart';
 import '../../widgets/playback/trickplay.dart';
 import '../../widgets/playback/trickplay_tile_image.dart';
 
 import '../../../playback/html_video_backend.dart';
 import '../../../playback/aether_backend.dart';
 import '../../../playback/media_kit_player_backend.dart';
+import '../../../playback/mpv_letterbox_crop.dart';
 import '../../widgets/aether_video_view.dart';
 import '../../../playback/playback_lifecycle_handler.dart';
-import '../../../playback/playback_profile_diagnostics.dart';
+import '../../../playback/playback_info_sections.dart';
 import '../../../playback/hdr_stream_capability.dart';
-import '../../../auth/repositories/user_repository.dart';
+import '../../../playback/cinema_skip_controller.dart';
 import '../../../data/models/aggregated_item.dart';
+import '../../../data/models/calendar_entry.dart';
+import '../../../data/models/upcoming_episode_info.dart';
 import '../../../data/repositories/item_mutation_repository.dart';
 import '../../../data/models/media_segment.dart';
 import '../../../data/models/trickplay_info.dart';
@@ -50,29 +65,30 @@ import '../../../data/services/cast/native_cast_channel.dart';
 import '../../../data/services/cast/native_dlna_channel.dart';
 import '../../../data/services/media_segment_service.dart';
 import '../../../data/services/media_server_client_factory.dart';
+import '../../../data/services/plugin_sync_service.dart';
 import '../../../data/services/theme_music_service.dart';
+import '../../../data/services/upcoming_episode_service.dart';
 import '../../../platform/pip_service.dart';
+import '../../widgets/video_mini_player.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
-import '../../../util/audio_labels.dart';
-import '../../../util/subtitle_track_logic.dart';
-import '../../../util/auto_hdr_switcher.dart';
 import '../../../util/episode_playability.dart';
 import '../../../util/player_edge_drag.dart';
+import '../../../util/remote_subtitle_labels.dart';
+import '../../../util/player_surface_taps.dart';
 import '../../../playback/hdr_composition.dart';
 import '../../../playback/hdr_output_controller.dart';
 import '../../../playback/hdr_overlay_channel.dart';
 import 'hdr_overlay_capture.dart';
+import '../../../util/device_hinge.dart';
 import '../../../util/focus/back_key_release.dart';
 import '../../../util/focus/dpad_keys.dart';
 import '../../../util/focus/gamepad/gamepad_key_synthesizer.dart';
-import '../../../util/play_method_label.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/playback_time_label.dart';
 import '../../../util/server_url.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/adaptive/sf_symbol.dart';
-import '../../widgets/subtitle_preview.dart';
 import '../../screensaver/screensaver_controller.dart';
 import '../../widgets/remote_play_to_session_dialog.dart';
 import '../../widgets/track_selector_dialog.dart';
@@ -86,19 +102,62 @@ import '../../widgets/playback/stream_info_dialog.dart';
 import '../../widgets/keyboard_shortcuts/keyboard_shortcut_reference.dart';
 import '../../../playback/player_key_bindings.dart';
 import '../../widgets/syncplay/syncplay_player_button.dart';
+import '../../widgets/syncplay/watch_party_player_button.dart';
 import '../../../syncplay/syncplay_manager.dart';
+import '../../../watch_party/silo_watch_party_manager.dart';
+import '../watch_party/silo_watch_party_screen.dart';
+import '../../widgets/watch_party/watch_party_player_overlay.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../util/error_message.dart';
-import '../../widgets/playback/delay_footer.dart';
-import '../../widgets/progress_snack_bar.dart';
-import '../../../util/remote_subtitle_labels.dart';
-import '../../../util/subtitle_appearance_schedule.dart';
-import '../../../playback/delay_limits.dart';
 import '../../../playback/media3_player_backend.dart';
 import '../../../util/system_ui.dart';
 import 'playback_takeover.dart';
+import 'episode_browser.dart';
+import 'episode_browser_panel.dart';
 import 'osd_buttons.dart';
 import 'trickplay_housing_inset.dart';
+
+class _SubtitleLoadingSpinner extends StatefulWidget {
+  const _SubtitleLoadingSpinner();
+
+  @override
+  State<_SubtitleLoadingSpinner> createState() =>
+      _SubtitleLoadingSpinnerState();
+}
+
+class _SubtitleLoadingSpinnerState extends State<_SubtitleLoadingSpinner>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      // Run Flutter's stock spinner at half speed.
+      duration: Duration(
+        milliseconds:
+            CircularProgressIndicator.defaultAnimationDuration.inMilliseconds *
+            2,
+      ),
+      vsync: this,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CircularProgressIndicator(
+      controller: _controller,
+      strokeWidth: 2,
+      color: Colors.white,
+    );
+  }
+}
 
 class VideoPlayerScreen extends StatefulWidget {
   const VideoPlayerScreen({super.key});
@@ -108,13 +167,12 @@ class VideoPlayerScreen extends StatefulWidget {
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen>
-    with WidgetsBindingObserver, WindowListener, ImmersiveSystemUi {
-  static final _camelCaseSpaceRe = RegExp(r'(?<=[a-z])(?=[A-Z])');
+    with WidgetsBindingObserver, WindowListener, ImmersiveSystemUi, HingeAware {
   static const _streamLoadingLabel = 'Loading Stream...';
 
   /// How long away counts as having moved on rather than stepped out.
   static const _staleSuspendExit = Duration(minutes: 30);
-  static const _tvTemporarySpeed = 2.0;
+  static const _temporarySpeed = 2.0;
   static const _tvTemporarySpeedHoldDelay = Duration(milliseconds: 420);
   static const _seekPromptSuppressionDuration = Duration(milliseconds: 1200);
   static const _seekDragPromptSuppressionDuration = Duration(seconds: 4);
@@ -129,7 +187,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       ? GetIt.instance<MediaKitPlayerBackend>()
       : null;
   final _prefs = GetIt.instance<UserPreferences>();
-  final _autoHdrSwitcher = AutoHdrSwitcher();
+  // App lifetime and shared with the mini player, so minimizing does not
+  // flip the display out of HDR while the video carries on in the bar.
+  final _autoHdrSwitcher = VideoMiniPlayerController.instance.autoHdrSwitcher;
   final _clientFactory = GetIt.instance<MediaServerClientFactory>();
   final _castService = GetIt.instance<CastService>();
   final _nativeCast = GetIt.instance<NativeCastChannel>();
@@ -139,6 +199,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   final _lifecycleHandler = GetIt.instance<PlaybackLifecycleHandler>();
   final _themeMusicService = GetIt.instance<ThemeMusicService>();
   final _screensaverController = GetIt.instance<ScreensaverController>();
+  final SiloWatchPartyManager? _watchParty =
+      GetIt.instance.isRegistered<SiloWatchPartyManager>()
+      ? GetIt.instance<SiloWatchPartyManager>()
+      : null;
   final SyncPlayManager? _syncPlayManager =
       GetIt.instance.isRegistered<SyncPlayManager>()
       ? GetIt.instance<SyncPlayManager>()
@@ -148,6 +212,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// Parsed chapters for the current item, held so the seek bar doesn't
   /// reparse them on every position tick.
   List<Map<String, dynamic>> _chapters = const [];
+
+  /// The file [_chapters] were taken from.
+  String? _chaptersMediaSourceId;
+
+  /// The raw chapters of the version that plays.
+  List<Map<String, dynamic>> _playingChapters(AggregatedItem item) =>
+      itemChaptersForSource(item, _manager.currentResolution?.mediaSourceId);
   final _chaptersFetchedItemIds = <String>{};
 
   PlayerBackend? get _activeBackend => _manager.backend;
@@ -191,26 +262,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool get _videoShowsThrough =>
       _nativeHdrEngaged && !(_hdrRendererCycling?.value ?? false);
 
-  /// The HDR-output line for the playback info sheet, or null on platforms
-  /// where there is nothing to say. Reports the outcome and, when it did not
-  /// engage, why.
-  String? _hdrOutputRow(AppLocalizations l10n, {bool hdrTonemapped = false}) {
+  /// Null unless this display gets an HDR title as SDR.
+  String? _hdrOutputRange({bool hdrTonemapped = false}) {
     final backend = _hdrBackend;
-    if (backend == null) return null;
-    final status = backend.hdrOutput.status.value;
-    // Engaged, but this display is not receiving HDR - the window sits on a
-    // monitor without it.
-    if (status.isActive && hdrTonemapped) {
-      return l10n.hdrOutputActiveTonemapped;
-    }
-    return switch (status) {
-      HdrOutputStatus.active => l10n.hdrOutputActive(
-        HdrOutputController.activeOutputFormat,
-      ),
-      HdrOutputStatus.displayNotInHdrMode => l10n.hdrOutputDisplayNotHdr,
-      HdrOutputStatus.contentIsSdr => l10n.hdrOutputContentSdr,
-      HdrOutputStatus.disabledByPreference => l10n.hdrOutputDisabled,
-      HdrOutputStatus.failed => l10n.hdrOutputFailed,
+    if (backend == null || !backend.isPlayingHdrContent) return null;
+    return switch (backend.hdrOutput.status.value) {
+      HdrOutputStatus.disabledByPreference || HdrOutputStatus.failed => 'SDR',
+      HdrOutputStatus.active when hdrTonemapped => 'SDR',
+      _ => null,
     };
   }
 
@@ -236,10 +295,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   bool _controlsVisible = true;
+  bool _subtitleDelayOpen = false;
   Timer? _hideTimer;
   bool _displayPlaying = false;
   Timer? _displayPlayingDebounce;
   Timer? _endsAtTicker;
+  final _clockTick = ValueNotifier<int>(0);
   bool _isSeeking = false;
   double _seekValue = 0;
   Duration? _pendingScrubSeekTarget;
@@ -258,19 +319,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   final GlobalKey _topOverlayKey = GlobalKey();
   final GlobalKey _bottomOverlayKey = GlobalKey();
   late ZoomMode _zoomMode;
-  double _audioDelay = 0.0;
-  double _subtitleDelay = 0.0;
   bool _subtitleActive = false;
   int? _subtitleIndexBeforeQuickOff;
   bool _subtitleReapplyRetryScheduled = false;
   bool _isStopping = false;
   bool _readyToPop = false;
+  bool _isMinimizing = false;
   VoidCallback? _cancelPopAfterBackKeyUp;
   DateTime? _suppressTvLifecycleExitUntil;
   bool _isOsdLocked = false;
   String? _remotePlaybackState;
   int _remotePositionTicks = 0;
   double? _remoteVolume;
+  bool _castOwnsTransport = false;
+  late final Listenable _castChanges = Listenable.merge([
+    _castService.activeKindNotifier,
+    _castService.remoteStateNotifier,
+    _castService.remotePositionNotifier,
+  ]);
   DateTime? _lastCastErrorAt;
   String? _lastCastErrorMessage;
   DateTime? _lastPlaybackErrorAt;
@@ -278,6 +344,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   bool _isInPiP = false;
   final GlobalKey _videoSurfaceKey = GlobalKey();
   bool _forcedLandscape = false;
+
+  /// A landscape lock the user tapped, which holds even while a folding phone
+  /// is half open.
+  bool _landscapeLockedByUser = false;
+  // The party's wait and countdown sit where the center controls would.
+  // The player often opens partway through the wait, so it starts from
+  // where the party is.
+  bool _partyHoldsStart = false;
+  bool get _partyHolding =>
+      _watchParty?.waitingSince != null || _watchParty?.countdownTo != null;
   double _playerVolume = 100.0;
   static const double _scrollWheelNotch = 40.0;
   double _scrollWheelAccumulated = 0.0;
@@ -302,11 +378,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   DateTime? _suppressSeekPromptsUntil;
   bool _wasPlayingBeforeScreenLock = false;
   LogicalKeyboardKey? _tvTemporarySpeedHoldKey;
-  bool _tvTemporarySpeedHoldActive = false;
-  double? _tvTemporarySpeedRestoreSpeed;
+  bool _temporarySpeedActive = false;
+  double? _temporarySpeedRestore;
 
   MediaSegment? _skipSegment;
   Duration? _skipTo;
+  late final CinemaSkipController _cinemaSkip;
+  StreamSubscription<Duration>? _cinemaSkipDurationSub;
 
   /// True when the auto-hide setting is on for the current segment.
   bool _skipSegmentAutoHideEnabled = false;
@@ -316,27 +394,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   Timer? _skipSegmentAutoHideTimer;
   bool _showNextUp = false;
   AggregatedItem? _nextUpItem;
+
+  /// When the series' next episode airs, for the end card of an episode the
+  /// library has nothing after yet. The card shows while [_showNextUp] is set
+  /// and [_nextUpItem] is null.
+  UpcomingEpisodeInfo? _nextAirDate;
+  String _nextAirDateTitle = '';
+  CalendarEntry? _nextAirDateReminder;
+  int _nextAirDateLookup = 0;
   bool _nextUpDismissed = false;
   bool _isNextUpAdvancing = false;
   int _consecutiveEpisodes = 0;
   StreamSubscription? _positionSub;
   StreamSubscription? _queueSub;
   StreamSubscription<PlayerBackend>? _backendSub;
+  StreamSubscription<bool>? _letterboxCropAppliedSub;
+  StreamSubscription<Object?>? _letterboxCropGeometrySub;
+  bool _letterboxCropApplied = false;
   StreamSubscription<PlaybackBringupState>? _bringupSub;
+  StreamSubscription<bool>? _reconnectingSub;
+  bool _reconnecting = false;
   StreamSubscription? _pipChangedSub;
   StreamSubscription? _pipActionSub;
   StreamSubscription? _playingSub;
   StreamSubscription? _bufferingSub;
+  StreamSubscription<bool>? _subtitleLoadingSub;
+  Timer? _subtitleLoadingTimer;
+  bool _showSubtitleLoading = false;
   StreamSubscription<Map<String, dynamic>>? _castEventsSub;
   StreamSubscription<Map<String, dynamic>>? _dlnaEventsSub;
   StreamSubscription<Map<String, dynamic>>? _airPlayEventsSub;
   StreamSubscription<Map<String, dynamic>>? _media3ActivityActionSub;
+  StreamSubscription<Map<String, dynamic>>? _aetherRemoteCommandSub;
   final Map<String, List<Map<String, dynamic>>> _media3CastPeopleCache = {};
 
   TrickplayInfo? _trickplayInfo;
   String? _trickplayMediaSourceId;
   String? _castPeopleItemId;
   List<Map<String, dynamic>> _castPeople = const [];
+  EpisodeBrowserController? _episodeBrowser;
+  ModalRoute<dynamic>? _episodeBrowserRoute;
   int _trickplayLoadGeneration = 0;
   static const int _trickplayFrameWidth = 320;
 
@@ -388,7 +485,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   double _verticalDragStartValue = 0.0;
   bool _verticalDragIsVolume = false;
   bool _verticalDragIgnored = false;
-  Offset? _doubleTapDownPosition;
+  late final _surfaceTaps = PlayerSurfaceTaps(
+    onSingleTap: () {
+      if (mounted) _toggleControls();
+    },
+    onDoubleTap: _onSurfaceDoubleTap,
+  );
+  DateTime? _lastDesktopClickAt;
+  bool _wasPlayingBeforeDesktopClick = false;
   DateTime? _lastSeekTime;
   bool _showSkipForward = false;
   bool _showSkipBackward = false;
@@ -453,6 +557,43 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   bool get _isCurrentPreroll => _isPrerollQueueItem(_queue.currentItem);
 
+  bool get _isCinemaSkipVisible =>
+      _isCurrentPreroll && _cinemaSkip.visible;
+
+  void _configureCinemaSkip() => _cinemaSkip.configure(
+    enabled: _prefs.get(UserPreferences.cinemaModeSkipEnabled),
+  );
+
+  void _syncCinemaSkip() {
+    final item = _queue.currentItem;
+    final data = _rawDataForQueueItem(item);
+    _cinemaSkip.synchronize(
+      item: item,
+      index: _queue.currentIndex,
+      preroll: data?['__moonfinIsPreroll'] == true ? data : null,
+      itemId: _itemIdForQueueItem(item),
+      source: _manager.bringupState,
+      duration: _manager.backend?.duration ?? Duration.zero,
+      playing: _state.isPlaying,
+    );
+  }
+
+  void _onCinemaSkipChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_isCinemaSkipVisible) _focusTvSkipSegment();
+  }
+
+  // A dismissed button stays hidden on hover until the next clip, so moving
+  // the mouse off the X doesn't bring it straight back.
+  int? _cinemaSkipDismissedGeneration;
+
+  void _dismissCinemaSkip() {
+    _suppressBackNavigation(duration: const Duration(milliseconds: 500));
+    _cinemaSkipDismissedGeneration = _cinemaSkip.generation;
+    _cinemaSkip.hide();
+  }
+
   bool _queueItemIsFavorite(dynamic item) {
     if (item is AggregatedItem) {
       return item.isFavorite;
@@ -514,184 +655,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     });
   }
 
-  bool _canDownloadRemoteSubtitles(AggregatedItem item) {
-    final user = GetIt.instance<UserRepository>().currentUser;
-    final mediaType = item.rawData['MediaType'] as String?;
-    final isAudio =
-        item.type == 'Audio' ||
-        item.type == 'MusicAlbum' ||
-        item.type == 'AudioBook' ||
-        mediaType == 'Audio';
-
-    return (user?.canManageSubtitles ?? false) &&
-        item.mediaSources.isNotEmpty &&
-        item.type != 'Photo' &&
-        item.type != 'Book' &&
-        !isAudio;
-  }
-
-  Future<Map<String, dynamic>?> _awaitDownloadedSubtitle(
-    AggregatedItem currentItem,
-    Set<int> existingIndexes,
-  ) {
-    return awaitNewSubtitleStream(
-      client: _clientForItem(currentItem),
-      item: currentItem,
-      existingIndexes: existingIndexes,
-      keepGoing: () => mounted,
-    );
-  }
-
-  Future<void> _downloadRemoteSubtitles(
-    AggregatedItem item,
-    List<Map<String, dynamic>> subtitleStreams,
-    List<Map<String, dynamic>> audioStreams,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final client = _clientForItem(item);
-    final language = remoteSubtitleLanguage(subtitleStreams, audioStreams);
-
-    List<Map<String, dynamic>> results;
-    try {
-      results = await withProgressSnackBar(
-        messenger,
-        AppLocalizations.of(context).searchingSubtitles,
-        () =>
-            client.itemsApi.searchRemoteSubtitles(item.id, language: language),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            remoteSubtitleErrorMessage(
-              error,
-              AppLocalizations.of(context),
-              action: AppLocalizations.of(context).search,
-            ),
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (!mounted) return;
-    if (results.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            AppLocalizations.of(context).noRemoteSubtitlesFound(language),
-          ),
-        ),
-      );
-      return;
-    }
-
-    final l10n = AppLocalizations.of(context);
-    final result = await TrackSelectorDialog.show(
-      context,
-      title: l10n.downloadSubtitles,
-      options: results.map((subtitle) {
-        final label =
-            subtitle['Name'] as String? ??
-            subtitle['Author'] as String? ??
-            l10n.subtitles;
-        final subtitleText = remoteSubtitleDetails(subtitle, l10n);
-        return TrackOption(
-          label: label,
-          subtitle: subtitleText.isNotEmpty ? subtitleText : null,
-          subtitleMaxLines: 2,
-          badges: remoteSubtitleFlags(subtitle, l10n),
-        );
-      }).toList(),
-    );
-
-    if (!mounted || result == null || result >= results.length) return;
-
-    final subtitleId = results[result]['Id']?.toString();
-    if (subtitleId == null || subtitleId.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).selectedSubtitleInvalid),
-        ),
-      );
-      return;
-    }
-
-    final existingIndexes = subtitleStreams
-        .map((stream) => stream['Index'] as int?)
-        .whereType<int>()
-        .toSet();
-
-    try {
-      final newStream = await withProgressSnackBar(
-        messenger,
-        AppLocalizations.of(context).downloadingSubtitle,
-        () async {
-          await client.itemsApi.downloadRemoteSubtitle(item.id, subtitleId);
-          return _awaitDownloadedSubtitle(item, existingIndexes);
-        },
-      );
-      if (!mounted) return;
-
-      if (newStream != null) {
-        final streamIndex = newStream['Index'] as int?;
-        if (streamIndex != null) {
-          unawaited(
-            _runSinglePlayerMutation(
-              'downloaded_subtitle_$streamIndex',
-              () => _manager.changeSubtitleTrack(
-                streamIndex,
-                refreshStreams: true,
-              ),
-            ).then((_) {
-              if (mounted) _syncSubtitleActive();
-            }),
-          );
-        }
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(
-              AppLocalizations.of(context).subtitleDownloadedSelected(
-                newStream['DisplayTitle'] as String? ??
-                    newStream['Title'] as String? ??
-                    newStream['Language'] as String? ??
-                    AppLocalizations.of(context).unknown,
-              ),
-            ),
-          ),
-        );
-        return;
-      }
-
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(AppLocalizations.of(context).subtitleDownloadedPending),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            remoteSubtitleErrorMessage(
-              error,
-              AppLocalizations.of(context),
-              action: AppLocalizations.of(context).download,
-            ),
-          ),
-        ),
-      );
-    }
-  }
-
   MediaSegmentService _createSegmentService([AggregatedItem? item]) {
     final client = item != null
         ? _clientForItem(item)
         : GetIt.instance<MediaServerClient>();
     return MediaSegmentService(
       client,
-      FeatureDetector(serverType: client.serverType, serverVersion: ''),
+      client.features,
       _prefs,
     );
   }
@@ -728,6 +698,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       return const <Map<String, dynamic>>[];
     }
     return raw.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+  }
+
+  bool get _hasSubtitleStreams =>
+      _currentPlaybackMediaStreams().any((s) => s['Type'] == 'Subtitle');
+
+  bool get _hasSubtitleChoices {
+    final item = _queue.currentItem;
+    return _hasSubtitleStreams ||
+        item is AggregatedItem && TrackPicker.canDownloadRemoteSubtitles(item);
   }
 
   List<Map<String, dynamic>> _currentPlaybackMediaStreams() {
@@ -784,8 +763,33 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return false;
   }
 
+  /// White looks far brighter next to an HDR picture, so the controls dim by
+  /// the amount set in settings while HDR is on screen.
+  Widget _dimForHdr(Widget child) {
+    final dimming = _prefs.get(UserPreferences.hdrControlsDimming);
+    final resolution = _manager.currentResolution;
+    if (dimming <= 0 ||
+        !isHdrSubtitleOutput(
+          videoRangeType: resolution?.videoRangeType,
+          isTranscoding: resolution?.playMethod == StreamPlayMethod.transcode,
+        )) {
+      return child;
+    }
+    final keep = (255 * (1 - dimming / 100)).round();
+    return ColorFiltered(
+      colorFilter: ColorFilter.mode(
+        Color.fromARGB(255, keep, keep, keep),
+        BlendMode.modulate,
+      ),
+      child: child,
+    );
+  }
+
   Future<void> _syncAutoHdrSwitching() async {
     if (!PlatformDetection.isWindows) return;
+    // Leaving fullscreen on the way to the mini player must not drop the
+    // display out of HDR under the video that carries on there.
+    if (_isMinimizing) return;
     final behavior = _prefs.get(UserPreferences.autoHdrSwitchingBehavior);
     final switched = await _autoHdrSwitcher.sync(
       behavior: behavior,
@@ -802,7 +806,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void initState() {
     super.initState();
+    _cinemaSkip = CinemaSkipController(onSkip: _manager.nextInQueue);
+    _configureCinemaSkip();
+    _syncCinemaSkip();
+    _cinemaSkip.addListener(_onCinemaSkipChanged);
+    _cinemaSkipDurationSub = _state.durationStream.listen(
+      (_) => _syncCinemaSkip(),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _isCinemaSkipVisible) _focusTvSkipSegment();
+    });
     FocusManager.instance.addListener(_restoreOverlayFocus);
+    // A right-click hides the controls, so the browser's own menu stays shut.
+    if (kIsWeb) unawaited(BrowserContextMenu.disableContextMenu());
     if (PlatformDetection.isTV || PlatformDetection.isMobile) {
       // The decoder wants every megabyte a constrained box has, and a stale
       // IME binding swallows d-pad presses mid-playback. Desktop keeps its
@@ -811,6 +827,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       releaseImageMemoryForPlayback();
       detachTextInputForPlayback();
     }
+    // Back from the mini player: take the HDR session it held, before the
+    // presenter claim below, so the window is never torn down in between.
+    VideoMiniPlayerController.instance.playerScreenOpened(this);
     final hdrBackend = _hdrBackend;
     if (hdrBackend != null) {
       // Engagement finishes at the tail of play(), after the last build, and
@@ -836,9 +855,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _themeMusicService.setExternalAudioActive(true);
     _segmentService = _createSegmentService();
     _zoomMode = _prefs.get(UserPreferences.playerZoomMode);
+    unawaited(syncSecondarySubtitleStyle(_manager, _prefs));
     // Media3 only takes the zoom mode from this call, and the backend change it
     // listens for never fires when it was already the one playing.
     unawaited(_syncMedia3ZoomMode());
+    _reconnecting = _manager.isReconnecting;
+    _reconnectingSub = _manager.reconnectingStream.listen((reconnecting) {
+      if (!mounted) return;
+      setState(() => _reconnecting = reconnecting);
+    });
     _bringupState = _manager.bringupState;
     _bringupSub = _manager.bringupStateStream.listen((state) {
       if (!mounted) return;
@@ -853,20 +878,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       if (state.phase == PlaybackBringupPhase.ready) {
         _applySubtitleStyle(force: true);
       }
+      _syncCinemaSkip();
     });
     _syncPlayManager?.addListener(_onSyncPlayChanged);
+    _followingWatchParty = _watchParty?.controlsPlayback == true;
+    _partyHoldsStart = _partyHolding;
+    _watchParty?.addListener(_onWatchPartyChanged);
     _prefs.addListener(_onPlaybackPrefsChanged);
+    _castChanges.addListener(_onCastChanged);
     _syncMediaQueuingPreference();
     _applySubtitleStyle();
     _scheduleHide();
     _startEndsAtTicker();
     setImmersive(true);
     if (PlatformDetection.isMobile) {
-      _forcedLandscape = true;
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
+      // In a Moonbase party a phone held upright shows the chat under the
+      // video, so the player doesn't lock it sideways.
+      _forcedLandscape =
+          _watchParty?.isMoonbase != true || _watchParty?.room == null;
+      _applyMobileOrientations();
     } else if (!PlatformDetection.isTV) {
       SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
@@ -879,21 +909,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       windowManager.addListener(this);
     }
     _loadSegmentsForCurrentItem();
+    unawaited(_loadNextAirDate());
     unawaited(_syncAutoHdrSwitching());
     _positionSub = _state.positionStream.listen(_onPositionUpdate);
     _completedSub = _manager.sessionEndedStream.listen((_) {
       if (!mounted || _isStopping) return;
       unawaited(_exitPlayback());
     });
+    _listenToLetterboxCropState(_activeBackend);
     _backendSub = _manager.backendChangedStream.listen((backend) {
+      _listenToLetterboxCropState(backend);
       if (backend is Media3PlayerBackend) {
         unawaited(_syncMedia3ZoomMode());
         _syncMedia3VolumeBoostLevel();
       } else {
         _syncMedia3VolumeBoostLevel(resetWhenUnavailable: true);
       }
-      // Re-apply the desktop player volume whenever the backend (re)appears.
-      if (PlatformDetection.isDesktop) {
+      // Re-apply the player volume whenever the backend (re)appears.
+      if (PlatformDetection.isDesktop || PlatformDetection.isWeb) {
         unawaited(backend.setVolume(_playerVolume));
       }
       if (!mounted) return;
@@ -938,13 +971,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
     }
     _queueSub = _queue.queueChangedStream.listen((_) {
+      _closeEpisodeBrowser();
       _loadSegmentsForCurrentItem();
+      unawaited(_loadNextAirDate());
       _manager.suppressAutoNext = false;
       _consecutiveEpisodes++;
       unawaited(_pushMedia3UiMetadata());
       _syncMedia3VolumeBoostLevel();
       unawaited(_syncAutoHdrSwitching());
       final isPreroll = _isCurrentPreroll;
+      _syncCinemaSkip();
       _resetSkipSegmentAutoHide();
       setState(() {
         _nextUpDismissed = false;
@@ -967,18 +1003,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _onMedia3ActivityAction,
       onError: (_) {},
     );
+    // While a video plays, tvOS sends the remote's Play/Pause to Now Playing
+    // instead of as a key press. iOS already routes these through the audio
+    // handler.
+    if (!PlatformDetection.isIOS &&
+        GetIt.instance.isRegistered<AetherBackend>()) {
+      _aetherRemoteCommandSub = GetIt.instance<AetherBackend>()
+          .remoteCommandStream
+          .listen(_onAetherRemoteCommand, onError: (_) {});
+    }
 
     final isMobilePlayback =
         (PlatformDetection.isAndroid && !PlatformDetection.isTV) ||
         PlatformDetection.isIOS;
 
     _displayPlaying = _state.isPlaying;
+    _subtitleLoadingSub = _state.subtitleLoadingStream.listen(
+      _onSubtitleLoadingChanged,
+    );
+    _onSubtitleLoadingChanged(_state.isSubtitleLoading);
     _playingSub = _state.playingStream.listen((playing) {
       _updateDisplayPlaying(playing);
+      _syncCinemaSkip();
       // The hide timer passes over a player that hasn't started yet, so a
-      // start or resume slower than its delay needs it armed again here.
-      if (playing && _controlsVisible && !_isSeeking) {
-        _scheduleHide();
+      // start or resume slower than its delay needs it armed again here. A
+      // pause with a description card clears the controls sooner so the card
+      // shows quickly.
+      if (_controlsVisible && !_isSeeking) {
+        if (playing) {
+          _scheduleHide();
+        } else if (_hasPausedDescriptionCard) {
+          _scheduleHide(delay: const Duration(seconds: 2));
+        }
       }
       if (isMobilePlayback) {
         _pipService.updatePiPActions(isPlaying: playing);
@@ -1016,13 +1072,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
     if (_useSystemVolume) {
       _initSystemVolume();
-    } else if (PlatformDetection.isDesktop) {
+    } else if (PlatformDetection.isDesktop || PlatformDetection.isWeb) {
       _initDesktopVolume();
     }
   }
 
   @override
   void dispose() {
+    if (kIsWeb) unawaited(BrowserContextMenu.enableContextMenu());
     _cancelPopAfterBackKeyUp?.call();
     _trickplayLoadGeneration++;
     _hdrStatus?.removeListener(_onHdrStatusChanged);
@@ -1040,27 +1097,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       GetIt.instance<PlaybackArbiter>().pipActive = false;
     }
     _screensaverPlayingSub?.cancel();
-    _screensaverController.setPlaybackActive(false);
+    // A minimized video keeps playing, and the mini bar keeps the display
+    // awake from here.
+    if (!_isMinimizing) _screensaverController.setPlaybackActive(false);
     _prefs.removeListener(_onPlaybackPrefsChanged);
     _syncPlayManager?.removeListener(_onSyncPlayChanged);
-    _manager.autoAdvanceEnabled = true;
+    _watchParty?.removeListener(_onWatchPartyChanged);
+    _castChanges.removeListener(_onCastChanged);
+    if (_castOwnsTransport) _manager.setTransportInterceptor(null);
+    // A minimized video keeps the autoplay setting this screen applied; the
+    // mini player resets it when it ends.
+    if (!_isMinimizing) _manager.autoAdvanceEnabled = true;
     WidgetsBinding.instance.removeObserver(this);
     if (PlatformDetection.isDesktop) {
       windowManager.removeListener(this);
     }
-    _cancelTvTemporarySpeedHold();
+    _cancelTemporarySpeed();
     _hideTimer?.cancel();
     _skipSegmentAutoHideTimer?.cancel();
+    _cinemaSkipDurationSub?.cancel();
+    _cinemaSkip.removeListener(_onCinemaSkipChanged);
+    _cinemaSkip.dispose();
     _displayPlayingDebounce?.cancel();
     _endsAtTicker?.cancel();
+    _clockTick.dispose();
     _volumeOverlayTimer?.cancel();
     _brightnessOverlayTimer?.cancel();
     _zoomModeToastTimer?.cancel();
     _removeZoomModeToastOverlay();
     _skipForwardTimer?.cancel();
     _skipBackwardTimer?.cancel();
+    _surfaceTaps.cancel();
     _persistVolumeTimer?.cancel();
-    if (PlatformDetection.isDesktop) {
+    if (PlatformDetection.isDesktop || PlatformDetection.isWeb) {
       unawaited(_prefs.set(UserPreferences.playerVolume, _playerVolume));
     }
     _volumeListenerSub?.cancel();
@@ -1082,17 +1151,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
     _positionSub?.cancel();
     _queueSub?.cancel();
+    _episodeBrowser?.dispose();
     _backendSub?.cancel();
+    _letterboxCropAppliedSub?.cancel();
+    _letterboxCropGeometrySub?.cancel();
     _bringupSub?.cancel();
+    _reconnectingSub?.cancel();
     _pipChangedSub?.cancel();
     _userLeftAppSub?.cancel();
     _pipActionSub?.cancel();
     _playingSub?.cancel();
     _bufferingSub?.cancel();
+    _subtitleLoadingSub?.cancel();
+    _subtitleLoadingTimer?.cancel();
     _castEventsSub?.cancel();
     _dlnaEventsSub?.cancel();
     _airPlayEventsSub?.cancel();
     _media3ActivityActionSub?.cancel();
+    _aetherRemoteCommandSub?.cancel();
     _screenLockSub?.cancel();
     _completedSub?.cancel();
     _tvBackgroundExitTimer?.cancel();
@@ -1107,7 +1183,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _tvSecondaryFocus.dispose();
     _tvTransportLastFocus.dispose();
     _tvSecondaryLastFocus.dispose();
-    unawaited(_autoHdrSwitcher.restore());
+    if (!_isMinimizing) unawaited(_autoHdrSwitcher.restore());
+    if (!_isMinimizing) TrackPicker.resetDelays();
     _themeMusicService.setExternalAudioActive(false);
     if (!PlatformDetection.isTV) _pipService.enableAutoPiP(false);
     if (_wasAlwaysOnTopOnEntry == false && _isAlwaysOnTop) {
@@ -1237,15 +1314,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     if (error == null || error.isEmpty) {
       return;
     }
-    // `liveStreamLostError`/`streamStarvedError` are internal sentinels the
-    // manager uses to tag why it gave up recovering, not viewer-facing text.
+    // These are internal sentinels the manager uses to tag why it gave up,
+    // not viewer-facing text.
     if (error == liveStreamLostError || error == streamStarvedError) {
       _showThrottledPlaybackError(
         AppLocalizations.of(context).playbackStreamLost,
       );
       return;
     }
-    _showThrottledPlaybackError(error);
+    if (error == unsupportedVideoError) {
+      _showThrottledPlaybackError(
+        AppLocalizations.of(context).playbackVideoUnsupported,
+      );
+      return;
+    }
+    // Silo's fixed refusals come from playback_silo in English.
+    final l10n = AppLocalizations.of(context);
+    final siloText = switch (error) {
+      siloPlaybackUnavailableMessage => l10n.siloPlaybackUnavailable,
+      siloUpgradeRequiredMessage => l10n.siloPlaybackUpdateRequired,
+      siloEndedOnServerMessage => l10n.siloPlaybackEndedOnServer,
+      _ => null,
+    };
+    _showThrottledPlaybackError(siloText ?? error);
   }
 
   Future<void> _refreshRemoteVolume() async {
@@ -1348,6 +1439,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return DateTime.now().isBefore(until);
   }
 
+  DateTime? _suppressHoverControlsUntil;
+
+  void _suppressHoverControls() {
+    _suppressHoverControlsUntil = DateTime.now().add(
+      const Duration(seconds: 1),
+    );
+  }
+
+  bool _isHoverControlsSuppressed() {
+    final until = _suppressHoverControlsUntil;
+    if (until == null) return false;
+    return DateTime.now().isBefore(until);
+  }
+
   Future<bool> _runSinglePlayerMutation(
     String label,
     FutureOr<void> Function() action, {
@@ -1391,7 +1496,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
     if (lifecycleState != AppLifecycleState.resumed) {
-      _cancelTvTemporarySpeedHold();
+      _cancelTemporarySpeed();
     }
     switch (lifecycleState) {
       case AppLifecycleState.inactive:
@@ -1542,19 +1647,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _toggleOrientationLock() {
-    setState(() => _forcedLandscape = !_forcedLandscape);
-    if (_forcedLandscape) {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    } else {
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
+    setState(() {
+      _forcedLandscape = !_forcedLandscape;
+      _landscapeLockedByUser = _forcedLandscape;
+    });
+    _applyMobileOrientations();
+  }
+
+  /// The landscape lock the player starts with lets go while a folding phone
+  /// is half open, so the window turns with the phone and the picture can sit
+  /// above the fold.
+  void _applyMobileOrientations() {
+    final halfOpen = DeviceHinge.status.value == HingeStatus.partiallyOpen;
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+      if (!_forcedLandscape || (halfOpen && !_landscapeLockedByUser))
         DeviceOrientation.portraitUp,
-      ]);
-    }
+    ]);
+  }
+
+  @override
+  void didChangeHinge() {
+    if (PlatformDetection.isMobile) _applyMobileOrientations();
   }
 
   void _onPiPChanged(bool isInPiP) {
@@ -1567,10 +1682,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _didRequestIosPiPForBackground = false;
       setImmersive(true);
       if (PlatformDetection.isMobile && _forcedLandscape) {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
+        _applyMobileOrientations();
       }
       _showControls();
     }
@@ -1635,9 +1747,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// manager, which steps previous and next through them before it steps
   /// through the queue. Runs per item, so one with none clears the last.
   void _applyChapters() {
+    _chaptersMediaSourceId = _manager.currentResolution?.mediaSourceId;
     _chapters = chaptersForItem(
       _queue.currentItem,
       _manager.currentOfflineMetadata,
+      mediaSourceId: _chaptersMediaSourceId,
     );
     _manager.setChapterStarts([
       for (final ms in chapterStartsMs(_chapters)) Duration(milliseconds: ms),
@@ -1661,360 +1775,62 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     unawaited(_pushMedia3UiMetadata());
   }
 
-  /// [hdrTonemapped] is what the display is receiving right now, resolved at
-  /// sheet-open time; callers that never show the HDR row can leave it.
+  /// [hdrTonemapped], [transcodingInfo] and [device] are only read when the
+  /// dialog opens, so the Media3 metadata push goes without them.
   List<Map<String, dynamic>> _buildMedia3StreamInfoSections({
     bool hdrTonemapped = false,
+    Map<String, dynamic>? transcodingInfo,
+    String? device,
   }) {
-    final l10n = AppLocalizations.of(context);
     final resolution = _manager.currentResolution;
-    final playMethod = resolution?.playMethod;
-    final bringupPlayMethod = _manager.bringupState.playMethod;
-    final methodLabel = _manager.isOfflinePlayback
-        ? l10n.directPlay
-        : playbackMethodLabel(
-            l10n: l10n,
-            playMethod: playMethod,
-            transcodingReasons:
-                resolution?.transcodingReasons ?? const <String>[],
-            fallbackPlayMethod: bringupPlayMethod,
-          );
-
     final item = _queue.currentItem;
     Map<String, dynamic>? mediaSource;
-    Map<String, dynamic>? videoStream;
-    Map<String, dynamic>? audioStream;
-    Map<String, dynamic>? subtitleStream;
-
-    Map<String, dynamic>? pickStream(
-      List<Map<String, dynamic>> streams,
-      String type,
-      int? preferredIndex,
-    ) {
-      if (preferredIndex != null && preferredIndex >= 0) {
-        final preferred = streams
-            .where((s) => s['Type'] == type)
-            .firstWhere(
-              (s) => s['Index'] == preferredIndex,
-              orElse: () => const <String, dynamic>{},
-            );
-        if (preferred.isNotEmpty) {
-          return preferred;
-        }
-      }
-
-      return streams
-              .where((s) => s['Type'] == type && s['IsDefault'] == true)
-              .firstOrNull ??
-          streams.where((s) => s['Type'] == type).firstOrNull;
-    }
-
-    void populateStreams(List<Map<String, dynamic>> streams) {
-      videoStream = streams.where((s) => s['Type'] == 'Video').firstOrNull;
-      audioStream = pickStream(streams, 'Audio', _manager.audioStreamIndex);
-      subtitleStream = _manager.subtitleStreamIndex == -1
-          ? null
-          : pickStream(streams, 'Subtitle', _manager.subtitleStreamIndex);
-    }
-
+    var streams = const <Map<String, dynamic>>[];
     if (item is AggregatedItem) {
-      final streams = resolution?.mediaStreams ?? item.mediaStreams;
-      populateStreams(streams);
-
-      final sourceId = resolution?.mediaSourceId;
+      streams = resolution?.mediaStreams ?? item.mediaStreams;
       final sources = item.mediaSources;
-      if (sourceId != null && sources.isNotEmpty) {
-        mediaSource = sources.firstWhere(
-          (s) => s['Id'] == sourceId,
-          orElse: () => sources.first,
-        );
-      } else if (sources.isNotEmpty) {
-        mediaSource = sources.first;
-      }
+      mediaSource =
+          sources
+              .where((s) => s['Id'] == resolution?.mediaSourceId)
+              .firstOrNull ??
+          sources.firstOrNull;
     } else if (item is String) {
       final meta = _manager.currentOfflineMetadata;
-      if (meta != null) {
-        final streams =
-            (meta['MediaStreams'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-        populateStreams(streams);
-        final sources = meta['MediaSources'] as List?;
-        if (sources != null && sources.isNotEmpty) {
-          mediaSource = sources.first as Map<String, dynamic>?;
-        }
-      }
+      streams =
+          (meta?['MediaStreams'] as List?)?.cast<Map<String, dynamic>>() ??
+          const <Map<String, dynamic>>[];
+      mediaSource =
+          (meta?['MediaSources'] as List?)?.firstOrNull
+              as Map<String, dynamic>?;
     }
 
-    final container =
-        (mediaSource?['Container'] as String?)?.toUpperCase() ?? l10n.unknown;
-    String resolveFileName() {
-      String? basenameFromPath(String? rawPath) {
-        final path = rawPath?.trim();
-        if (path == null || path.isEmpty) {
-          return null;
-        }
-        final segments = path.split(RegExp(r'[\\/]'));
-        final last = segments.isNotEmpty ? segments.last.trim() : '';
-        return last.isEmpty ? null : last;
-      }
-
-      final sourcePathName = basenameFromPath(mediaSource?['Path'] as String?);
-      if (sourcePathName != null) {
-        return sourcePathName;
-      }
-
-      if (item is String) {
-        final offlinePathName = basenameFromPath(item);
-        if (offlinePathName != null) {
-          return offlinePathName;
-        }
-      }
-
-      final sourceName = (mediaSource?['Name'] as String?)?.trim();
-      if (sourceName != null && sourceName.isNotEmpty) {
-        return sourceName;
-      }
-
-      return l10n.unknown;
-    }
-
-    final fileName = resolveFileName();
-    final bitrate = mediaSource?['Bitrate'] as int?;
-    final overrideMbps = _manager.maxBitrateOverrideMbps;
-    final delivered = resolution?.deliveredFormat;
-
-    String effectiveBitrateText() {
-      // The override is the user's cap rather than what the server settled on,
-      // so it only stands in when the stream URL is silent.
-      final total = delivered?.totalBitrate;
-      if (total != null) {
-        return _formatBitrate(total);
-      }
-      if (overrideMbps != null) {
-        return l10n.bitrateValueMbps(overrideMbps);
-      }
-      return _formatBitrate(bitrate);
-    }
-
-    Map<String, dynamic> row(
-      String label,
-      String value, {
-      bool highlight = false,
-    }) {
-      return {'label': label, 'value': value, 'highlight': highlight};
-    }
-
-    final sections = <Map<String, dynamic>>[];
-
-    void addSection(String title, List<Map<String, dynamic>> rows) {
-      if (rows.isEmpty) return;
-      sections.add({'title': title, 'rows': rows});
-    }
-
-    final playbackRows = <Map<String, dynamic>>[
-      row('File Name', fileName),
-      row(l10n.playMethod, methodLabel, highlight: true),
-      if (resolution != null &&
-          playMethod == StreamPlayMethod.transcode &&
-          resolution.transcodingReasons.isNotEmpty)
-        row(
-          l10n.transcodeReasons,
-          resolution.transcodingReasons
-              .map((r) => r.replaceAllMapped(_camelCaseSpaceRe, (_) => ' '))
-              .join(', '),
-        ),
-      row(l10n.player, switch (_activeBackend) {
-        Media3PlayerBackend _ => 'Media3 (ExoPlayer)',
-        HtmlVideoBackend _ => 'HTML5 (browser)',
-        AetherBackend _ => 'AetherEngine',
-        MediaKitPlayerBackend _ => 'media_kit (libmpv)',
-        _ => l10n.unknown,
-      }),
-      row(l10n.container, container),
-      row(
-        l10n.bitrate,
-        effectiveBitrateText(),
-        highlight: overrideMbps != null,
+    return buildPlaybackInfoSections(
+      l10n: AppLocalizations.of(context),
+      resolution: resolution,
+      mediaStreams: streams,
+      mediaSource: mediaSource,
+      fallbackPlayMethod: _manager.bringupState.playMethod,
+      audioStreamIndex: _manager.audioStreamIndex,
+      subtitleStreamIndex: _manager.subtitleStreamIndex,
+      transcodingInfo: transcodingInfo,
+      offline: _manager.isOfflinePlayback,
+      transcodeForced: transcodeForcedBySettings(_manager),
+      qualityLimitMbps: userQualityLimitMbps(
+        _manager.maxBitrateOverrideMbps,
+        _prefs.get(UserPreferences.maxBitrate),
       ),
-      if (overrideMbps != null)
-        row(
-          l10n.bitrateOverride,
-          l10n.bitrateValueMbps(overrideMbps),
-          highlight: true,
-        ),
-    ];
-    addSection(l10n.playback, playbackRows);
-
-    // Its own section rather than overwriting the source rows below, which
-    // are what the transcode reasons above are about.
-    if (delivered != null) {
-      addSection(l10n.transcoding, [
-        if (delivered.container case final container?)
-          row(l10n.container, container.toUpperCase()),
-        if (delivered.videoCodec case final codec?)
-          row(l10n.video, codec.toUpperCase()),
-        if (delivered.videoBitrate case final rate?)
-          row(l10n.videoBitrate, _formatBitrate(rate)),
-        if (delivered.audioCodec case final codec?)
-          row(l10n.audio, codec.toUpperCase()),
-        if (delivered.audioBitrate case final rate?)
-          row(l10n.audioBitrate, _formatBitrate(rate)),
-      ]);
-    }
-
-    if (videoStream case final video?) {
-      final fps = video['RealFrameRate'] as num?;
-      final width = video['Width'];
-      final height = video['Height'];
-      final videoRows = <Map<String, dynamic>>[
-        row(
-          l10n.resolution,
-          '${width ?? '?'}×${height ?? '?'}${fps != null ? ' @ ${fps.round()}fps' : ''}',
-        ),
-        row(l10n.hdr, videoRangeLabel(video)),
-        if (_hdrOutputRow(l10n, hdrTonemapped: hdrTonemapped)
-            case final hdrOutput?)
-          row(l10n.hdrOutput, hdrOutput),
-        row(l10n.codec, _formatVideoCodec(video)),
-        if (video['BitRate'] != null)
-          row(l10n.videoBitrate, _formatBitrate(video['BitRate'] as int?)),
-      ];
-      addSection(l10n.video, videoRows);
-    }
-
-    if (audioStream case final audio?) {
-      final audioRows = <Map<String, dynamic>>[
-        row(
-          l10n.track,
-          audio['DisplayTitle'] as String? ??
-              audio['Language'] as String? ??
-              l10n.unknown,
-        ),
-        row(l10n.codec, _formatAudioCodec(audio)),
-        row(l10n.channels, _formatChannels(audio['Channels'] as int?)),
-        if (audio['BitRate'] != null)
-          row(l10n.audioBitrate, _formatBitrate(audio['BitRate'] as int?)),
-        if (audio['SampleRate'] != null)
-          row(
-            l10n.sampleRate,
-            '${((audio['SampleRate'] as num) / 1000).toStringAsFixed(1)} kHz',
-          ),
-      ];
-      addSection(l10n.audio, audioRows);
-    }
-
-    if (subtitleStream case final subtitle?) {
-      final subtitleRows = <Map<String, dynamic>>[
-        row(
-          l10n.track,
-          subtitle['DisplayTitle'] as String? ??
-              subtitle['Language'] as String? ??
-              l10n.unknown,
-        ),
-        row(
-          l10n.format,
-          ((subtitle['Codec'] as String?) ?? l10n.unknown).toUpperCase(),
-        ),
-        row(
-          l10n.type,
-          subtitle['IsExternal'] == true ? l10n.external : l10n.embedded,
-        ),
-      ];
-      addSection(l10n.subtitles, subtitleRows);
-    }
-
-    final diagnostics = PlaybackProfileDiagnostics.instance.lastDecision;
-    if (diagnostics != null) {
-      final diagnosticsMediaSourceId = diagnostics['mediaSourceId']?.toString();
-      final currentMediaSourceId =
-          resolution?.mediaSourceId ?? mediaSource?['Id']?.toString();
-      final matchesCurrentMediaSource =
-          diagnosticsMediaSourceId == null ||
-          currentMediaSourceId == null ||
-          diagnosticsMediaSourceId == currentMediaSourceId;
-
-      if (matchesCurrentMediaSource) {
-        String listValue(String key) {
-          final raw = diagnostics[key];
-          if (raw is List) {
-            final values = raw
-                .map((entry) => entry.toString().trim())
-                .where((entry) => entry.isNotEmpty)
-                .toList(growable: false);
-            return values.isEmpty ? l10n.unknown : values.join(', ');
-          }
-          final text = raw?.toString().trim() ?? '';
-          return text.isEmpty ? l10n.unknown : text;
-        }
-
-        String scalarValue(String key) {
-          final text = diagnostics[key]?.toString().trim() ?? '';
-          return text.isEmpty ? l10n.unknown : text;
-        }
-
-        final maxStreamingBitrate =
-            switch (diagnostics['maxStreamingBitrate']) {
-              int value => value,
-              num value => value.toInt(),
-              _ => null,
-            };
-
-        final diagnosticsRows = <Map<String, dynamic>>[
-          row(l10n.player, scalarValue('backend')),
-          row(l10n.playMethod, scalarValue('playMethod')),
-          row(l10n.transcodeReasons, listValue('transcodingReasons')),
-          row(l10n.container, scalarValue('container')),
-          row(l10n.videoCodec, scalarValue('videoCodec')),
-          row(l10n.profile, scalarValue('videoProfile')),
-          row(
-            l10n.settingsAudioDiagnosticsVideoLevel,
-            scalarValue('videoLevel'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsVideoRange,
-            scalarValue('videoRange'),
-          ),
-          row(l10n.audioCodec, scalarValue('audioCodec')),
-          row(l10n.profile, scalarValue('audioProfile')),
-          row(l10n.channels, scalarValue('audioChannels')),
-          row(
-            l10n.settingsAudioDiagnosticsSubtitleCodec,
-            scalarValue('subtitleCodec'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsAllowedAudioCodecs,
-            listValue('allowedAudioCodecs'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsHlsMpegTsAudioCodecs,
-            listValue('hlsMpegTsAudioCodecs'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsHlsFmp4AudioCodecs,
-            listValue('hlsFmp4AudioCodecs'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsAudioSpdifPassthrough,
-            listValue('audioSpdifCodecs'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsActiveAudioRoute,
-            scalarValue('activeRouteType'),
-          ),
-          row(
-            l10n.settingsAudioDiagnosticsRouteHdAudioSupport,
-            diagnostics['routeSupportsHdAudio'] == true
-                ? l10n.settingsEnabledOnThisDevice
-                : l10n.no,
-          ),
-          if (maxStreamingBitrate != null)
-            row(l10n.maxStreamingBitrate, _formatBitrate(maxStreamingBitrate)),
-        ];
-
-        addSection(l10n.settingsAudioDiagnostics, diagnosticsRows);
-      }
-    }
-
-    return sections;
+      localFile: item is String ? item : null,
+      player: playerEngineName(_activeBackend),
+      device: device,
+      audioRoute: playbackAudioRoute(
+        resolution?.mediaSourceId ?? mediaSource?['Id']?.toString(),
+      ),
+      hdrOutput: _hdrOutputRange(hdrTonemapped: hdrTonemapped),
+      nativeStatus: switch (_activeBackend) {
+        final Media3PlayerBackend media3 => media3.playbackStatus,
+        _ => null,
+      },
+    );
   }
 
   String _castKindLabel(CastTargetKind kind, AppLocalizations l10n) {
@@ -2107,7 +1923,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   Future<void> _pushMedia3UiMetadata() async {
     final backend = _activeMedia3Backend;
-    if (backend == null) return;
+    if (backend == null || !mounted) return;
 
     final l10n = AppLocalizations.of(context);
     final item = _queue.currentItem;
@@ -2166,7 +1982,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       topSubtitle: topSubtitle,
       artworkUrl: artworkUrl,
       showClock: false,
-      zoomModeLabel: _zoomModeLabel(_zoomMode),
+      zoomModeLabel: _letterboxCropOsd
+          ? l10n.shortcutRecropBlackBars
+          : _zoomModeLabel(l10n, _zoomMode),
       streamInfoSections: streamInfoSections,
       hasCastCrew: hasCastCrew,
       castPeople: castPeople,
@@ -2177,6 +1995,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       castVolume: _remoteVolume,
       selectedBitrateMbps: _manager.maxBitrateOverrideMbps,
     );
+  }
+
+  void _onAetherRemoteCommand(Map<String, dynamic> command) {
+    if (!mounted || _activeBackend is! AetherBackend) return;
+    final wantsPlay = switch (command['event']) {
+      'play' => true,
+      'pause' => false,
+      _ => null,
+    };
+    if (wantsPlay == null) return;
+    if (wantsPlay != _state.isPlaying) _togglePlayPause();
+    _revealControlsAfterTransport();
   }
 
   void _onMedia3ActivityAction(Map<String, dynamic> event) {
@@ -2211,7 +2041,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         unawaited(_pushMedia3UiMetadata());
         return;
       case 'toggleZoom':
-        _cyclePlayerZoom();
+        if (_letterboxCropOsd) {
+          _recropBlackBarsFromUi();
+        } else {
+          _cyclePlayerZoom();
+        }
         return;
       case 'castPlay':
         unawaited(_runCastAction((k) => _castService.play(k)));
@@ -2262,6 +2096,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       });
     }
 
+    if (rawData != null && itemId != null) {
+      await mergeServerTrickplay(
+        _clientForQueueItem(item),
+        itemId,
+        rawData,
+        mediaSourceId,
+      );
+    }
     var info = rawData == null
         ? null
         : TrickplayInfo.fromItemData(rawData, mediaSourceId: mediaSourceId);
@@ -2298,8 +2140,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _trickplayMediaSourceId = mediaSourceId;
     });
     if (_controlsVisible) {
-      _prefetchTrickplayDirectional(_state.position, forward: true);
+      // Precaching reads MediaQuery through the context, which initState
+      // can't do. Reopening a player whose item is already playing finds the
+      // info without awaiting anything, so this runs from initState then.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || generation != _trickplayLoadGeneration) return;
+        _prefetchTrickplayDirectional(_state.position, forward: true);
+      });
     }
+  }
+
+  /// A replan or a version change can play another file than the one the
+  /// chapters were taken from, so take that file's.
+  void _refreshChaptersIfNeeded() {
+    final sourceId = _manager.currentResolution?.mediaSourceId;
+    if (sourceId == null || sourceId == _chaptersMediaSourceId) return;
+    setState(_applyChapters);
   }
 
   void _refreshTrickplayIfNeeded() {
@@ -2325,15 +2181,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final duration = _state.duration;
     if (duration <= Duration.zero) return;
 
-    _precacheTrickplayIndexes(
-      TrickplayPrefetchPlanner.planImageIndexes(
+    // With the controls hidden nothing else asks for the current sheet, so
+    // it goes in with the next one or the first scrub waits for it.
+    final current = position >= duration
+        ? Duration(milliseconds: duration.inMilliseconds - 1)
+        : position;
+    _precacheTrickplayIndexes([
+      info.resolveTile(current).imageIndex,
+      ...TrickplayPrefetchPlanner.planImageIndexes(
         info: info,
         position: position,
         totalDuration: duration,
         directionForward: true,
         sheetsAhead: 1,
       ),
-    );
+    ]);
   }
 
   // Every sheet, nearest first. Held back until the first scrub or hover so
@@ -2402,11 +2264,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final itemId = _itemIdForQueueItem(item);
     if (itemId == null || itemId.isEmpty) return;
     final client = _clientForQueueItem(item);
-    final token = client.accessToken;
-    final headers = <String, String>{
-      if (token != null && token.isNotEmpty)
-        'Authorization': 'MediaBrowser Token="$token"',
-    };
+    final headers = trickplayImageHeaders(client, withUserAgent: false);
     final generation = _trickplayLoadGeneration;
     for (final index in indexes) {
       if (!_prefetchedTrickplayIndexes.add(index)) continue;
@@ -2423,9 +2281,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
       unawaited(
         precacheImage(
-          CachedNetworkImageProvider(
+          trickplaySheetProvider(
             url,
-            headers: headers.isEmpty ? null : headers,
+            headers,
+            sheetWidth: info.width * info.tileWidth,
+            sheetHeight: info.height * info.tileHeight,
           ),
           context,
           onError: (_, _) {
@@ -2444,6 +2304,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _syncSubtitleActive();
     }
     _refreshTrickplayIfNeeded();
+    _refreshChaptersIfNeeded();
     _refreshCastPeopleIfNeeded();
     _handleTrickplayAmbientPrefetch(position);
     _syncAirPlayPlaybackState(position: position);
@@ -2482,13 +2343,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _onPlaybackPrefsChanged() {
+    _configureCinemaSkip();
     _syncMediaQueuingPreference();
     if (!mounted) return;
     _applySubtitleStyle();
     final zoom = _prefs.get(UserPreferences.playerZoomMode);
-    if (zoom == _zoomMode) return;
-    setState(() => _zoomMode = zoom);
-    unawaited(_syncMedia3ZoomMode());
+    if (zoom != _zoomMode) {
+      setState(() => _zoomMode = zoom);
+      unawaited(_syncMedia3ZoomMode());
+    } else {
+      setState(() {});
+    }
+    unawaited(_pushMedia3UiMetadata());
   }
 
   void _syncMediaQueuingPreference() {
@@ -2499,6 +2365,41 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   void _onSyncPlayChanged() {
     if (mounted) setState(() {});
+  }
+
+  bool _followingWatchParty = false;
+
+  /// A Watch Party that leaves playing (the host went back to the lobby, the
+  /// item finished, the party ended) takes its members back to the room
+  /// instead of leaving them on a stopped player.
+  void _onWatchPartyChanged() {
+    final party = _watchParty;
+    if (party == null || !mounted) return;
+    final holding = _partyHolding;
+    if (holding != _partyHoldsStart) {
+      setState(() => _partyHoldsStart = holding);
+    }
+    if (party.controlsPlayback) {
+      if (!_followingWatchParty) setState(() => _followingWatchParty = true);
+      return;
+    }
+    if (!_followingWatchParty) return;
+    setState(() => _followingWatchParty = false);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      _exitPlayback().then((_) async {
+        // Once the player's route is gone: is a room screen underneath?
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        if (party.roomScreensOpen > 0 || !navigator.mounted) return;
+        unawaited(
+          navigator.push(
+            MaterialPageRoute<void>(
+              builder: (_) => const SiloWatchPartyScreen(),
+            ),
+          ),
+        );
+      }),
+    );
   }
 
   void _suppressSeekPrompts({
@@ -2537,25 +2438,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _checkSegments(Duration position) {
+    // Don't run automatic segment skips or outro actions during Cinema Mode trailers.
+    if (_isCurrentPreroll && _cinemaSkip.enabled) return;
     final result = _segmentService.checkPosition(position);
     final replaceSkipOutroWithNextUp = _prefs.get(
       UserPreferences.replaceSkipOutroWithNextUp,
     );
-    if (result.shouldSkip && result.skipTo != null) {
+    var skipTo = result.skipTo;
+    if (skipTo != null &&
+        (PlatformDetection.isApple || PlatformDetection.isAppleTV)) {
+      skipTo = skipLandingBeforeEnd(skipTo, _state.duration);
+    }
+    if (result.shouldSkip && skipTo != null) {
       final isOutro = result.segment?.type == MediaSegmentType.outro;
       if (replaceSkipOutroWithNextUp && isOutro && _showNextUp) {
         return;
       }
+      if (isOutro) _markCurrentItemPlayedForOutroSkip();
       if (replaceSkipOutroWithNextUp && isOutro && _shouldShowNextUpOverlay()) {
-        unawaited(_seekDirect(result.skipTo!));
+        unawaited(_seekDirect(skipTo));
         _presentNextUpOverlay();
         return;
       }
-      if (isOutro && !_hasDistinctQueueNextItem()) {
-        unawaited(_exitPlayback());
+      if (isOutro &&
+          !_hasDistinctQueueNextItem() &&
+          outroRunsToEnd(result.skipTo, _state.duration)) {
+        unawaited(_exitPlayback(finished: true));
         return;
       }
-      _seekDirect(result.skipTo!);
+      _seekDirect(skipTo);
       _clearSkipSegment();
       return;
     }
@@ -2573,7 +2484,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
       setState(() {
         _skipSegment = result.segment;
-        _skipTo = result.skipTo;
+        _skipTo = skipTo;
         _controlsVisible = false;
       });
       _hideTimer?.cancel();
@@ -2585,7 +2496,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _checkNextUp(Duration position) {
-    if (!_shouldShowNextUpOverlay()) {
+    final showNextUp = _shouldShowNextUpOverlay();
+    if (!showNextUp && !_shouldShowNextAirDate()) {
       return;
     }
 
@@ -2606,8 +2518,83 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
 
     if (remaining <= threshold) {
-      _presentNextUpOverlay();
+      showNextUp ? _presentNextUpOverlay() : _presentNextAirDate();
     }
+  }
+
+  /// Looks up when the series' next episode airs, for an episode the queue has
+  /// nothing after.
+  Future<void> _loadNextAirDate() async {
+    final lookup = ++_nextAirDateLookup;
+    _nextAirDate = null;
+    _nextAirDateReminder = null;
+    final item = _queue.currentItem;
+    if (item is! AggregatedItem || item.type != 'Episode') return;
+    final seriesId = item.seriesId;
+    if (seriesId == null ||
+        _hasDistinctQueueNextItem() ||
+        !_prefs.get(UserPreferences.showNextAirDate) ||
+        !GetIt.instance.isRegistered<UpcomingEpisodeService>()) {
+      return;
+    }
+    try {
+      final series = AggregatedItem(
+        id: seriesId,
+        serverId: item.serverId,
+        rawData: await _clientForItem(
+          item,
+        ).itemsApi.getItem(seriesId, fields: 'ProviderIds'),
+      );
+      final info = await GetIt.instance<UpcomingEpisodeService>()
+          .resolveUpcomingEpisode(
+            seriesId: seriesId,
+            providerIds: series.providerIds,
+          );
+      if (!mounted || lookup != _nextAirDateLookup || info == null) return;
+      if (info.hasAired ||
+          !info.follows(item.parentIndexNumber, item.indexNumber)) {
+        return;
+      }
+      final sync = GetIt.instance.isRegistered<PluginSyncService>()
+          ? GetIt.instance<PluginSyncService>()
+          : null;
+      final offerReminder =
+          PlatformDetection.useMobileUi &&
+          _prefs.get(UserPreferences.calendarReminders) &&
+          (sync?.calendarRemindersAvailable ?? false);
+      _nextAirDate = info;
+      _nextAirDateTitle = info.title == null || info.title == 'TBA'
+          ? (item.seriesName ?? series.name)
+          : info.title!;
+      _nextAirDateReminder = offerReminder
+          ? upcomingEpisodeReminder(series, info)
+          : null;
+    } catch (e) {
+      debugPrint('[VideoPlayer] Next air date lookup failed: $e');
+    }
+  }
+
+  bool _shouldShowNextAirDate() =>
+      _nextAirDate != null &&
+      !_areSeekPromptsSuppressed() &&
+      _prefs.get(UserPreferences.nextUpBehavior) != NextUpBehavior.disabled &&
+      !_nextUpDismissed &&
+      !_showNextUp &&
+      !_hasDistinctQueueNextItem();
+
+  void _presentNextAirDate() {
+    // Holds the player on the last frame so the card isn't closed with it.
+    _manager.suppressAutoNext = true;
+    _resetSkipSegmentAutoHide();
+    setState(() {
+      _showNextUp = true;
+      _nextUpItem = null;
+      _controlsVisible = false;
+      _skipSegment = null;
+      _skipTo = null;
+    });
+    _hideTimer?.cancel();
+    _focusNextUpPlay();
   }
 
   bool _shouldShowNextUpOverlay() {
@@ -2774,7 +2761,35 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return true;
   }
 
+  // Skipping the credits counts as finishing, even when they start before the
+  // server's own played threshold.
+  void _markCurrentItemPlayedForOutroSkip() {
+    final item = _queue.currentItem;
+    final itemId = _itemIdForQueueItem(item);
+    if (itemId != null && itemId.isNotEmpty) {
+      try {
+        final mutations = ItemMutationRepository(_clientForQueueItem(item));
+        unawaited(
+          mutations.setPlayed(itemId, isPlayed: true).catchError((_) {}),
+        );
+        final raw = _rawDataForQueueItem(item);
+        if (raw != null) {
+          final existingUserData = raw['UserData'];
+          final userData = existingUserData is Map<String, dynamic>
+              ? existingUserData
+              : (existingUserData is Map
+                    ? existingUserData.cast<String, dynamic>()
+                    : <String, dynamic>{});
+          userData['Played'] = true;
+          raw['UserData'] = userData;
+        }
+      } catch (_) {}
+    }
+  }
+
   void _skipCurrentSegment() {
+    // Ignore a Skip Segment press if Cinema Skip has since taken over.
+    if (_isCurrentPreroll && _cinemaSkip.enabled) return;
     _noteViewerActivity();
     final replaceSkipOutroWithNextUp = _prefs.get(
       UserPreferences.replaceSkipOutroWithNextUp,
@@ -2782,29 +2797,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final isOutro =
         _skipSegment?.type == MediaSegmentType.outro ||
         _segmentService.activeSegment?.type == MediaSegmentType.outro;
-    if (isOutro) {
-      final item = _queue.currentItem;
-      final itemId = _itemIdForQueueItem(item);
-      if (itemId != null && itemId.isNotEmpty) {
-        try {
-          final mutations = ItemMutationRepository(_clientForQueueItem(item));
-          unawaited(
-            mutations.setPlayed(itemId, isPlayed: true).catchError((_) {}),
-          );
-          final raw = _rawDataForQueueItem(item);
-          if (raw != null) {
-            final existingUserData = raw['UserData'];
-            final userData = existingUserData is Map<String, dynamic>
-                ? existingUserData
-                : (existingUserData is Map
-                      ? existingUserData.cast<String, dynamic>()
-                      : <String, dynamic>{});
-            userData['Played'] = true;
-            raw['UserData'] = userData;
-          }
-        } catch (_) {}
-      }
-    }
+    if (isOutro) _markCurrentItemPlayedForOutroSkip();
     if (replaceSkipOutroWithNextUp && isOutro && _shouldShowNextUpOverlay()) {
       final skipTo = _skipTo;
       if (skipTo != null) {
@@ -2813,8 +2806,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _presentNextUpOverlay();
       return;
     }
-    if (isOutro && !_hasDistinctQueueNextItem()) {
-      unawaited(_exitPlayback());
+    if (isOutro &&
+        !_hasDistinctQueueNextItem() &&
+        outroRunsToEnd(_skipTo, _state.duration)) {
+      unawaited(_exitPlayback(finished: true));
       return;
     }
 
@@ -2853,6 +2848,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// runs it stays up on its own; afterwards it rides along with the OSD.
   /// With auto-hide off it stays up until the segment ends.
   bool get _isSkipSegmentButtonVisible =>
+      !(_isCurrentPreroll && _cinemaSkip.enabled) &&
       _skipSegment != null &&
       (!_skipSegmentAutoHideEnabled ||
           _skipSegmentAutoHidePending ||
@@ -2880,12 +2876,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     });
   }
 
-  Future<void> _exitPlayback() async {
+  /// [finished] is for leaving by skipping the rest of the item: the stop
+  /// then reports its end, so the server counts it played.
+  Future<void> _exitPlayback({bool finished = false}) async {
     if (_isStopping) return;
     setState(() {
       _isStopping = true;
     });
-    _cancelTvTemporarySpeedHold();
+    _cancelTemporarySpeed();
     if (!PlatformDetection.isTV) _pipService.enableAutoPiP(false);
     if (_wasAlwaysOnTopOnEntry == false && _isAlwaysOnTop) {
       await _setAlwaysOnTop(false);
@@ -2908,7 +2906,55 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _cancelPopAfterBackKeyUp = runAfterBackKeyUp(_popPlayerRoute);
       });
     }
-    unawaited(_manager.stop(userInitiated: false));
+    unawaited(
+      finished
+          ? _manager.stopAsFinished()
+          : _manager.stop(userInitiated: false),
+    );
+  }
+
+  /// Shrinks the player into the bar along the bottom of the app. Playback
+  /// keeps running and the bar's thumbnail takes the picture over, so this
+  /// leaves exactly like [_exitPlayback] minus the stop.
+  bool get _canMinimize =>
+      VideoMiniPlayerController.isSupported &&
+      !_isCurrentPreroll &&
+      _castService.activeKind == null &&
+      _bringupState.phase == PlaybackBringupPhase.ready;
+
+  Future<void> _minimizePlayer() async {
+    if (_isStopping || !_canMinimize) return;
+    setState(() {
+      _isStopping = true;
+    });
+    // Set before the awaits below: if the route goes away during them, the
+    // dispose that skips the stop still leaves a bar to control playback.
+    _isMinimizing = true;
+    VideoMiniPlayerController.instance.minimize(screen: this);
+    // The next up card goes with the screen, and a pending card would keep
+    // the manager from advancing on its own.
+    _manager.suppressAutoNext = false;
+    _showNextUp = false;
+    if (_wasAlwaysOnTopOnEntry == false && _isAlwaysOnTop) {
+      await _setAlwaysOnTop(false);
+    }
+    if (PlatformDetection.useDesktopUi &&
+        _wasDesktopFullscreenOnEntry == false) {
+      final isFullscreen = await FullscreenHelper.isFullscreen();
+      if (isFullscreen) {
+        await _setDesktopFullscreen(false);
+      }
+    }
+    await _restoreSystemUiForExit();
+    if (!mounted) return;
+    _dismissTopOverlayRouteIfAny();
+    setState(() {
+      _readyToPop = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _popPlayerRoute();
+    });
   }
 
   void _popPlayerRoute() {
@@ -2936,6 +2982,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
       return;
     }
+    // The wait rides out a drop nobody asked for, like a buffering blip. A
+    // pause the viewer asked for flips the button at once. The engine's own
+    // intent decides when it reports one, the manager's record otherwise.
+    final pauseAsked = _state.playWhenReady == null
+        ? _manager.viewerPaused
+        : _state.playWhenReady == false;
+    if (pauseAsked) {
+      if (_displayPlaying && mounted) {
+        setState(() => _displayPlaying = false);
+      }
+      return;
+    }
     final delay = _state.isBuffering
         ? const Duration(milliseconds: 600)
         : const Duration(milliseconds: 200);
@@ -2956,27 +3014,42 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _state.duration <= Duration.zero) {
         return;
       }
-      setState(() {});
+      _clockTick.value++;
     });
   }
 
-  void _scheduleHide() {
+  void _scheduleHide({Duration? delay}) {
     _hideTimer?.cancel();
-    final hideDelay = PlatformDetection.useMobileUi
-        ? const Duration(seconds: 8)
-        : const Duration(seconds: 5);
+    final hideDelay = delay ?? _prefs.resolveControlsHideDelay();
     _hideTimer = Timer(hideDelay, () {
-      if (mounted && _state.isPlaying) {
-        setState(() {
-          _controlsVisible = false;
-          if (PlatformDetection.isMobile &&
-              _prefs.get(UserPreferences.osdLockEnabled)) {
-            _isOsdLocked = true;
-          }
-        });
+      if (!mounted) return;
+      // Closing a dialog gives focus back to the button that opened it, so the
+      // controls stay up while one is open.
+      if (_routeCovered) {
+        _scheduleHide(delay: hideDelay);
+        return;
       }
+      final playing = _state.isPlaying;
+      if (!playing && !_hasPausedDescriptionCard) return;
+      setState(() {
+        _controlsVisible = false;
+        if (playing &&
+            PlatformDetection.isMobile &&
+            _prefs.get(UserPreferences.osdLockEnabled)) {
+          _isOsdLocked = true;
+        }
+      });
     });
   }
+
+  // Off TV the transport sits in the middle of the picture, right where the
+  // paused description card goes, so with a card to show the controls still
+  // hide while paused and the card shows once they do.
+  bool get _hasPausedDescriptionCard =>
+      !PlatformDetection.useLeanbackUi &&
+      _bringupState.phase == PlaybackBringupPhase.ready &&
+      _prefs.get(UserPreferences.showDescriptionOnPause) &&
+      _currentItemDescription() != null;
 
   void _onSeekbarFocusChange() {
     if (mounted) setState(() => _seekbarFocused = _tvSeekbarFocus.hasFocus);
@@ -3016,9 +3089,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _focusTvSkipSegment({int attempt = 0}) {
-    if (!PlatformDetection.isTV || _skipSegment == null) return;
+    if (!PlatformDetection.isTV ||
+        _routeCovered ||
+        (!_isSkipSegmentButtonVisible && !_isCinemaSkipVisible)) {
+      return;
+    }
+    final generation = _cinemaSkip.generation;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _skipSegment == null) return;
+      if (!mounted ||
+          _routeCovered ||
+          generation != _cinemaSkip.generation ||
+          (!_isSkipSegmentButtonVisible && !_isCinemaSkipVisible)) {
+        return;
+      }
       _tvSkipSegmentFocus.requestFocus();
 
       if (!_tvSkipSegmentFocus.hasFocus && attempt < 8) {
@@ -3036,7 +3119,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _focusNextUpPlay();
       return;
     }
-    if (_isSkipSegmentButtonVisible) {
+    if (_isSkipSegmentButtonVisible || _isCinemaSkipVisible) {
       _focusTvSkipSegment();
       return;
     }
@@ -3062,6 +3145,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   void _toggleControls() {
     if (_isCurrentPreroll) {
       _syncPrerollOsdState();
+      _cinemaSkip.reveal();
       return;
     }
     if (_isOsdLocked) {
@@ -3090,27 +3174,59 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     return dismissed;
   }
 
+  bool _dismissControlsOrOverlays() {
+    if (_isCinemaSkipVisible) {
+      _dismissCinemaSkip();
+      return true;
+    }
+    if (_showNextUp) {
+      _handleNextUpDismiss();
+      return true;
+    }
+    if (_isSkipSegmentButtonVisible) {
+      _dismissSkipSegment();
+      return true;
+    }
+    if (_dismissTopOverlayRouteIfAny()) {
+      return true;
+    }
+    if (_controlsVisible) {
+      _suppressBackNavigation(duration: const Duration(milliseconds: 500));
+      _hideTimer?.cancel();
+      setState(() => _controlsVisible = false);
+      return true;
+    }
+    return false;
+  }
+
   // A skip, a chapter jump or a segment skip lands somewhere the scrub
   // session knows nothing about. Left alone, the session would commit its
   // stale target the next time play is pressed, so it is dropped here and
   // the seek goes straight through.
   Future<void> _seekDirect(Duration target) {
-    if (_pendingScrubSeekTarget != null || _isPausedScrubActive || _isSeeking) {
-      _scrubSeekCommitId++;
-      _pendingScrubSeekTarget = null;
-      _isPausedScrubActive = false;
-      final resume = _wasPlayingBeforeScrubPause;
-      _wasPlayingBeforeScrubPause = false;
-      if (resume) unawaited(_manager.resume());
-      if (mounted) setState(() => _isSeeking = false);
-    }
+    _dropScrubSession(resume: true);
     return _manager.seekTo(target);
+  }
+
+  void _dropScrubSession({required bool resume}) {
+    if (_pendingScrubSeekTarget == null &&
+        !_isPausedScrubActive &&
+        !_isSeeking) {
+      return;
+    }
+    _scrubSeekCommitId++;
+    _pendingScrubSeekTarget = null;
+    _isPausedScrubActive = false;
+    final wasPlaying = _wasPlayingBeforeScrubPause;
+    _wasPlayingBeforeScrubPause = false;
+    if (resume && wasPlaying) unawaited(_manager.resume());
+    if (mounted) setState(() => _isSeeking = false);
   }
 
   void _seekRelative(int ms, {bool showControls = true}) {
     _noteViewerActivity();
     _suppressSeekPrompts();
-    final target = _state.position + Duration(milliseconds: ms);
+    final target = _transportPosition + Duration(milliseconds: ms);
     final clamped = Duration(
       milliseconds: target.inMilliseconds.clamp(
         0,
@@ -3134,7 +3250,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final basePosition =
         _pendingScrubSeekTarget ??
         (_isSeeking ? _lastScrubCommitTarget : null) ??
-        _state.position;
+        _transportPosition;
     final target = basePosition + Duration(milliseconds: ms);
     _prefetchTrickplayDirectional(target, forward: ms > 0);
     _accumulateScrub(target);
@@ -3173,10 +3289,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _isPausedScrubActive = true;
         // If an earlier still-resolving commit already paused playback for
         // this chain of overlapping gestures, _wasPlayingBeforeScrubPause is
-        // already correctly true - re-reading _state.isPlaying now would see
+        // already correctly true. Re-reading the player's state now would see
         // "paused" and wrongly conclude nothing needs resuming later.
+        // isPlaying reads false while the seek from a Left or Right press with
+        // the controls hidden is still buffering, so this checks isPaused.
         if (!_wasPlayingBeforeScrubPause) {
-          _wasPlayingBeforeScrubPause = _state.isPlaying;
+          _wasPlayingBeforeScrubPause = !_state.isPaused;
           if (_wasPlayingBeforeScrubPause) {
             _manager.pause();
           }
@@ -3280,7 +3398,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final rewindMs = _prefs.get(UserPreferences.unpauseRewindDuration);
     if (rewindMs > 0) {
       final rewind = Duration(milliseconds: rewindMs);
-      final current = _state.position;
+      final current = _transportPosition;
       final target = current > rewind ? current - rewind : Duration.zero;
       try {
         await _manager.seekTo(target);
@@ -3291,24 +3409,32 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   void _togglePlayPause() {
     _noteViewerActivity();
-    if (_state.isPlaying) {
+    if (_castOwnsTransport ? _castPlaying : _state.isPlaying) {
       _manager.pause();
       return;
     }
     _resumeWithConfiguredRewind();
   }
 
+  // A Watch Party's drift nudge sets rates like 1.0399999618530273, so the
+  // label rounds to two places.
+  String get _speedLabel =>
+      ((_state.playbackSpeed * 100).round() / 100).toString();
+
   bool _isTvTemporarySpeedKey(LogicalKeyboardKey key) {
     return key == LogicalKeyboardKey.mediaPause;
   }
 
-  bool _canUseTvTemporarySpeedHold() {
-    if (!PlatformDetection.isTV) return false;
+  bool _canUseTvTemporarySpeedHold() =>
+      PlatformDetection.isTV && _canUseTemporarySpeed();
+
+  bool _canUseTemporarySpeed() {
     if (_castService.activeKind != null) return false;
     if (_isCurrentPreroll) return false;
     if (_isOsdLocked) return false;
     if (!_state.isPlaying) return false;
     if (_syncPlayManager?.state.enabled == true) return false;
+    if (_watchParty?.controlsPlayback == true) return false;
     return true;
   }
 
@@ -3328,8 +3454,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
     _tvTemporarySpeedHoldTimer?.cancel();
     _tvTemporarySpeedHoldKey = key;
-    _tvTemporarySpeedHoldActive = false;
-    _tvTemporarySpeedRestoreSpeed = null;
+    _temporarySpeedActive = false;
+    _temporarySpeedRestore = null;
     _tvTemporarySpeedHoldTimer = Timer(_tvTemporarySpeedHoldDelay, () {
       unawaited(_activateTvTemporarySpeedHold(key));
     });
@@ -3342,13 +3468,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       return KeyEventResult.ignored;
     }
 
-    final didTriggerHold = _tvTemporarySpeedHoldActive;
+    final didTriggerHold = _temporarySpeedActive;
     _tvTemporarySpeedHoldTimer?.cancel();
     _tvTemporarySpeedHoldTimer = null;
     _tvTemporarySpeedHoldKey = null;
 
     if (didTriggerHold) {
-      _cancelTvTemporarySpeedHold();
+      _cancelTemporarySpeed();
       return KeyEventResult.handled;
     }
 
@@ -3365,38 +3491,41 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   Future<void> _activateTvTemporarySpeedHold(LogicalKeyboardKey key) async {
     if (!mounted || _tvTemporarySpeedHoldKey != key) return;
     if (!_canUseTvTemporarySpeedHold()) return;
+    await _startTemporarySpeed();
+  }
 
-    _tvTemporarySpeedHoldActive = true;
-    _tvTemporarySpeedRestoreSpeed ??= _state.playbackSpeed;
+  Future<void> _startTemporarySpeed() async {
+    setState(() => _temporarySpeedActive = true);
+    _temporarySpeedRestore ??= _state.playbackSpeed;
 
-    if ((_state.playbackSpeed - _tvTemporarySpeed).abs() < 0.001) {
+    if ((_state.playbackSpeed - _temporarySpeed).abs() < 0.001) {
       return;
     }
 
     try {
-      await _manager.setPlaybackSpeed(_tvTemporarySpeed);
+      await _manager.setPlaybackSpeed(_temporarySpeed);
     } catch (_) {}
   }
 
-  Future<void> _restoreTvTemporarySpeed(double speed) async {
+  Future<void> _restoreTemporarySpeed(double speed) async {
     try {
       await _manager.setPlaybackSpeed(speed);
     } catch (_) {}
   }
 
-  void _cancelTvTemporarySpeedHold() {
+  void _cancelTemporarySpeed() {
     _tvTemporarySpeedHoldTimer?.cancel();
     _tvTemporarySpeedHoldTimer = null;
     _tvTemporarySpeedHoldKey = null;
 
-    final shouldRestore = _tvTemporarySpeedHoldActive;
-    final restoreSpeed = _tvTemporarySpeedRestoreSpeed;
+    final shouldRestore = _temporarySpeedActive;
+    final restoreSpeed = _temporarySpeedRestore;
 
-    _tvTemporarySpeedHoldActive = false;
-    _tvTemporarySpeedRestoreSpeed = null;
+    _temporarySpeedActive = false;
+    _temporarySpeedRestore = null;
 
     if (shouldRestore && restoreSpeed != null) {
-      unawaited(_restoreTvTemporarySpeed(restoreSpeed));
+      unawaited(_restoreTemporarySpeed(restoreSpeed));
     }
   }
 
@@ -3427,62 +3556,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _seekRepeatCount = 0;
   }
 
-  String _formatDelay(double seconds) {
-    if (seconds == 0) return AppLocalizations.of(context).none;
-    return '${seconds >= 0 ? '+' : ''}${(seconds * 1000).round()} ms';
-  }
-
-  SubtitleViewConfiguration _buildSubtitleConfig() {
-    final style = SubtitleStyle.forResolution(
-      _prefs,
-      _manager.currentResolution,
-    );
-    final textColor = Color(style.textColor);
-    final bgColor = Color(style.backgroundColor);
-    final strokeColor = Color(style.strokeColor);
-    final prefSize = style.fontSize;
-    final fontWeight = style.fontWeight;
-    final offset = style.verticalOffset;
-
-    final baseSize = PlatformDetection.useMobileUi ? 40.0 : 32.0;
-    final fontSize = (prefSize / 24.0) * baseSize;
-
-    final basePadding = PlatformDetection.useMobileUi ? 16.0 : 24.0;
-    final bottomPadding =
-        basePadding + (offset * MediaQuery.sizeOf(context).height * 0.5);
-
-    final strokeShadows = subtitleStrokeShadows(strokeColor, fontSize);
-
-    final activeIndex = _manager.subtitleStreamIndex;
-    bool isAssOrPgs = false;
-    if (activeIndex != null && activeIndex >= 0) {
-      final mediaStreams = _manager.currentResolution?.mediaStreams;
-      if (mediaStreams != null) {
-        final activeStream = mediaStreams.firstWhere(
-          (s) => s['Index'] == activeIndex,
-          orElse: () => const <String, dynamic>{},
-        );
-        final codec = activeStream['Codec'] as String?;
-        isAssOrPgs = shouldRenderSubtitleNatively(codec);
-      }
-    }
-
-    return SubtitleViewConfiguration(
-      visible: PlatformDetection.isDesktop ? false : !isAssOrPgs,
-      style: TextStyle(
-        inherit: false,
-        height: 1.4,
-        fontSize: fontSize,
-        color: textColor,
-        fontWeight: fontWeight >= 700 ? FontWeight.bold : FontWeight.normal,
-        backgroundColor: bgColor,
-        fontFamilyFallback: const ['Roboto', 'Noto Sans', 'Arial'],
-        shadows: strokeShadows,
-      ),
-      textAlign: TextAlign.center,
-      padding: EdgeInsets.fromLTRB(16.0, 0.0, 16.0, bottomPadding),
-    );
-  }
+  SubtitleViewConfiguration _buildSubtitleConfig() =>
+      buildSubtitleViewConfiguration(
+        context: context,
+        prefs: _prefs,
+        resolution: _manager.currentResolution,
+        subtitleStreamIndex: _manager.subtitleStreamIndex,
+      );
 
   (SubtitleStyle, bool, bool)? _lastSubtitleStyle;
 
@@ -3518,11 +3598,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           fontSize: style.fontSize,
           fontWeight: style.fontWeight,
           verticalOffset: style.verticalOffset,
+          strokeScale: style.strokeScale,
+          shadowColor: style.shadowColor,
+          shadowOffset: style.shadowOffset,
+          shadowBlur: style.shadowBlur,
+          fontFamily: style.fontFamily,
           applyEmbeddedStyles: embeddedStyles,
           applyEmbeddedFontSizes: embeddedFontSizes,
         ),
       );
     } else {
+      // MediaKit caches the primary font size synchronously before its first
+      // native await. Start the primary update first so the relative secondary
+      // scale is calculated against the new size rather than the previous one.
       unawaited(
         backend.configureSubtitleStyle(
           textColor: style.textColor,
@@ -3531,13 +3619,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           fontSize: style.fontSize,
           fontWeight: style.fontWeight,
           verticalOffset: style.verticalOffset,
+          strokeScale: style.strokeScale,
+          shadowColor: style.shadowColor,
+          shadowOffset: style.shadowOffset,
+          shadowBlur: style.shadowBlur,
+          fontFamily: style.fontFamily,
         ),
       );
     }
+    unawaited(syncSecondarySubtitleStyle(_manager, _prefs));
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (_isCurrentPreroll) {
+      if (_routeCovered && _cinemaSkip.enabled) return KeyEventResult.ignored;
+      // A desktop keyboard uses the regular Escape and dismiss shortcuts.
+      // Remote Back still hides Cinema Skip before leaving playback.
+      if (_cinemaSkip.enabled &&
+          PlatformDetection.useDesktopUi &&
+          event is KeyDownEvent) {
+        final desktopAction = _keyBindings.actionFor(
+          event.logicalKey,
+          shift: HardwareKeyboard.instance.isShiftPressed,
+        );
+        if (desktopAction == PlayerAction.escape) {
+          unawaited(_leaveFullscreenOrPlayback());
+          return KeyEventResult.handled;
+        }
+        if (desktopAction == PlayerAction.hideControls) {
+          if (_dismissControlsOrOverlays()) _suppressHoverControls();
+          return KeyEventResult.handled;
+        }
+      }
+
       if (event is KeyUpEvent) {
         final isBackKey = event.logicalKey.isBackKey;
         if (isBackKey) {
@@ -3554,7 +3668,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         final isBackKey = event.logicalKey.isBackKey;
 
         if (isBackKey) {
-          if (!_isBackNavigationSuppressed()) {
+          if (_isCinemaSkipVisible) {
+            _dismissCinemaSkip();
+          } else if (!_isBackNavigationSuppressed()) {
             _exitPlayback();
           }
           return KeyEventResult.handled;
@@ -3569,13 +3685,27 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             return KeyEventResult.handled;
           case LogicalKeyboardKey.mediaPlayPause:
           case LogicalKeyboardKey.space:
+            _togglePlayPause();
+            return KeyEventResult.handled;
           case LogicalKeyboardKey.enter:
           case LogicalKeyboardKey.select:
-            _togglePlayPause();
+            if (_cinemaSkip.eligible) {
+              _cinemaSkip.activate();
+            } else {
+              _togglePlayPause();
+            }
+            return KeyEventResult.handled;
+
+          case LogicalKeyboardKey.arrowRight:
+            _cinemaSkip.reveal();
             return KeyEventResult.handled;
 
           case LogicalKeyboardKey.mediaFastForward:
-            unawaited(_manager.next());
+            if (_cinemaSkip.enabled) {
+              _cinemaSkip.skip(requireVisible: false);
+            } else {
+              unawaited(_manager.next());
+            }
             return KeyEventResult.handled;
 
           case LogicalKeyboardKey.mediaRewind:
@@ -3590,24 +3720,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       }
 
       if (event is KeyRepeatEvent) {
-        final isBackKey = event.logicalKey.isBackKey;
-        if (isBackKey) {
-          return KeyEventResult.handled;
-        }
-
-        switch (event.logicalKey) {
-          case LogicalKeyboardKey.mediaPlay:
-          case LogicalKeyboardKey.mediaPause:
-          case LogicalKeyboardKey.mediaPlayPause:
-          case LogicalKeyboardKey.space:
-          case LogicalKeyboardKey.enter:
-          case LogicalKeyboardKey.select:
-          case LogicalKeyboardKey.mediaFastForward:
-          case LogicalKeyboardKey.mediaRewind:
-            return KeyEventResult.handled;
-          default:
-            return KeyEventResult.handled;
-        }
+        return KeyEventResult.handled;
       }
 
       return KeyEventResult.ignored;
@@ -3753,23 +3866,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           if (_isBackNavigationSuppressed()) {
             return KeyEventResult.handled;
           }
-          if (_showNextUp) {
-            _handleNextUpDismiss();
-            return KeyEventResult.handled;
-          }
-          if (_isSkipSegmentButtonVisible) {
-            _dismissSkipSegment();
-            return KeyEventResult.handled;
-          }
-          if (_dismissTopOverlayRouteIfAny()) {
-            return KeyEventResult.handled;
-          }
-          if (_controlsVisible) {
-            _suppressBackNavigation(
-              duration: const Duration(milliseconds: 500),
-            );
-            _hideTimer?.cancel();
-            setState(() => _controlsVisible = false);
+          if (_dismissControlsOrOverlays()) {
             return KeyEventResult.handled;
           }
           _exitPlayback();
@@ -3853,6 +3950,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _seekRelative(-_prefs.get(UserPreferences.skipBackLength));
           _showControls(focusSeekbar: PlatformDetection.isTV);
           return KeyEventResult.handled;
+        case LogicalKeyboardKey.closedCaptionToggle:
+          if (event is KeyDownEvent && _hasSubtitleChoices) {
+            _showTrackSelector(audio: false, closeKeys: {event.logicalKey});
+          }
+          return KeyEventResult.handled;
+        case LogicalKeyboardKey.mediaAudioTrack:
+          if (event is KeyDownEvent && _watchParty?.controlsPlayback != true) {
+            _showTrackSelector(audio: true, closeKeys: {event.logicalKey});
+          }
+          return KeyEventResult.handled;
         default:
           return KeyEventResult.ignored;
       }
@@ -3887,10 +3994,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
         return KeyEventResult.handled;
       case PlayerAction.next:
-        unawaited(_manager.next());
+        if (event is! KeyRepeatEvent) unawaited(_manager.next());
         return KeyEventResult.handled;
       case PlayerAction.previous:
-        unawaited(_manager.previous());
+        if (event is! KeyRepeatEvent) unawaited(_manager.previous());
+        return KeyEventResult.handled;
+      case PlayerAction.skipSegment:
+        if (!_isSkipSegmentButtonVisible) return KeyEventResult.ignored;
+        if (event is! KeyRepeatEvent) _skipCurrentSegment();
         return KeyEventResult.handled;
       case PlayerAction.skipForward:
         _seekRelative(_prefs.get(UserPreferences.skipForwardLength));
@@ -3901,7 +4012,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         _showControls(focusSeekbar: PlatformDetection.isTV);
         return KeyEventResult.handled;
       case PlayerAction.seekBack:
-        _seekRelative(
+        _keyboardSeek(
           -_accelerateSeekStep(
             _prefs.get(UserPreferences.skipBackLength),
             event,
@@ -3909,7 +4020,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         );
         return KeyEventResult.handled;
       case PlayerAction.seekForward:
-        _seekRelative(
+        _keyboardSeek(
           _accelerateSeekStep(
             _prefs.get(UserPreferences.skipForwardLength),
             event,
@@ -3964,12 +4075,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
         _exitPlayback();
         return KeyEventResult.handled;
+      case PlayerAction.hideControls:
+        if (event is! KeyRepeatEvent && _dismissControlsOrOverlays()) {
+          _suppressHoverControls();
+        }
+        return KeyEventResult.handled;
       case PlayerAction.showControlsOrPlayPause:
-        if (_controlsVisible) {
+        if (_isSkipSegmentButtonVisible) {
+          if (event is! KeyRepeatEvent) _skipCurrentSegment();
+        } else if (_controlsVisible) {
           _togglePlayPause();
         } else {
           _showControls();
         }
+        return KeyEventResult.handled;
+      case PlayerAction.recropBlackBars:
+        if (event is KeyRepeatEvent) return KeyEventResult.handled;
+        if (!_letterboxCropOsd) return KeyEventResult.ignored;
+        _recropBlackBarsFromUi();
         return KeyEventResult.handled;
     }
   }
@@ -3984,6 +4107,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         PlatformDetection.useMobileUi &&
         !_isOsdLocked &&
         _prefs.get(UserPreferences.playerSwipeGestures);
+    // Only with the controls down, so a slow press on a button isn't taken
+    // for a hold. It stays on while held, or the release would never arrive.
+    final holdForSpeed =
+        _temporarySpeedActive ||
+        (PlatformDetection.useMobileUi &&
+            !_controlsVisible &&
+            _canUseTemporarySpeed());
     if (_isInPiP) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -3998,21 +4128,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         if (_isBackNavigationSuppressed()) {
           return;
         }
-        if (_showNextUp) {
-          _handleNextUpDismiss();
-          return;
-        }
-        if (_isSkipSegmentButtonVisible) {
-          _dismissSkipSegment();
-          return;
-        }
-        if (_dismissTopOverlayRouteIfAny()) {
-          return;
-        }
-        if (_controlsVisible) {
-          _suppressBackNavigation(duration: const Duration(milliseconds: 500));
-          _hideTimer?.cancel();
-          setState(() => _controlsVisible = false);
+        if (_dismissControlsOrOverlays()) {
           return;
         }
         _exitPlayback();
@@ -4030,31 +4146,46 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           autofocus: true,
           onKeyEvent: _handleKeyEvent,
           child: GestureDetector(
-            onTap: PlatformDetection.isTV ? null : _toggleControls,
-            onDoubleTapDown: PlatformDetection.isTV
+            onTapUp: PlatformDetection.isTV ? null : _onSurfaceTapUp,
+            onSecondaryTap: PlatformDetection.isTV
                 ? null
-                : PlatformDetection.useMobileUi && !_isOsdLocked
-                ? _onDoubleTapDown
-                : null,
-            onDoubleTap: PlatformDetection.useDesktopUi
-                ? null
-                : _handleDoubleTapGesture,
+                : _onSurfaceSecondaryTap,
             onVerticalDragStart: swipeGestures ? _onVerticalDragStart : null,
             onVerticalDragUpdate: swipeGestures ? _onVerticalDragUpdate : null,
             onVerticalDragEnd: swipeGestures ? _onVerticalDragEnd : null,
             onVerticalDragCancel: swipeGestures ? _onVerticalDragCancel : null,
+            onLongPressStart: holdForSpeed ? _onSurfaceLongPressStart : null,
+            onLongPressEnd: holdForSpeed ? (_) => _onSurfaceLongPressEnd() : null,
+            onLongPressCancel: holdForSpeed ? _onSurfaceLongPressEnd : null,
             behavior: HitTestBehavior.opaque,
             child: Listener(
+              onPointerDown: PlatformDetection.useMobileUi
+                  ? _surfaceTaps.pointerDown
+                  : null,
+              onPointerUp: PlatformDetection.useMobileUi
+                  ? _surfaceTaps.pointerUp
+                  : null,
+              onPointerCancel: PlatformDetection.useMobileUi
+                  ? _surfaceTaps.pointerUp
+                  : null,
               onPointerSignal: PlatformDetection.useDesktopUi
                   ? _handleScrollSignal
                   : null,
               child: MouseRegion(
-                cursor: PlatformDetection.useDesktopUi && !_controlsVisible
+                cursor: PlatformDetection.useDesktopUi &&
+                        !_controlsVisible &&
+                        !_isCinemaSkipVisible
                     ? SystemMouseCursors.none
                     : SystemMouseCursors.basic,
                 onHover: (_) {
                   if (PlatformDetection.useDesktopUi) {
-                    if (_controlsVisible) {
+                    if (_isHoverControlsSuppressed()) return;
+                    if (_isCurrentPreroll && _cinemaSkip.eligible) {
+                      if (_cinemaSkipDismissedGeneration !=
+                          _cinemaSkip.generation) {
+                        _cinemaSkip.reveal();
+                      }
+                    } else if (_controlsVisible) {
                       _scheduleHide();
                     } else {
                       _showControls();
@@ -4097,6 +4228,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                         const Positioned.fill(
                           child: ColoredBox(color: Colors.transparent),
                         ), // Workaround for a Flutter web issue where the video surface can block pointer events.
+                      if (_castOwnsTransport) _buildCastingCover(),
                       _buildTrickplayVideoCover(),
                       _buildBringupOverlay(context),
                       if (_isRestoringPosition)
@@ -4106,26 +4238,79 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                       _buildPausedDescriptionOverlay(),
                       if (_controlsVisible &&
                           !_isOsdLocked &&
-                          !hideOsdForPreroll) ...[
-                        // The chrome stays in the tree while mpv owns its own
-                        // window: both native windows are WS_EX_TRANSPARENT, so
-                        // these widgets are still what gets hit-tested - only
-                        // their pixels are re-sent by HdrOverlayCapture.
-                        _buildTopOverlay(context),
-                        if (!PlatformDetection.useLeanbackUi)
-                          Positioned.fill(
-                            child: Center(
-                              child: _buildCenterTransportControls(),
+                          !hideOsdForPreroll)
+                        // Hidden rather than removed while the subtitle delay
+                        // is open, so closing it can hand focus back to the
+                        // button that opened it.
+                        Positioned.fill(
+                          child: _dimForHdr(
+                            Visibility(
+                              visible: !_subtitleDelayOpen,
+                              maintainState: true,
+                              maintainAnimation: true,
+                              maintainSize: true,
+                              maintainFocusability: true,
+                              child: Stack(
+                                children: [
+                                  const Positioned.fill(
+                                    child: IgnorePointer(
+                                      child: ColoredBox(
+                                        color: Color(0x4D000000),
+                                      ),
+                                    ),
+                                  ),
+                                  // The chrome stays in the tree while mpv owns
+                                  // its own window: both native windows are
+                                  // WS_EX_TRANSPARENT, so these widgets are still
+                                  // what gets hit-tested. Only their pixels are
+                                  // re-sent by HdrOverlayCapture.
+                                  _buildTopOverlay(context),
+                                  if (!PlatformDetection.useLeanbackUi &&
+                                      !_transportDocked &&
+                                      !_partyHoldsStart)
+                                    Positioned.fill(
+                                      top:
+                                          DeviceHinge.laptopFoldY(context) ?? 0,
+                                      child: Center(
+                                        child: _buildCenterTransportControls(),
+                                      ),
+                                    ),
+                                  _buildBottomOverlay(context),
+                                ],
+                              ),
                             ),
                           ),
-                        _buildBottomOverlay(context),
-                      ],
+                        ),
+                      // The controls carry the indicator while they're up.
+                      // Once they hide it stays in the corner, since the wait
+                      // can outlast the controls by minutes.
+                      if (_showSubtitleLoading &&
+                          !hideOsdForPreroll &&
+                          (!_controlsVisible || _isOsdLocked) &&
+                          !_isBringupInProgress(_bringupState.phase))
+                        Positioned(
+                          left: AppSpacing.spaceLg,
+                          right: AppSpacing.spaceLg,
+                          bottom:
+                              MediaQuery.of(context).padding.bottom +
+                              AppSpacing.spaceLg,
+                          child: _buildSubtitleLoadingIndicator(
+                            standalone: true,
+                          ),
+                        ),
+                      if (_followingWatchParty)
+                        WatchPartyPlayerOverlay(
+                          bottomInset: _controlsVisible
+                              ? _bottomOverlayHeight ?? 0
+                              : 0,
+                        ),
                       _buildBufferingIndicator(),
                       _buildVolumeOverlay(),
                       if (PlatformDetection.useMobileUi)
                         _buildBrightnessOverlay(),
-                      if (PlatformDetection.useMobileUi)
-                        _buildDoubleTapSkipOverlay(),
+                      _buildSkipIndicatorOverlay(),
+                      if (_temporarySpeedActive && !PlatformDetection.isTV)
+                        _buildTemporarySpeedOverlay(),
                       if (_isOsdLocked && !hideOsdForPreroll)
                         _buildLockedOverlay(),
                       if (_isSkipSegmentButtonVisible)
@@ -4142,6 +4327,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                                   TrickplayPreviewLayout
                                       .verticalTravelBottomMargin) +
                               AppSpacing.spaceXs,
+                        ),
+                      if (_isCinemaSkipVisible)
+                        SkipSegmentOverlay(
+                          key: ValueKey('cinema-preroll-${_cinemaSkip.generation}'),
+                          segment: MediaSegment(
+                            id: '__cinema_preroll__${_cinemaSkip.generation}',
+                            itemId: _itemIdForQueueItem(_queue.currentItem) ?? '',
+                            type: MediaSegmentType.preview,
+                            start: Duration.zero,
+                            end: _cinemaSkip.duration,
+                          ),
+                          actionLabel: AppLocalizations.of(context).settingsSkip,
+                          focusNode: _tvSkipSegmentFocus,
+                          onSkip: _cinemaSkip.skip,
+                          onDismiss: _dismissCinemaSkip,
+                          positionStream: _state.positionStream,
+                          initialPosition: _state.position,
+                          rightInset: 24.0 +
+                              (PlatformDetection.isMobile && !PlatformDetection.isTV
+                                  ? MediaQuery.viewPaddingOf(context).right
+                                  : 0),
+                          bottomInset: MediaQuery.viewPaddingOf(context).bottom +
+                              (PlatformDetection.isMobile && !PlatformDetection.isTV
+                                  ? 16
+                                  : 24),
                         ),
                       if (_showNextUp && _nextUpItem != null)
                         NextUpOverlay(
@@ -4163,11 +4373,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                               : null,
                           timeoutMs: _prefs.get(UserPreferences.nextUpTimeout),
                           onPlayNext: _handleNextUpPlay,
-                          onDismiss: _handleNextUpCancel,
+                          // TV dismisses with Back, so its X exits the player.
+                          onDismiss: PlatformDetection.isTV
+                              ? _handleNextUpCancel
+                              : _handleNextUpDismiss,
                           onTimeout:
                               _prefs.get(UserPreferences.autoplayNextEpisode)
                               ? _handleNextUpPlay
                               : _handleNextUpCancel,
+                          focusNode: _tvNextUpPlayFocus,
+                          dismissFocusNode: _tvNextUpDismissFocus,
+                        )
+                      else if (_showNextUp && _nextAirDate != null)
+                        NextUpOverlay.airDate(
+                          airDate: _nextAirDate!,
+                          airDateTitle: _nextAirDateTitle,
+                          reminder: _nextAirDateReminder,
+                          isMinimal:
+                              _prefs.get(UserPreferences.nextUpBehavior) ==
+                              NextUpBehavior.minimal,
+                          timeoutMs: _prefs.get(UserPreferences.nextUpTimeout),
+                          // The episode has ended, so there's nothing to go
+                          // back to.
+                          onDismiss: _handleNextUpCancel,
+                          onTimeout: _handleNextUpCancel,
                           focusNode: _tvNextUpPlayFocus,
                           dismissFocusNode: _tvNextUpDismissFocus,
                         ),
@@ -4229,6 +4458,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final tile = _getTrickplayTile(seekPosition);
     if (tile == null) return const SizedBox.shrink();
     return Positioned.fill(
+      bottom: _pictureBottomInset,
       child: Padding(
         padding: trickplayHousingInset(
           keepClear: _keepVideoClearOfHousing,
@@ -4237,7 +4467,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         child: Trickplay(
           fillFrame: true,
           content: (_) => FittedBox(
-            fit: _zoomToFit(_zoomMode),
+            fit: _zoomToFit(_effectiveZoomMode),
             child: SizedBox(
               width: tile.thumbWidth,
               height: tile.thumbHeight,
@@ -4253,12 +4483,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       PlatformDetection.isIOS &&
       _prefs.get(UserPreferences.keepVideoClearOfDynamicIsland);
 
+  /// Half open like a laptop, the picture stays above the fold and the
+  /// transport sits below it, under the hands.
+  double get _pictureBottomInset {
+    final fold = DeviceHinge.laptopFoldY(context);
+    return fold == null ? 0 : fold + DeviceHinge.creaseGap / 2;
+  }
+
   Widget _buildVideoSurface() {
-    if (PlatformDetection.isIOS || PlatformDetection.isMacOS) {
+    if (PlatformDetection.isApple || PlatformDetection.isAppleTV) {
       return Positioned.fill(
+        bottom: _pictureBottomInset,
         child: AetherVideoView(
           key: _videoSurfaceKey,
-          zoomMode: _zoomMode.name,
+          zoomMode: _effectiveZoomMode.name,
           keepClearOfHousing: _keepVideoClearOfHousing,
         ),
       );
@@ -4277,7 +4515,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final htmlBackend = _activeHtmlVideoBackend;
     if (htmlBackend != null) {
       return Positioned.fill(
-        child: htmlBackend.buildView(fit: _zoomToFit(_zoomMode)),
+        child: htmlBackend.buildView(fit: _zoomToFit(_effectiveZoomMode)),
       );
     }
 
@@ -4310,7 +4548,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       return Positioned.fill(
         child: NativeVideoView(
           player: mediaKitBackend.player,
-          zoomMode: _nativeZoomMode(_zoomMode),
+          zoomMode: _nativeZoomMode(_effectiveZoomMode),
           fill: Colors.black,
           videoOutput: selectedVo,
           hardwareDecodingEnabled: hwDecodingEnabled,
@@ -4332,7 +4570,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             controls: NoVideoControls,
             width: constraints.maxWidth,
             height: constraints.maxHeight,
-            fit: _zoomToFit(_zoomMode),
+            fit: _zoomToFit(_effectiveZoomMode),
             fill: Colors.black,
             pauseUponEnteringBackgroundMode:
                 !PlatformDetection.isIOS && !PlatformDetection.isAndroid,
@@ -4345,20 +4583,20 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   NativeVideoZoomMode _nativeZoomMode(ZoomMode mode) => switch (mode) {
     ZoomMode.fit => NativeVideoZoomMode.fit,
-    ZoomMode.autoCrop => NativeVideoZoomMode.crop,
+    ZoomMode.autoCrop => NativeVideoZoomMode.zoomToFill,
     ZoomMode.stretch => NativeVideoZoomMode.stretch,
   };
 
   String _media3ZoomModeWire(ZoomMode mode) => switch (mode) {
     ZoomMode.fit => 'fit',
-    ZoomMode.autoCrop => 'crop',
+    ZoomMode.autoCrop => 'zoomToFill',
     ZoomMode.stretch => 'stretch',
   };
 
   Future<void> _syncMedia3ZoomMode() async {
     final backend = _activeMedia3Backend;
     if (backend == null) return;
-    await backend.setZoomMode(_media3ZoomModeWire(_zoomMode));
+    await backend.setZoomMode(_media3ZoomModeWire(_effectiveZoomMode));
   }
 
   bool _isBringupInProgress(PlaybackBringupPhase phase) {
@@ -4366,6 +4604,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   String _bringupLabel() {
+    if (_reconnecting) {
+      return AppLocalizations.of(context).watchPartyReconnecting;
+    }
     switch (_bringupState.phase) {
       case PlaybackBringupPhase.preparing:
         return _streamLoadingLabel;
@@ -4389,31 +4630,38 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
     final pos = _prefs.get(UserPreferences.loadingAnimationPosition);
 
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
+    return _withDisplayMatchFps((fps) {
+      final label = fps == null
+          ? _bringupLabel()
+          : AppLocalizations.of(
+              context,
+            ).playerMatchingDisplayRate(frameRateLabel(fps));
+      return Positioned.fill(
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.45),
+            ),
+            child: pos == LoadingAnimationPosition.bouncing
+                ? BouncingPositionWrapper(
+                    speed: _prefs.get(UserPreferences.loadingAnimationSpeed),
+                    safePadding: const EdgeInsets.all(40.0),
+                    builder: (context, movingLeft) => PlayerLoadingOverlay(
+                      label: label,
+                      flipHorizontal: movingLeft,
+                    ),
+                  )
+                : Align(
+                    alignment: pos.alignment,
+                    child: Padding(
+                      padding: pos.safePadding,
+                      child: PlayerLoadingOverlay(label: label),
+                    ),
+                  ),
           ),
-          child: pos == LoadingAnimationPosition.bouncing
-              ? BouncingPositionWrapper(
-                  speed: _prefs.get(UserPreferences.loadingAnimationSpeed),
-                  safePadding: const EdgeInsets.all(40.0),
-                  builder: (context, movingLeft) => PlayerLoadingOverlay(
-                    label: _bringupLabel(),
-                    flipHorizontal: movingLeft,
-                  ),
-                )
-              : Align(
-                  alignment: pos.alignment,
-                  child: Padding(
-                    padding: pos.safePadding,
-                    child: PlayerLoadingOverlay(label: _bringupLabel()),
-                  ),
-                ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildBufferingIndicator() {
@@ -4421,9 +4669,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       stream: _state.bufferingStream,
       initialData: _state.isBuffering,
       builder: (context, snap) {
-        if (snap.data != true || _isBringupInProgress(_bringupState.phase)) {
+        // Between reconnect attempts the player has failed rather than
+        // buffering, and the wait still needs saying.
+        if ((snap.data != true && !_reconnecting) ||
+            _isBringupInProgress(_bringupState.phase)) {
           return const SizedBox.shrink();
         }
+        final label = _reconnecting
+            ? AppLocalizations.of(context).watchPartyReconnecting
+            : _streamLoadingLabel;
         final hasTrickplay = _trickplayInfo != null && _trickplayInfo!.isValid;
         final recentlySought =
             _lastSeekTime != null &&
@@ -4434,26 +4688,110 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
         final pos = _prefs.get(UserPreferences.loadingAnimationPosition);
         return Positioned.fill(
-          child: pos == LoadingAnimationPosition.bouncing
-              ? BouncingPositionWrapper(
-                  speed: _prefs.get(UserPreferences.loadingAnimationSpeed),
-                  safePadding: const EdgeInsets.all(40.0),
-                  builder: (context, movingLeft) => PlayerLoadingOverlay(
-                    label: _streamLoadingLabel,
-                    flipHorizontal: movingLeft,
-                  ),
-                )
-              : Align(
-                  alignment: pos.alignment,
-                  child: Padding(
-                    padding: pos.safePadding,
-                    child: PlayerLoadingOverlay(
-                      label: _streamLoadingLabel,
+          child: _withDisplayMatchFps((fps) {
+            // While the TV switches to the video's rate, say so instead.
+            final shown = fps == null
+                ? label
+                : AppLocalizations.of(
+                    context,
+                  ).playerMatchingDisplayRate(frameRateLabel(fps));
+            return pos == LoadingAnimationPosition.bouncing
+                ? BouncingPositionWrapper(
+                    speed: _prefs.get(UserPreferences.loadingAnimationSpeed),
+                    safePadding: const EdgeInsets.all(40.0),
+                    builder: (context, movingLeft) => PlayerLoadingOverlay(
+                      label: shown,
+                      flipHorizontal: movingLeft,
                     ),
-                  ),
-                ),
+                  )
+                : Align(
+                    alignment: pos.alignment,
+                    child: Padding(
+                      padding: pos.safePadding,
+                      child: PlayerLoadingOverlay(label: shown),
+                    ),
+                  );
+          }),
         );
       },
+    );
+  }
+
+  /// Rebuilds with the rate the display is switching to, while the start
+  /// waits for the TV.
+  Widget _withDisplayMatchFps(Widget Function(double? fps) builder) {
+    final notifier = _activeMedia3Backend?.displayMatchFps;
+    if (notifier == null) return builder(null);
+    return ValueListenableBuilder<double?>(
+      valueListenable: notifier,
+      builder: (context, fps, _) => builder(fps),
+    );
+  }
+
+  void _onSubtitleLoadingChanged(bool loading) {
+    _subtitleLoadingTimer?.cancel();
+    _subtitleLoadingTimer = null;
+    if (!mounted) return;
+    if (!loading) {
+      if (_showSubtitleLoading) setState(() => _showSubtitleLoading = false);
+    } else if (!_showSubtitleLoading) {
+      // A cached subtitle shouldn't flash the indicator.
+      _subtitleLoadingTimer = Timer(const Duration(milliseconds: 500), () {
+        _subtitleLoadingTimer = null;
+        if (mounted) setState(() => _showSubtitleLoading = true);
+      });
+    }
+  }
+
+  Widget _buildSubtitleLoadingIndicator({bool standalone = false}) {
+    Widget status = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: AppTypography.fontSizeLg,
+          height: AppTypography.fontSizeLg,
+          child: _SubtitleLoadingSpinner(),
+        ),
+        const SizedBox(width: AppSpacing.spaceSm),
+        Flexible(
+          child: Text(
+            AppLocalizations.of(context).fetchingSubtitles,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: AppTypography.fontSizeXs,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (standalone) {
+      // Without the controls' gradient behind it, it needs its own backing to
+      // stay readable over a bright picture.
+      status = DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black54,
+          borderRadius: AppRadius.circular(14),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.spaceMd,
+            vertical: AppSpacing.spaceXs,
+          ),
+          child: status,
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.spaceLg),
+      child: IgnorePointer(
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: status,
+        ),
+      ),
     );
   }
 
@@ -4468,12 +4806,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       stream: _state.playingStream,
       initialData: _state.isPlaying,
       builder: (context, snap) {
-        final isPlaying = _displayPlaying;
+        final isPlaying = _isPlayingShown;
+        final centerControlsShowing =
+            !PlatformDetection.useLeanbackUi &&
+            _controlsVisible &&
+            !_isOsdLocked;
         return Positioned.fill(
           child: IgnorePointer(
             child: AnimatedOpacity(
               duration: const Duration(milliseconds: 220),
-              opacity: isPlaying ? 0.0 : 1.0,
+              opacity: isPlaying || centerControlsShowing ? 0.0 : 1.0,
               child: Container(
                 color: Colors.black.withValues(alpha: 0.58),
                 child: SafeArea(
@@ -4651,6 +4993,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               ),
             const SizedBox(width: AppSpacing.spaceSm),
             Expanded(child: _buildTitleInfo()),
+            if (_canMinimize)
+              IconButton(
+                onPressed: _minimizePlayer,
+                tooltip: l10n.playerTooltipMinimize,
+                icon: AdaptiveIcon(
+                  Icons.picture_in_picture_alt_rounded,
+                  color: Colors.white,
+                  size: 30 * _osdButtonScale,
+                ),
+              ),
             if (PlatformDetection.useMobileUi &&
                 _prefs.get(UserPreferences.osdLockEnabled))
               IconButton(
@@ -4717,7 +5069,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       children: [
         if (logoUrl != null) ...[
           PlayerLogo(
-            image: NetworkImage(logoUrl, headers: serverImageHeaders),
+            image: offlineAwareImageProvider(
+              logoUrl,
+              headers: serverImageHeaders,
+            ),
             errorBuilder: (_, _, _) => Text(
               seriesName ?? titleText,
               style: const TextStyle(
@@ -4932,7 +5287,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               children: [
                 _buildSeekbar(),
                 const SizedBox(height: AppSpacing.spaceXs),
-                _buildSecondaryControlsRow(),
+                if (_transportDocked)
+                  _buildDockedControlsRow()
+                else
+                  _buildSecondaryControlsRow(),
               ],
             ),
           ),
@@ -4986,7 +5344,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
-  Widget _buildSeekbar() {
+  /// The time slots can show the clock, so the once-a-second tick rebuilds
+  /// just the seek bar, not the whole player.
+  Widget _buildSeekbar() => ValueListenableBuilder<int>(
+    valueListenable: _clockTick,
+    builder: (_, _, _) => _buildSeekbarContent(),
+  );
+
+  Widget _buildSeekbarContent() {
     // The slot layout only changes from the settings screen, so resolve it
     // here instead of on every position tick inside the stream builders.
     final aboveLeftSlot = _prefs.get(UserPreferences.playbackTimeAboveLeft);
@@ -5009,7 +5374,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               stream: _state.bufferStream,
               initialData: _state.buffer,
               builder: (context, bufferSnap) {
-                final position = posSnap.data ?? Duration.zero;
+                final position = _castOwnsTransport
+                    ? _transportPosition
+                    : posSnap.data ?? Duration.zero;
                 final duration = durSnap.data ?? Duration.zero;
                 final buffer = bufferSnap.data ?? Duration.zero;
                 final durationMs = math
@@ -5055,6 +5422,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                     return Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (_showSubtitleLoading &&
+                            !_isBringupInProgress(_bringupState.phase)) ...[
+                          _buildSubtitleLoadingIndicator(),
+                          const SizedBox(height: AppSpacing.spaceMd),
+                        ],
                         if (hasAboveRow)
                           Padding(
                             padding: const EdgeInsets.only(
@@ -5101,6 +5473,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                                   );
                                   return KeyEventResult.handled;
                                 case LogicalKeyboardKey.arrowUp:
+                                  // The skip button sits just above the
+                                  // seek bar, so Up is how you get back to it.
+                                  _focusTvSkipSegment();
                                   return KeyEventResult.handled;
                                 case LogicalKeyboardKey.arrowDown:
                                   if (_primaryPlayFocus.context != null) {
@@ -5183,29 +5558,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     required double bufferMs,
   }) {
     return SliderTheme(
-      data: SliderThemeData(
-        trackHeight: 4,
-        thumbShape: const RoundSliderThumbShape(
-          enabledThumbRadius:
-              TrickplayPreviewLayout.seekThumbRadius,
-        ),
-        overlayShape: const RoundSliderOverlayShape(
-          overlayRadius: 14,
-        ),
-        activeTrackColor:
-            AppColorScheme.rangeProgress,
-        secondaryActiveTrackColor: AppColorScheme
-            .rangeTrack
-            .withValues(alpha: 0.8),
-        inactiveTrackColor: AppColorScheme.rangeTrack,
-        thumbColor:
-            (PlatformDetection.isTV &&
-                _seekbarFocused)
-            ? Colors.white
-            : AppColorScheme.rangeThumb,
-        overlayColor: AppColorScheme.rangeThumb
-            .withValues(alpha: 0.2),
-      ),
+      data: osdSeekBarTheme(thumbFocused: _seekbarFocused),
       child: Slider(
         value: positionMs.clamp(0.0, durationMs),
         secondaryTrackValue: bufferMs.clamp(
@@ -5419,9 +5772,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
 
   Widget _trickplayTileImage(TrickplayTile tile) {
     return TrickplayTileImage(
-      sheet: CachedNetworkImageProvider(
+      sheet: trickplaySheetProvider(
         tile.url,
-        headers: tile.headers.isEmpty ? null : tile.headers,
+        tile.headers,
+        sheetWidth: (tile.thumbWidth * tile.tileWidth).round(),
+        sheetHeight: (tile.thumbHeight * tile.tileHeight).round(),
       ),
       sourceRect: tile.sourceRect,
       thumbWidth: tile.thumbWidth,
@@ -5457,12 +5812,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       resolution: resolution,
     );
     if (url == null) return null;
-    final token = trickplayClient.accessToken;
-    final headers = <String, String>{
-      ...serverImageHeaders,
-      if (token != null && token.isNotEmpty)
-        'Authorization': 'MediaBrowser Token="$token"',
-    };
+    final headers = trickplayImageHeaders(trickplayClient);
 
     return TrickplayTile(url: url, headers: headers, resolution: resolution);
   }
@@ -5506,88 +5856,106 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       ? 1.0
       : _prefs.get(UserPreferences.desktopUiScale).scaleFactor;
 
-  Widget _buildTvTransportRow() {
+  bool get _transportDocked =>
+      !PlatformDetection.isTV &&
+      _prefs.get(UserPreferences.playerTransportPosition) ==
+          PlayerTransportPosition.docked;
+
+  /// The transport leads the bottom row the way it does on TV. A phone held
+  /// upright hasn't the width for both, so there it sits on its own line.
+  Widget _buildDockedControlsRow() {
+    if (PlatformDetection.useMobileUi &&
+        MediaQuery.of(context).orientation == Orientation.portrait) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildDockedTransportRow(),
+          _buildSecondaryControlsRow(),
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        _buildDockedTransportRow(),
+        const SizedBox(width: AppSpacing.spaceXs),
+        Expanded(child: _buildSecondaryControlsRow()),
+      ],
+    );
+  }
+
+  Widget _buildDockedTransportRow() {
     final l10n = AppLocalizations.of(context);
     final isLandscape =
         MediaQuery.of(context).orientation == Orientation.landscape;
-    final scale = _osdButtonScale;
-    final buttonExtent = (isLandscape ? 56.0 : 48.0) * scale;
-    final buttonIconSize = (isLandscape ? 28.0 : 24.0) * scale;
 
     return FocusTraversalGroup(
       policy: ReadingOrderTraversalPolicy(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            _controlButton(
-              Icons.skip_previous_rounded,
-              onPressed: _manager.previous,
-              size: buttonIconSize,
-              extent: buttonExtent,
-              focusNode: _tvTransportFirstFocus,
-              tooltip: l10n.playerTooltipPrevious,
+      child: osdDockedTransport(
+        landscape: isLandscape,
+        scale: _osdButtonScale,
+        build: (button, size, extent) => switch (button) {
+          OsdTransportButton.previous => _controlButton(
+            Icons.skip_previous_rounded,
+            onPressed: _manager.previous,
+            size: size,
+            extent: extent,
+            focusNode: _tvTransportFirstFocus,
+            tooltip: l10n.playerTooltipPrevious,
+          ),
+          OsdTransportButton.seekBack => _controlButton(
+            seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
+            onPressed: () =>
+                _seekRelative(-_prefs.get(UserPreferences.skipBackLength)),
+            size: size,
+            extent: extent,
+            tooltip: _tooltipMessage(
+              l10n.playerTooltipSeekBack,
+              shortcut: 'Left',
             ),
-            const SizedBox(width: 4),
-            _controlButton(
-              seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
-              onPressed: () =>
-                  _seekRelative(-_prefs.get(UserPreferences.skipBackLength)),
-              size: buttonIconSize,
-              extent: buttonExtent,
-              tooltip: _tooltipMessage(
-                l10n.playerTooltipSeekBack,
-                shortcut: 'Left',
-              ),
+          ),
+          OsdTransportButton.playPause => StreamBuilder<bool>(
+            stream: _state.playingStream,
+            initialData: _state.isPlaying,
+            builder: (context, snap) {
+              final isPlaying = _isPlayingShown;
+              return _controlButton(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                onPressed: () => isPlaying
+                    ? _manager.pause()
+                    : _resumeWithConfiguredRewind(),
+                size: size,
+                extent: extent,
+                focusNode: _primaryPlayFocus,
+                tooltip: _tooltipMessage(
+                  isPlaying ? l10n.pause : l10n.play,
+                  shortcut: 'Space',
+                ),
+              );
+            },
+          ),
+          OsdTransportButton.seekForward => _controlButton(
+            seekForwardIcon(_prefs.get(UserPreferences.skipForwardLength)),
+            onPressed: () =>
+                _seekRelative(_prefs.get(UserPreferences.skipForwardLength)),
+            size: size,
+            extent: extent,
+            tooltip: _tooltipMessage(
+              l10n.playerTooltipSeekForward,
+              shortcut: 'Right',
             ),
-            const SizedBox(width: 8),
-            StreamBuilder<bool>(
-              stream: _state.playingStream,
-              initialData: _state.isPlaying,
-              builder: (context, snap) {
-                final isPlaying = _displayPlaying;
-                return _controlButton(
-                  isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  onPressed: () => isPlaying
-                      ? _manager.pause()
-                      : _resumeWithConfiguredRewind(),
-                  size: buttonIconSize,
-                  extent: buttonExtent,
-                  focusNode: _primaryPlayFocus,
-                  tooltip: _tooltipMessage(
-                    isPlaying ? l10n.pause : l10n.play,
-                    shortcut: 'Space',
-                  ),
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-            _controlButton(
-              seekForwardIcon(_prefs.get(UserPreferences.skipForwardLength)),
-              onPressed: () =>
-                  _seekRelative(_prefs.get(UserPreferences.skipForwardLength)),
-              size: buttonIconSize,
-              extent: buttonExtent,
-              tooltip: _tooltipMessage(
-                l10n.playerTooltipSeekForward,
-                shortcut: 'Right',
-              ),
-            ),
-            const SizedBox(width: 4),
-            // Always here, because it steps chapters before it steps the
-            // queue, so it has something to do on a lone movie too.
-            _controlButton(
-              Icons.skip_next_rounded,
-              onPressed: _manager.next,
-              size: buttonIconSize,
-              extent: buttonExtent,
-              focusNode: _tvTransportLastFocus,
-              tooltip: l10n.next,
-            ),
-          ],
-        ),
+          ),
+          // Always here, because it steps chapters before it steps the
+          // queue, so it has something to do on a lone movie too.
+          OsdTransportButton.next => _controlButton(
+            Icons.skip_next_rounded,
+            onPressed: _manager.next,
+            size: size,
+            extent: extent,
+            focusNode: _tvTransportLastFocus,
+            tooltip: l10n.next,
+          ),
+        },
       ),
     );
   }
@@ -5609,7 +5977,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          _buildTvTransportRow(),
+          _buildDockedTransportRow(),
           const SizedBox(width: AppSpacing.spaceXs),
           Expanded(child: _buildSecondaryControlsRow()),
         ],
@@ -5664,29 +6032,25 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             !_isPrerollQueueItem(item) &&
             ((_itemIdForQueueItem(item)?.isNotEmpty) ?? false);
         final isFavorite = canFavorite && _queueItemIsFavorite(item);
-        final hasChapters = item is AggregatedItem && item.chapters.isNotEmpty;
+        final hasChapters =
+            item is AggregatedItem && _playingChapters(item).isNotEmpty;
+        final canBrowse = _canBrowseEpisodes(item);
         final hasCast = _hasCastCrew(item);
-        final playbackStreams = _currentPlaybackMediaStreams();
-        final hasSubtitleStreams = playbackStreams.any(
-          (s) => s['Type'] == 'Subtitle',
-        );
-        final canDownloadRemoteSubtitles =
-            item is AggregatedItem && _canDownloadRemoteSubtitles(item);
-        final showSubtitleButton =
-            hasSubtitleStreams || canDownloadRemoteSubtitles;
-        final subtitleButtonIcon =
-            !hasSubtitleStreams && canDownloadRemoteSubtitles
-            ? Icons.download_rounded
-            : Icons.subtitles_outlined;
-        final showAudioButton = true;
+        final showSubtitleButton = _hasSubtitleChoices;
+        final subtitleButtonIcon = _hasSubtitleStreams
+            ? Icons.subtitles_outlined
+            : Icons.download_rounded;
+        // Everyone in a Watch Party hears the same track.
+        final showAudioButton = _watchParty?.controlsPlayback != true;
         final hidden = osdButtonLayout.hidden(_prefs);
         bool shows(OsdButton button) => !hidden.contains(button.id);
 
         final isLandscape =
             MediaQuery.of(context).orientation == Orientation.landscape;
         final scale = _osdButtonScale;
-        final secondaryIconSize = (isLandscape ? 28.0 : 24.0) * scale;
-        final secondaryExtent = (isLandscape ? 56.0 : 48.0) * scale;
+        final rowSize = osdRowButtonSize(landscape: isLandscape);
+        final secondaryIconSize = rowSize.icon * scale;
+        final secondaryExtent = rowSize.extent * scale;
         final secondaryTextSize = isLandscape
             ? AppTypography.fontSizeMd
             : AppTypography.fontSizeSm;
@@ -5703,7 +6067,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               _showSpeedSelector();
             },
             child: Text(
-              '${_state.playbackSpeed}x',
+              '${_speedLabel}x',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: secondaryTextSize,
@@ -5722,6 +6086,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           if (shows(OsdButton.syncPlay) &&
               _syncPlayManager?.state.enabled == true)
             OsdButton.syncPlay: SyncPlayPlayerButton(
+              size: secondaryIconSize,
+              extent: secondaryExtent,
+            )
+          else if (shows(OsdButton.syncPlay) &&
+              _watchParty?.controlsPlayback == true)
+            OsdButton.syncPlay: WatchPartyPlayerButton(
               size: secondaryIconSize,
               extent: secondaryExtent,
             ),
@@ -5746,6 +6116,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               size: secondaryIconSize,
               extent: secondaryExtent,
               tooltip: l10n.chapters,
+            ),
+          if (canBrowse && shows(OsdButton.episodes))
+            OsdButton.episodes: _controlButton(
+              Icons.video_library_outlined,
+              onPressed: _showEpisodes,
+              size: secondaryIconSize,
+              extent: secondaryExtent,
+              tooltip: l10n.episodes,
             ),
           if (showSubtitleButton && shows(OsdButton.subtitles))
             OsdButton.subtitles: _controlButton(
@@ -5815,7 +6193,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
             OsdButton.zoom: _buildZoomButton(
               size: secondaryIconSize,
               extent: secondaryExtent,
-              tooltip: l10n.playerZoomMode,
+              tooltip: _letterboxCropOsd
+                  ? _tooltipMessage(
+                      l10n.shortcutRecropBlackBars,
+                      shortcut: _recropShortcutLabel(l10n),
+                    )
+                  : l10n.playerZoomMode,
             ),
           if (PlatformDetection.isMobile && shows(OsdButton.orientation))
             OsdButton.orientation: _controlButton(
@@ -5889,43 +6272,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
               )
             : secondaryButtons;
 
-        final estimatedWidth =
-            orderedSecondaryButtons.length * (secondaryExtent + 8);
-
-        final layoutBuilder = LayoutBuilder(
-          builder: (context, constraints) {
-            final canFitLandscapeRow =
-                isLandscape && estimatedWidth <= constraints.maxWidth;
-
-            if (canFitLandscapeRow) {
-              return SizedBox(
-                height: secondaryExtent,
-                child: Row(
-                  mainAxisAlignment: PlatformDetection.isTV
-                      ? MainAxisAlignment.start
-                      : MainAxisAlignment.spaceEvenly,
-                  children: orderedSecondaryButtons,
-                ),
-              );
-            }
-
-            return SizedBox(
-              height: secondaryExtent,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    for (final button in orderedSecondaryButtons)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: button,
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
+        final layoutBuilder = osdButtonRow(
+          buttons: orderedSecondaryButtons,
+          extent: secondaryExtent,
+          landscape: isLandscape,
         );
 
         if (PlatformDetection.isTV) {
@@ -6113,7 +6463,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final backend = _manager.backend;
     if (backend == null) return;
 
-    final next = (_playerVolume + (delta * 100.0)).clamp(0.0, 100.0);
+    final next = (_playerVolume + (delta * 100.0)).clamp(0.0, maxPlayerVolume);
     _playerVolume = next;
     await backend.setVolume(next);
     _persistPlayerVolume();
@@ -6216,7 +6566,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _playerVolume = 100.0;
     unawaited(_manager.backend?.setVolume(100.0));
 
-    _volumeListenerSub = vc.addListener((value) {
+    _volumeListenerSub = listenToSystemVolume((value) {
       if (mounted && (value - _systemVolume).abs() > 0.01) {
         setState(() => _systemVolume = value);
         _reportVolumeToManager();
@@ -6227,13 +6577,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           _activeMedia3Backend != null) {
         unawaited(_setMedia3VolumeBoostLevel(0));
       }
-    }, fetchInitialVolume: true);
+    });
   }
 
   void _initDesktopVolume() {
     _playerVolume = _prefs
         .get(UserPreferences.playerVolume)
-        .clamp(0.0, 100.0)
+        .clamp(0.0, maxPlayerVolume)
         .toDouble();
     unawaited(_manager.backend?.setVolume(_playerVolume));
     _reportVolumeToManager();
@@ -6247,7 +6597,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _persistPlayerVolume() {
-    if (!PlatformDetection.isDesktop) return;
+    if (!PlatformDetection.isDesktop && !PlatformDetection.isWeb) return;
     _persistVolumeTimer?.cancel();
     _persistVolumeTimer = Timer(const Duration(milliseconds: 400), () {
       unawaited(_prefs.set(UserPreferences.playerVolume, _playerVolume));
@@ -6258,7 +6608,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   /// controller. Reads [_osdVolume] because a phone's volume is the system one
   /// and a desktop's is the player's.
   void _reportVolumeToManager() {
-    final level = (_osdVolume * 100).clamp(0.0, 100.0).toDouble();
+    final level = (_osdVolume * 100).clamp(0.0, maxPlayerVolume).toDouble();
     _manager.reportVolumeState(volume: level, isMuted: level <= 0);
   }
 
@@ -6330,8 +6680,45 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     } catch (_) {}
   }
 
-  void _onDoubleTapDown(TapDownDetails details) {
-    _doubleTapDownPosition = details.localPosition;
+  bool get _surfaceDoubleTapSeeks =>
+      PlatformDetection.useMobileUi && !_isOsdLocked && !_isCurrentPreroll;
+
+  // onDoubleTap holds back every tap under it, the controls included, until
+  // the double-tap timeout runs out. So the desktop double-click is timed here
+  // and the mobile double-tap goes through _surfaceTaps.
+  void _onSurfaceTapUp(TapUpDetails details) {
+    if (PlatformDetection.useDesktopUi) {
+      _onDesktopClick();
+    } else if (_surfaceDoubleTapSeeks) {
+      _surfaceTaps.tapUp(details);
+    } else {
+      _toggleControls();
+    }
+  }
+
+  void _onDesktopClick() {
+    final now = clock.now();
+    final last = _lastDesktopClickAt;
+    _lastDesktopClickAt = now;
+    if (last != null && now.difference(last) < kDoubleTapTimeout) {
+      _lastDesktopClickAt = null;
+      // The first click already played or paused, so the second puts playback
+      // back the way it was.
+      unawaited(
+        _wasPlayingBeforeDesktopClick ? _manager.resume() : _manager.pause(),
+      );
+      unawaited(_toggleDesktopFullscreen());
+      return;
+    }
+    _wasPlayingBeforeDesktopClick = _state.isPlaying;
+    _togglePlayPause();
+    _showControls();
+  }
+
+  void _onSurfaceSecondaryTap() {
+    if (_dismissControlsOrOverlays()) {
+      _suppressHoverControls();
+    }
   }
 
   void _handleControlButtonPress(VoidCallback onPressed) {
@@ -6339,24 +6726,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _showControls();
   }
 
-  void _handleDoubleTapGesture() {
-    if (_isCurrentPreroll) {
-      return;
-    }
-    if (PlatformDetection.useDesktopUi) {
-      return;
-    }
-    if (PlatformDetection.useMobileUi && !_isOsdLocked) {
-      _onDoubleTap();
-    }
+  void _onSurfaceDoubleTap(Offset localPosition) {
+    // The OSD can lock or a preroll start between the two taps.
+    if (!_surfaceDoubleTapSeeks) return;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    _doubleTapSkip(forward: localPosition.dx >= screenWidth / 2);
   }
 
-  void _onDoubleTap() {
-    final pos = _doubleTapDownPosition;
-    if (pos == null) return;
-    _doubleTapDownPosition = null;
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    _doubleTapSkip(forward: pos.dx >= screenWidth / 2);
+  void _onSurfaceLongPressStart(LongPressStartDetails _) {
+    if (!_canUseTemporarySpeed()) return;
+    _surfaceTaps.cancel();
+    unawaited(_startTemporarySpeed());
+  }
+
+  // Also called for every press that never became a hold.
+  void _onSurfaceLongPressEnd() {
+    if (!_temporarySpeedActive) return;
+    setState(_cancelTemporarySpeed);
   }
 
   void _doubleTapSkip({required bool forward}) {
@@ -6365,8 +6751,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           ? UserPreferences.skipForwardLength
           : UserPreferences.skipBackLength,
     );
-    _seekRelative(forward ? ms : -ms, showControls: false);
-    if (forward) {
+    _skipWithIndicator(forward ? ms : -ms);
+  }
+
+  // A seek with the controls hidden keeps them hidden and only shows how far
+  // it went, so the picture stays in view.
+  void _keyboardSeek(int ms) {
+    if (_controlsVisible) {
+      _seekRelative(ms);
+    } else {
+      _skipWithIndicator(ms);
+    }
+  }
+
+  void _skipWithIndicator(int ms) {
+    _seekRelative(ms, showControls: false);
+    if (ms > 0) {
       _skipForwardAccum += ms;
       setState(() => _showSkipForward = true);
       _skipForwardTimer?.cancel();
@@ -6379,7 +6779,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
       });
     } else {
-      _skipBackwardAccum += ms;
+      _skipBackwardAccum -= ms;
       setState(() => _showSkipBackward = true);
       _skipBackwardTimer?.cancel();
       _skipBackwardTimer = Timer(const Duration(milliseconds: 600), () {
@@ -6444,7 +6844,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         }
       } else {
         final newVolume = (_verticalDragStartValue + deltaValue)
-            .clamp(0.0, 1.0)
+            .clamp(0.0, maxPlayerVolume / 100)
             .toDouble();
         _playerVolume = newVolume * 100.0;
         _manager.backend?.setVolume(_playerVolume);
@@ -6489,17 +6889,21 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                 200.0,
               ) /
               200.0
-        : displayVolume.clamp(0.0, 1.0);
+        : (displayVolume * 100 / maxPlayerVolume).clamp(0.0, 1.0);
     final overlayLabel = usingMedia3Boost && _media3VolumeBoostLevel > 0
         ? 'Volume +$_media3VolumeBoostLevel'
         : '${(displayVolume * 100).round()}%';
+    final inverted =
+        _prefs.get(UserPreferences.gestureIndicatorPlacement) ==
+        GestureIndicatorPlacement.inverted;
+    final alignmentX = inverted ? -0.85 : 0.85;
     return Positioned.fill(
       child: AnimatedOpacity(
         opacity: _showVolumeOverlay ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
         child: IgnorePointer(
           child: Align(
-            alignment: const Alignment(0.85, 0.0),
+            alignment: Alignment(alignmentX, 0.0),
             child: _buildGestureIndicator(
               icon: displayVolume <= 0
                   ? Icons.volume_off_rounded
@@ -6516,13 +6920,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   Widget _buildBrightnessOverlay() {
+    final inverted =
+        _prefs.get(UserPreferences.gestureIndicatorPlacement) ==
+        GestureIndicatorPlacement.inverted;
+    final alignmentX = inverted ? 0.85 : -0.85;
     return Positioned.fill(
       child: AnimatedOpacity(
         opacity: _showBrightnessOverlay ? 1.0 : 0.0,
         duration: const Duration(milliseconds: 200),
         child: IgnorePointer(
           child: Align(
-            alignment: const Alignment(-0.85, 0.0),
+            alignment: Alignment(alignmentX, 0.0),
             child: _buildGestureIndicator(
               icon: _brightnessValue <= 0.25
                   ? Icons.brightness_low_rounded
@@ -6531,6 +6939,43 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   : Icons.brightness_medium_rounded,
               value: _brightnessValue,
               label: '${(_brightnessValue * 100).round()}%',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemporarySpeedOverlay() {
+    return Positioned(
+      top: MediaQuery.paddingOf(context).top + AppSpacing.spaceLg,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: AppRadius.circular(14),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${_temporarySpeed.toStringAsFixed(0)}x',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const AdaptiveIcon(
+                  Icons.fast_forward_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ],
             ),
           ),
         ),
@@ -6595,7 +7040,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
-  Widget _buildDoubleTapSkipOverlay() {
+  Widget _buildSkipIndicatorOverlay() {
     if (!_showSkipForward && !_showSkipBackward) return const SizedBox.shrink();
     final isForward = _showSkipForward;
     final accum = isForward ? _skipForwardAccum : _skipBackwardAccum;
@@ -6646,48 +7091,55 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         behavior: HitTestBehavior.opaque,
         onTap: _showControls,
         child: SafeArea(
-          child: Center(
-            child: IgnorePointer(
-              ignoring: !_controlsVisible,
-              child: GestureDetector(
-                onLongPress: () {
-                  setState(() {
-                    _isOsdLocked = false;
-                    _controlsVisible = true;
-                  });
-                  _scheduleHide();
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.spaceLg,
-                    vertical: AppSpacing.spaceMd,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.72),
-                    borderRadius: AppRadius.circular(20),
-                    border: Border.fromBorderSide(
-                      ThemeRegistry.active.borders.cardBorder.copyWith(
-                        color: Colors.white.withValues(alpha: 0.18),
-                      ),
+          child: Align(
+            alignment: AlignmentDirectional.topEnd,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(
+                top: AppSpacing.spaceSm,
+                end: AppSpacing.spaceLg,
+              ),
+              child: IgnorePointer(
+                ignoring: !_controlsVisible,
+                child: GestureDetector(
+                  onLongPress: () {
+                    setState(() {
+                      _isOsdLocked = false;
+                      _controlsVisible = true;
+                    });
+                    _scheduleHide();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.spaceLg,
+                      vertical: AppSpacing.spaceMd,
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const AdaptiveIcon(
-                        Icons.lock,
-                        color: Colors.white70,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        AppLocalizations.of(context).longPressToUnlock,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.72),
+                      borderRadius: AppRadius.circular(20),
+                      border: Border.fromBorderSide(
+                        ThemeRegistry.active.borders.cardBorder.copyWith(
+                          color: Colors.white.withValues(alpha: 0.18),
                         ),
                       ),
-                    ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const AdaptiveIcon(
+                          Icons.lock,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          AppLocalizations.of(context).longPressToUnlock,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -6710,85 +7162,60 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       initialData: _state.isPlaying,
       builder: (context, snap) {
         final l10n = AppLocalizations.of(context);
-        final isPlaying = _displayPlaying;
-        final scale = _osdButtonScale;
+        final isPlaying = _isPlayingShown;
 
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _controlButton(
-                      Icons.skip_previous_rounded,
-                      onPressed: _manager.previous,
-                      size: 40 * scale,
-                      extent: 72 * scale,
-                      tooltip: l10n.playerTooltipPrevious,
-                    ),
-                    _controlButton(
-                      seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
-                      onPressed: () => _seekRelative(
-                        -_prefs.get(UserPreferences.skipBackLength),
-                      ),
-                      size: 46 * scale,
-                      extent: 78 * scale,
-                      tooltip: _tooltipMessage(
-                        l10n.playerTooltipSeekBack,
-                        shortcut: 'Left',
-                      ),
-                    ),
-                  ],
-                ),
+        return osdCenterTransport(
+          _osdButtonScale,
+          (button, size, extent) => switch (button) {
+            OsdTransportButton.previous => _controlButton(
+              Icons.skip_previous_rounded,
+              onPressed: _manager.previous,
+              size: size,
+              extent: extent,
+              tooltip: l10n.playerTooltipPrevious,
+            ),
+            OsdTransportButton.seekBack => _controlButton(
+              seekBackIcon(_prefs.get(UserPreferences.skipBackLength)),
+              onPressed: () =>
+                  _seekRelative(-_prefs.get(UserPreferences.skipBackLength)),
+              size: size,
+              extent: extent,
+              tooltip: _tooltipMessage(
+                l10n.playerTooltipSeekBack,
+                shortcut: 'Left',
               ),
             ),
-            _controlButton(
+            OsdTransportButton.playPause => _controlButton(
               isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
               onPressed: () =>
                   isPlaying ? _manager.pause() : _resumeWithConfiguredRewind(),
-              size: 64 * scale,
-              extent: 92 * scale,
+              size: size,
+              extent: extent,
               focusNode: _primaryPlayFocus,
               tooltip: _tooltipMessage(
                 isPlaying ? l10n.pause : l10n.play,
                 shortcut: 'Space',
               ),
             ),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _controlButton(
-                      seekForwardIcon(
-                        _prefs.get(UserPreferences.skipForwardLength),
-                      ),
-                      onPressed: () => _seekRelative(
-                        _prefs.get(UserPreferences.skipForwardLength),
-                      ),
-                      size: 46 * scale,
-                      extent: 78 * scale,
-                      tooltip: _tooltipMessage(
-                        l10n.playerTooltipSeekForward,
-                        shortcut: 'Right',
-                      ),
-                    ),
-                    _controlButton(
-                      Icons.skip_next_rounded,
-                      onPressed: _manager.next,
-                      size: 40 * scale,
-                      extent: 72 * scale,
-                      tooltip: l10n.next,
-                    ),
-                  ],
-                ),
+            OsdTransportButton.seekForward => _controlButton(
+              seekForwardIcon(_prefs.get(UserPreferences.skipForwardLength)),
+              onPressed: () =>
+                  _seekRelative(_prefs.get(UserPreferences.skipForwardLength)),
+              size: size,
+              extent: extent,
+              tooltip: _tooltipMessage(
+                l10n.playerTooltipSeekForward,
+                shortcut: 'Right',
               ),
             ),
-          ],
+            OsdTransportButton.next => _controlButton(
+              Icons.skip_next_rounded,
+              onPressed: _manager.next,
+              size: size,
+              extent: extent,
+              tooltip: l10n.next,
+            ),
+          },
         );
       },
     );
@@ -6832,7 +7259,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       _useSystemVolume ? _systemVolume : _playerVolume / 100.0;
 
   void _setOsdVolume(double fraction) {
-    final clamped = fraction.clamp(0.0, 1.0).toDouble();
+    final clamped = fraction.clamp(0.0, maxPlayerVolume / 100).toDouble();
     if (_useSystemVolume) {
       unawaited(_setMobileSystemVolume(clamped, syncFromSystem: true));
     } else {
@@ -6933,9 +7360,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                       overlayColor: Colors.white24,
                     ),
                     child: Slider(
-                      value: _osdVolume.clamp(0.0, 1.0),
-                      min: 0,
-                      max: 1,
+                      value: _osdVolume.clamp(0.0, maxPlayerVolume / 100),
+                      max: maxPlayerVolume / 100,
                       onChanged: apply,
                     ),
                   ),
@@ -6974,7 +7400,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
           },
           child: Center(
             child: Text(
-              '${_state.playbackSpeed}x',
+              '${_speedLabel}x',
               style: TextStyle(color: Colors.white, fontSize: textSize),
             ),
           ),
@@ -6983,7 +7409,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
-  static const _speedSteps = <double>[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  /// Apple's engine holds video at 2x, since AVPlayer gets unstable past it.
+  late final List<double> _speedSteps = [
+    0.5,
+    0.75,
+    1.0,
+    1.25,
+    1.5,
+    1.75,
+    2.0,
+    if (!PlatformDetection.isApple && !PlatformDetection.isAppleTV) ...[
+      2.5,
+      3.0,
+      3.5,
+      4.0,
+      5.0,
+    ],
+  ];
 
   /// Nudges the playback speed one step along the same ladder the speed
   /// picker offers, from whichever step sits nearest the current speed.
@@ -7114,167 +7556,91 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     );
   }
 
-  void _showTrackSelector({required bool audio}) {
-    final l10n = AppLocalizations.of(context);
-    final resolution = _manager.currentResolution;
-    final streamType = audio ? 'Audio' : 'Subtitle';
-    final item = _queue.currentItem;
-    final offlineMeta = _manager.currentOfflineMetadata;
-    final allStreams =
-        resolution?.mediaStreams ??
-        (offlineMeta?['MediaStreams'] as List?)?.cast<Map<String, dynamic>>() ??
-        const <Map<String, dynamic>>[];
-    final streams = allStreams.where((s) => s['Type'] == streamType).toList();
-    final displaySubtitleStreams = audio
-        ? const <Map<String, dynamic>>[]
-        : sortedSubtitleStreams(streams);
-    final optionStreams = audio ? streams : displaySubtitleStreams;
-    final audioStreams = allStreams.where((s) => s['Type'] == 'Audio').toList();
-    final canDownloadRemote =
-        !audio && item is AggregatedItem && _canDownloadRemoteSubtitles(item);
-
-    unawaited(() async {
-      final int? currentStreamIndex;
-      if (audio) {
-        currentStreamIndex =
-            _manager.audioStreamIndex ??
-            streams.where((s) => s['IsDefault'] == true).firstOrNull?['Index']
-                as int?;
-      } else {
-        final subIdx = await _manager.getSubtitleStreamIndexAsync();
-        currentStreamIndex =
-            subIdx ??
-            streams.where((s) => s['IsDefault'] == true).firstOrNull?['Index']
-                as int?;
-      }
-      final isSubsOff = !audio && currentStreamIndex == -1;
-
-      final options = <TrackOption>[
-        if (!audio) TrackOption(label: l10n.off),
-        ...optionStreams.asMap().entries.map((entry) {
-          final index = entry.key;
-          final trackNumber = index + 1;
-          final s = entry.value;
-          final displayTitle = s['DisplayTitle'] as String?;
-          final title = s['Title'] as String?;
-          final language = s['Language'] as String?;
-          final codec = s['Codec'] as String?;
-          final label =
-              displayTitle ??
-              title ??
-              language ??
-              l10n.streamTypeFallback(streamType, index + 1);
-          final subtitle = audio
-              ? [
-                  if (language != null && displayTitle != null) language,
-                  if (codec != null) codec.toUpperCase(),
-                  if (s['Channels'] != null) '${s['Channels']}ch',
-                ].join(' · ')
-              : (() {
-                  final subtitleType =
-                      ((codec == null || codec.isEmpty) ? 'Unknown' : codec)
-                          .toUpperCase();
-                  final deliveryMethod = (s['DeliveryMethod'] as String?)
-                      ?.trim()
-                      .toLowerCase();
-                  final location = s['IsExternal'] == true
-                      ? 'External'
-                      : (deliveryMethod == 'embed' ? 'Embedded' : 'Internal');
-                  return '$subtitleType · $location';
-                })();
-          return TrackOption(
-            label: '$trackNumber - $label',
-            subtitle: subtitle.isNotEmpty ? subtitle : null,
-            scrollLabel: true,
-            scrollSubtitle: true,
-          );
-        }),
-        if (canDownloadRemote)
-          TrackOption(
-            label: l10n.downloadSubtitlesLabel,
-            subtitle: l10n.searchOpenSubtitlesPlugin,
-          ),
-      ];
-
-      final int? selectedIndex;
-      if (audio) {
-        final idx = currentStreamIndex != null
-            ? streams.indexWhere((s) => s['Index'] == currentStreamIndex)
-            : -1;
-        selectedIndex = idx >= 0 ? idx : null;
-      } else {
-        if (isSubsOff || (currentStreamIndex == null && streams.isNotEmpty)) {
-          selectedIndex = 0;
-        } else if (currentStreamIndex != null) {
-          final idx = optionStreams.indexWhere(
-            (s) => s['Index'] == currentStreamIndex,
-          );
-          selectedIndex = idx >= 0 ? idx + 1 : null;
-        } else {
-          selectedIndex = null;
-        }
-      }
-
-      if (!mounted) return;
-
-      final backend = _activeBackend;
-      final delayLimits = delayLimitsFor(backend, audio: audio);
-      final result = await TrackSelectorDialog.show(
+  void _showTrackSelector({
+    required bool audio,
+    bool secondary = false,
+    Set<LogicalKeyboardKey> closeKeys = const {},
+  }) {
+    unawaited(
+      TrackPicker.show(
         context,
-        title: audio ? l10n.audioTrack : l10n.subtitleTrack,
-        options: options,
-        selectedIndex: selectedIndex,
+        manager: _manager,
+        audio: audio,
+        secondary: secondary,
+        closeKeys: closeKeys,
+        clientFor: _clientForItem,
         useRootNavigator: false,
-        footer: delayLimits == null
-            ? null
-            : DelayFooter(
-                initialDelay: audio
-                    ? _audioDelay
-                    : backend is Media3PlayerBackend
-                    ? backend.subtitleDelaySeconds
-                    : _subtitleDelay,
-                label: audio ? l10n.audioDelay : l10n.subtitleDelay,
-                minDelay: delayLimits.$1,
-                maxDelay: delayLimits.$2,
-                onDelayChanged: (d) => _applyDelay(audio: audio, delay: d),
-                formatDelay: _formatDelay,
-              ),
-      );
-      if (result == null || !mounted) return;
-      if (!audio) {
-        if (result == 0) {
-          await _runSinglePlayerMutation(
-            'subtitles_off',
-            _manager.disableSubtitles,
-          );
-          _syncSubtitleActive();
-          return;
-        }
-        final streamIdx = result - 1;
-        if (canDownloadRemote && streamIdx == streams.length) {
-          await _downloadRemoteSubtitles(item, streams, audioStreams);
-          return;
-        }
-        if (streamIdx < optionStreams.length) {
-          final streamIndex =
-              optionStreams[streamIdx]['Index'] as int? ?? streamIdx;
-          await _runSinglePlayerMutation(
-            'subtitle_$streamIndex',
-            () => _manager.changeSubtitleTrack(streamIndex),
-          );
-          _syncSubtitleActive();
-        }
-      } else {
-        if (result < streams.length) {
-          final streamIndex = streams[result]['Index'] as int? ?? result;
-          await _runSinglePlayerMutation(
-            'audio_$streamIndex',
-            () => _manager.changeAudioTrack(streamIndex),
-          );
-        }
-      }
-    }());
+        runMutation: _runSinglePlayerMutation,
+        onSubtitlesChanged: () {
+          if (mounted) _syncSubtitleActive();
+        },
+        // The controls sit over the subtitles, so they step aside while the
+        // delay is set and come back when it closes.
+        onSubtitleDelayOpenChanged: (open) {
+          if (!mounted) return;
+          setState(() => _subtitleDelayOpen = open);
+          if (!open && _controlsVisible) _scheduleHide();
+        },
+      ),
+    );
     _showControls();
+  }
+
+  bool get _letterboxCropOsd =>
+      _prefs.get(UserPreferences.cropBlackBars) &&
+      (_activeBackend?.supportsLetterboxCrop ?? false);
+
+  void _listenToLetterboxCropState(PlayerBackend? backend) {
+    _letterboxCropAppliedSub?.cancel();
+    _letterboxCropGeometrySub?.cancel();
+    _letterboxCropGeometrySub = null;
+    final cropper = backend?.letterboxCropper;
+    _letterboxCropApplied = cropper?.isApplied ?? false;
+    if (cropper == null) return;
+    _letterboxCropAppliedSub = cropper.appliedStream.listen((applied) {
+      if (!mounted) return;
+      setState(() => _letterboxCropApplied = applied);
+      unawaited(_syncMedia3ZoomMode());
+    });
+    // A new crop can change the fill without touching the applied flag.
+    if (cropper is MpvLetterboxCropper) {
+      _letterboxCropGeometrySub = cropper.geometryStream.listen((_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  /// Nothing cropped: the user's zoom mode. A fullscreen display covers an
+  /// mpv crop that is wider than the screen, since fit would show bars again.
+  /// A window and a narrower crop keep the whole picture. Media3 zooms into
+  /// its crop.
+  ZoomMode get _effectiveZoomMode {
+    if (!_letterboxCropApplied) return _zoomMode;
+    final fullscreen =
+        !PlatformDetection.useDesktopUi || _isDesktopFullscreen;
+    final cropper = _activeMediaKitBackend?.letterboxCropper;
+    if (cropper is MpvLetterboxCropper) {
+      final screen = MediaQuery.sizeOf(context);
+      return fullscreen &&
+              cropper.fillsWindow(width: screen.width, height: screen.height)
+          ? ZoomMode.autoCrop
+          : ZoomMode.fit;
+    }
+    return fullscreen ? ZoomMode.autoCrop : _zoomMode;
+  }
+
+  String? _recropShortcutLabel(AppLocalizations l10n) {
+    final keys = _keyBindings.keysFor(PlayerAction.recropBlackBars);
+    if (keys.isEmpty) return null;
+    return keyBindingLabel(keys.first, l10n);
+  }
+
+  void _recropBlackBarsFromUi() {
+    final cropper = _activeBackend?.letterboxCropper;
+    if (cropper == null || !cropper.isSupported) return;
+    unawaited(cropper.recrop());
+    if (!mounted) return;
+    _showPlayerToast(AppLocalizations.of(context).playerRecroppingBlackBars);
   }
 
   void _cyclePlayerZoom() {
@@ -7294,13 +7660,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     FocusNode? focusNode,
     VoidCallback? onRightBoundary,
   }) {
-    final icon = switch (_zoomMode) {
-      ZoomMode.fit => Icons.fit_screen_rounded,
-      ZoomMode.autoCrop => Icons.crop_rounded,
-      ZoomMode.stretch => Icons.open_in_full_rounded,
-    };
+    if (_letterboxCropOsd) {
+      return _controlButton(
+        Icons.crop_16_9_outlined,
+        size: size,
+        extent: extent,
+        onPressed: _recropBlackBarsFromUi,
+        tooltip: tooltip,
+        focusNode: focusNode,
+        onRightBoundary: onRightBoundary,
+      );
+    }
     return _controlButton(
-      icon,
+      osdZoomIcon(_zoomMode),
       size: size,
       extent: extent,
       onPressed: _cyclePlayerZoom,
@@ -7311,8 +7683,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   }
 
   void _showZoomModeToast(ZoomMode mode) {
-    final overlay = Overlay.of(context, rootOverlay: true);
     final l10n = AppLocalizations.of(context);
+    _showPlayerToast('${l10n.playerZoomMode}: ${_zoomModeLabel(l10n, mode)}');
+  }
+
+  void _showPlayerToast(String message) {
+    final overlay = Overlay.of(context, rootOverlay: true);
     _zoomModeToastTimer?.cancel();
     _removeZoomModeToastOverlay();
 
@@ -7345,7 +7721,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
                   ],
                 ),
                 child: Text(
-                  '${l10n.playerZoomMode}: ${_zoomModeLabel(mode)}',
+                  message,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFFE4ECF7),
@@ -7372,12 +7748,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     _zoomModeToastOverlay = null;
   }
 
-  String _zoomModeLabel(ZoomMode mode) {
-    final spaced = mode.name.replaceAllMapped(_camelCaseSpaceRe, (_) => ' ');
-    return spaced.isEmpty
-        ? mode.name
-        : '${spaced[0].toUpperCase()}${spaced.substring(1)}';
-  }
+  String _zoomModeLabel(AppLocalizations l10n, ZoomMode mode) =>
+      switch (mode) {
+        ZoomMode.fit => l10n.fit,
+        ZoomMode.autoCrop => l10n.autoCrop,
+        ZoomMode.stretch => l10n.stretch,
+      };
 
   String _tooltipMessage(String label, {String? shortcut}) {
     if (shortcut == null || shortcut.isEmpty || PlatformDetection.isTV) {
@@ -7390,35 +7766,134 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     final l10n = AppLocalizations.of(context);
     final item = _queue.currentItem;
     if (item is! AggregatedItem) return;
-    final chapters = item.chapters;
+    final chapters = _playingChapters(item);
     if (chapters.isEmpty) return;
-    final options = List.generate(chapters.length, (i) {
-      final ch = chapters[i];
-      final name = (ch['Name'] as String?) ?? l10n.chapterNumber(i + 1);
-      final ticks = ch['StartPositionTicks'] as int? ?? 0;
-      return TrackOption(
-        label: name,
-        subtitle: formatPlaybackDuration(Duration(microseconds: ticks ~/ 10)),
+    int startTicks(Map<String, dynamic> ch) =>
+        ch['StartPositionTicks'] as int? ?? 0;
+    final positionTicks = _state.position.inMicroseconds * 10;
+    final current = math.max(
+      0,
+      chapters.lastIndexWhere((ch) => startTicks(ch) <= positionTicks),
+    );
+
+    final imageApi = _clientForItem(item).imageApi;
+    String? imageUrl(int i) {
+      final tag = chapters[i]['ImageTag'] as String?;
+      if (tag == null || tag.isEmpty) return null;
+      final url = imageApi.getChapterImageUrl(
+        item.id,
+        index: i,
+        maxWidth: 400,
+        tag: tag,
       );
-    });
+      return url.isEmpty ? null : url;
+    }
+
     unawaited(() async {
-      final result = await TrackSelectorDialog.show(
+      final result = await showStyledPlayerDialog<int>(
         context,
         title: l10n.chapters,
-        options: options,
+        maxWidth: 900,
+        builder: (dialogCtx) => _ChapterRow(
+          count: chapters.length,
+          initialIndex: current,
+          itemBuilder: (i) {
+            final ch = chapters[i];
+            return _PlayerRowTile(
+              name: (ch['Name'] as String?) ?? l10n.chapterNumber(i + 1),
+              subtitle: formatPlaybackDuration(
+                Duration(microseconds: startTicks(ch) ~/ 10),
+              ),
+              imageUrl: imageUrl(i),
+              landscape: true,
+              current: i == current,
+              autofocus: i == current,
+              onPressed: () => Navigator.of(dialogCtx).pop(i),
+            );
+          },
+        ),
       );
       if (result == null || !mounted) return;
-      final ch = chapters[result];
-      final ticks = ch['StartPositionTicks'] as int? ?? 0;
       _suppressSeekPrompts();
-      _seekDirect(Duration(microseconds: ticks ~/ 10));
+      _seekDirect(Duration(microseconds: startTicks(chapters[result]) ~/ 10));
     }());
     _showControls();
+  }
+
+  bool _canBrowseEpisodes(dynamic item) => canBrowseEpisodes(
+    item,
+    offline: _manager.isOfflinePlayback,
+    inSyncPlay:
+        _syncPlayManager?.state.enabled == true ||
+        _watchParty?.controlsPlayback == true,
+  );
+
+  void _showEpisodes() {
+    final item = _queue.currentItem;
+    if (item is! AggregatedItem || !_canBrowseEpisodes(item)) return;
+    final client = _clientForItem(item);
+    final existing = _episodeBrowser;
+    final browser = existing != null && existing.isFor(item)
+        ? existing
+        : EpisodeBrowserController(client: client, playing: item);
+    if (!identical(browser, existing)) {
+      existing?.dispose();
+      _episodeBrowser = browser;
+    }
+    browser.open(item);
+    final logoUrl = _logoUrlForQueueItem(item);
+    final sidePanel = PlatformDetection.useMobileUi;
+    unawaited(() async {
+      final picked = await showStyledPlayerDialog<AggregatedItem>(
+        context,
+        title: item.seriesName ?? AppLocalizations.of(context).episodes,
+        titleImage: logoUrl == null
+            ? null
+            : offlineAwareImageProvider(logoUrl, headers: serverImageHeaders),
+        maxWidth: 760,
+        sidePanel: sidePanel,
+        builder: (dialogCtx) {
+          _episodeBrowserRoute = ModalRoute.of(dialogCtx);
+          return EpisodeBrowserPanel(
+            controller: browser,
+            imageApi: client.imageApi,
+            fillHeight: sidePanel,
+            onSelect: (episode) {
+              _episodeBrowserRoute = null;
+              Navigator.of(dialogCtx).pop(episode);
+            },
+          );
+        },
+      );
+      _episodeBrowserRoute = null;
+      browser.close();
+      if (picked == null || !mounted || picked.id == browser.playing.id) return;
+      // A scrub left pending on this episode would commit its target on the
+      // next one the moment play is pressed.
+      _dropScrubSession(resume: false);
+      // The pick was made in the dialog, out of reach of the player's own
+      // key handling, so it counts as the viewer being here now.
+      if (await browser.play(_manager, picked)) _noteViewerActivity();
+    }());
+    _showControls();
+  }
+
+  /// A new item starting takes the browser with it, so it never offers the
+  /// last one as the episode that's playing.
+  void _closeEpisodeBrowser() {
+    final route = _episodeBrowserRoute;
+    _episodeBrowserRoute = null;
+    if (route != null && route.isActive) route.navigator?.removeRoute(route);
   }
 
   bool _hasCastCrew(dynamic item) {
     if (item is! AggregatedItem) return false;
     if (item.people.isNotEmpty) return true;
+    if (item.type == 'Episode' &&
+        ((item.seriesId != null && item.seriesId!.isNotEmpty) ||
+            (item.seasonId != null && item.seasonId!.isNotEmpty))) {
+      return true;
+    }
     return item.id == _castPeopleItemId && _castPeople.isNotEmpty;
   }
 
@@ -7443,29 +7918,51 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
   Future<List<Map<String, dynamic>>> _resolveCastPeople(
     AggregatedItem item,
   ) async {
-    if (item.people.isNotEmpty) {
-      return item.people;
-    }
     if (item.id == _castPeopleItemId && _castPeople.isNotEmpty) {
       return _castPeople;
     }
 
-    // An episode keeps its cast on the series, everything else on itself.
-    final id = item.type == 'Episode' ? (item.seriesId ?? '') : item.id;
-    if (id.isEmpty) {
+    if (item.type != 'Episode') {
+      if (item.people.isNotEmpty) {
+        return item.people;
+      }
+      if (item.type == 'Season' &&
+          item.seriesId != null &&
+          item.seriesId!.isNotEmpty) {
+        final client = _clientForItem(item);
+        final parentCast = await resolveParentCast(
+          client: client,
+          seriesId: item.seriesId,
+        );
+        if (parentCast.isNotEmpty) return parentCast;
+      }
+      if (item.type == 'Movie' && item.id.isNotEmpty) {
+        try {
+          final client = _clientForItem(item);
+          final data = await client.itemsApi.getItem(item.id);
+          final people = (data['People'] as List?)
+              ?.whereType<Map>()
+              .map((p) => p.cast<String, dynamic>())
+              .toList(growable: false);
+          if (people != null && people.isNotEmpty) {
+            return people;
+          }
+        } catch (_) {}
+      }
       return const <Map<String, dynamic>>[];
     }
 
-    try {
-      final client = _clientForItem(item);
-      final data = await client.itemsApi.getItem(id);
-      final people = (data['People'] as List?)
-          ?.cast<Map<String, dynamic>>()
-          .toList(growable: false);
-      return people ?? const <Map<String, dynamic>>[];
-    } catch (_) {
-      return const <Map<String, dynamic>>[];
-    }
+    final client = _clientForItem(item);
+    final parentActors = await resolveParentCast(
+      client: client,
+      seasonId: item.seasonId,
+      seriesId: item.seriesId,
+    );
+
+    return mergeEpisodePeople(
+      episodePeople: item.people,
+      parentActors: parentActors,
+    );
   }
 
   Future<void> _showCast() async {
@@ -7509,7 +8006,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
         );
       }
 
-      return _CastPersonTile(
+      return _PlayerRowTile(
         name: name,
         subtitle: subtitle,
         imageUrl: imageUrl,
@@ -7524,15 +8021,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       await showStyledPlayerDialog<void>(
         context,
         title: AppLocalizations.of(context).castAndCrew,
-        maxWidth: 640,
+        maxWidth: 680,
         builder: (dialogCtx) => SizedBox(
           height: 210,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(
-              AppSpacing.spaceLg,
+              AppSpacing.spaceXl,
               AppSpacing.spaceSm,
-              AppSpacing.spaceLg,
+              AppSpacing.space2xl,
               AppSpacing.spaceSm,
             ),
             itemCount: people.length,
@@ -7575,6 +8072,94 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
       subtitleStreamIndex: _manager.subtitleStreamIndex,
     );
     await pauseLocalPlaybackForCastHandoff();
+    _takeCastTransport(item);
+  }
+
+  // Once the receiver has this item, the player's own controls drive it
+  // rather than the paused copy on this device. AirPlay plays through the
+  // local player, so it needs none of this.
+  void _takeCastTransport(AggregatedItem item) {
+    if (!mounted || _castOwnsTransport || _manager.hasTransportInterceptor) {
+      return;
+    }
+    final kind = _castService.activeKind;
+    if (kind == null || kind == CastTargetKind.airPlay) return;
+    if (_castService.castItemNotifier.value?.id != item.id) return;
+    _manager.setTransportInterceptor(_castTransport);
+    setState(() => _castOwnsTransport = true);
+  }
+
+  void _onCastChanged() {
+    if (!_castOwnsTransport) return;
+    if (_castService.activeKind == null) {
+      _manager.setTransportInterceptor(null);
+      _castOwnsTransport = false;
+    }
+    setState(() {});
+  }
+
+  Future<bool> _castTransport(
+    TransportAction action, {
+    Duration? position,
+  }) async {
+    switch (action) {
+      case TransportAction.resume:
+        await _runCastAction(_castService.play);
+      case TransportAction.pause:
+        await _runCastAction(_castService.pause);
+      case TransportAction.seek:
+        await _runCastAction(
+          (k) => _castService.seek(
+            k,
+            positionTicks: position!.inMicroseconds * 10,
+          ),
+        );
+      // The local queue would start the next item on this device.
+      case TransportAction.next || TransportAction.previous:
+        break;
+      case TransportAction.stop:
+        return false;
+    }
+    return true;
+  }
+
+  bool get _castPlaying => switch (_castService.remoteStateNotifier.value) {
+    'playing' || 'buffering' => true,
+    _ => false,
+  };
+
+  bool get _isPlayingShown =>
+      _castOwnsTransport ? _castPlaying : _displayPlaying;
+
+  Duration get _transportPosition => _castOwnsTransport
+      ? Duration(microseconds: _castService.remotePositionNotifier.value ~/ 10)
+      : _state.position;
+
+  Widget _buildCastingCover() {
+    final l10n = AppLocalizations.of(context);
+    final label = switch (_castService.activeKind) {
+      CastTargetKind.googleCast => l10n.castingToGoogleCast,
+      CastTargetKind.dlna => l10n.castingViaDlna,
+      _ => l10n.remotePlayback,
+    };
+    return Positioned.fill(
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cast_connected, size: 64, color: Colors.white70),
+              const SizedBox(height: AppSpacing.spaceMd),
+              Text(
+                label,
+                style: const TextStyle(color: Colors.white70, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showCastControls() {
@@ -7756,83 +8341,30 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen>
     }
   }
 
-  void _applyDelay({required bool audio, required double delay}) {
-    if (audio) {
-      _audioDelay = delay;
-      _manager.backend?.setAudioDelay(delay);
-    } else {
-      _subtitleDelay = delay;
-      _manager.backend?.setSubtitleDelay(delay);
-    }
-  }
-
-  String _formatBitrate(int? bitrate) {
-    if (bitrate == null) {
-      return AppLocalizations.of(context).unknown;
-    }
-    if (bitrate >= 1000000) {
-      return '${(bitrate / 1000000).toStringAsFixed(1)} Mbps';
-    }
-    if (bitrate >= 1000) {
-      return '${(bitrate / 1000).toStringAsFixed(0)} Kbps';
-    }
-    return '$bitrate bps';
-  }
-
-  String _formatVideoCodec(Map<String, dynamic> stream) {
-    var codec = switch (((stream['Codec'] as String?) ?? '').toUpperCase()) {
-      'HEVC' => 'HEVC (H.265)',
-      'H264' || 'AVC' => 'AVC (H.264)',
-      final c => c,
-    };
-
-    final profile = stream['Profile'] as String?;
-    if (profile != null) codec += ' $profile';
-    final level = stream['Level'] as num?;
-    if (level != null) codec += '@L$level';
-    return codec;
-  }
-
-  String _formatAudioCodec(Map<String, dynamic> stream) {
-    final label = audioLabelFromProfileCodec(
-      stream['Profile'] as String?,
-      stream['Codec'] as String?,
-    );
-    if (label != null) {
-      return switch (label) {
-        'EAC3' => 'E-AC3 (Dolby Digital Plus)',
-        'AC3' => 'AC3 (Dolby Digital)',
-        'TRUEHD' => 'TrueHD',
-        _ => label,
-      };
-    }
-    return ((stream['Codec'] as String?) ?? '').toUpperCase();
-  }
-
-  String _formatChannels(int? channels) {
-    if (channels == null) return AppLocalizations.of(context).unknown;
-    final l10n = AppLocalizations.of(context);
-    return switch (channels) {
-      8 => '7.1',
-      6 => '5.1',
-      2 => l10n.stereo,
-      1 => l10n.mono,
-      _ => l10n.channelsCount(channels),
-    };
-  }
-
   void _showStreamInfo() {
     unawaited(_showStreamInfoAsync());
   }
 
   Future<void> _showStreamInfoAsync() async {
+    final item = _queue.currentItem;
     // Live display state: the session stays "active" on an SDR monitor, so
     // the row must not claim HDR while the screen shows SDR.
-    final live = await _hdrBackend?.isCurrentOutputHdr();
+    final (live, transcodingInfo, device) = await (
+      _hdrBackend?.isCurrentOutputHdr() ?? Future<bool?>.value(),
+      item is AggregatedItem
+          ? fetchOwnTranscodingInfo(
+              _clientForQueueItem(item),
+              _manager.currentResolution,
+            )
+          : Future<Map<String, dynamic>?>.value(),
+      playbackDeviceLabel(),
+    ).wait;
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
     final streamInfoSections = _buildMedia3StreamInfoSections(
       hdrTonemapped: live == false,
+      transcodingInfo: transcodingInfo,
+      device: device,
     );
     // mpv's own statistics overlay, the Shift+I one, offered as a button so
     // it can be found without knowing the key.
@@ -8062,31 +8594,166 @@ class _TvFocusButtonState extends State<_TvFocusButton> {
   }
 }
 
-class _CastPersonTile extends StatefulWidget {
+/// A horizontal chapter row that opens scrolled to [initialIndex], so the
+/// lazy list builds that card and its autofocus can land.
+class _ChapterRow extends StatefulWidget {
+  final int count;
+  final int initialIndex;
+  final Widget Function(int index) itemBuilder;
+
+  const _ChapterRow({
+    required this.count,
+    required this.initialIndex,
+    required this.itemBuilder,
+  });
+
+  @override
+  State<_ChapterRow> createState() => _ChapterRowState();
+}
+
+class _ChapterRowState extends State<_ChapterRow> {
+  static const _gap = 16.0;
+  static const _padding = AppSpacing.spaceLg;
+  ScrollController? _controller;
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 200,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const stride = _PlayerRowTile.landscapeWidth + _gap;
+          final viewport = constraints.maxWidth;
+          final content = 2 * _padding + widget.count * stride - _gap;
+          final centered = _padding +
+              widget.initialIndex * stride -
+              (viewport - _PlayerRowTile.landscapeWidth) / 2;
+          _controller ??= ScrollController(
+            initialScrollOffset: centered.clamp(
+              0.0,
+              math.max(0.0, content - viewport),
+            ),
+          );
+          return ListView.separated(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(
+              _padding,
+              AppSpacing.spaceSm,
+              _padding,
+              AppSpacing.spaceSm,
+            ),
+            itemCount: widget.count,
+            separatorBuilder: (_, _) => const SizedBox(width: _gap),
+            itemBuilder: (_, i) => widget.itemBuilder(i),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A card in the player's cast and chapter rows. [landscape] draws a 16:9
+/// chapter frame in place of a round portrait.
+class _PlayerRowTile extends StatefulWidget {
+  static const landscapeWidth = 200.0;
+
   final String name;
   final String subtitle;
   final String? imageUrl;
   final bool autofocus;
+  final bool landscape;
+  final bool current;
   final VoidCallback? onPressed;
 
-  const _CastPersonTile({
+  const _PlayerRowTile({
     required this.name,
     required this.subtitle,
     required this.imageUrl,
     required this.autofocus,
+    this.landscape = false,
+    this.current = false,
     this.onPressed,
   });
 
   @override
-  State<_CastPersonTile> createState() => _CastPersonTileState();
+  State<_PlayerRowTile> createState() => _PlayerRowTileState();
 }
 
-class _CastPersonTileState extends State<_CastPersonTile> {
+class _PlayerRowTileState extends State<_PlayerRowTile> {
+  static const _nameStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+  );
+
+  final _focusNode = FocusNode();
   bool _focused = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.autofocus) {
+      // On TV a navigator observer focuses a new route's first focusable
+      // after autofocus resolves, so the card meant to open focused takes
+      // it back here.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusNode.requestFocus();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Widget _landscapeImage(Widget placeholder) {
+    final url = widget.imageUrl;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: AspectRatio(
+        aspectRatio: 16 / 9,
+        child: ColoredBox(
+          color: Colors.white.withValues(alpha: 0.1),
+          child: url == null
+              ? Center(child: placeholder)
+              : Image(
+                  image: NetworkImage(url, headers: serverImageHeaders),
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => Center(child: placeholder),
+                ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final focusSide = ThemeRegistry.active.borders.focusBorder;
+    final border = _focused
+        ? Border.fromBorderSide(
+            focusSide.copyWith(color: Colors.white, width: 2),
+          )
+        : widget.current
+        ? Border.fromBorderSide(
+            focusSide.copyWith(color: AppColorScheme.accent, width: 2),
+          )
+        : null;
+    final placeholder = AdaptiveIcon(
+      widget.landscape ? Icons.movie : Icons.person,
+      color: Colors.white54,
+      size: 32,
+    );
     return Focus(
+      focusNode: _focusNode,
       canRequestFocus: widget.onPressed != null,
       autofocus: widget.autofocus,
       onFocusChange: (f) => setState(() => _focused = f),
@@ -8104,7 +8771,7 @@ class _CastPersonTileState extends State<_CastPersonTile> {
           duration: const Duration(milliseconds: 120),
           alignment: Alignment.topCenter,
           child: SizedBox(
-            width: 110,
+            width: widget.landscape ? _PlayerRowTile.landscapeWidth : 110,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -8112,46 +8779,43 @@ class _CastPersonTileState extends State<_CastPersonTile> {
                   duration: const Duration(milliseconds: 120),
                   padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: _focused
-                        ? Border.fromBorderSide(
-                            ThemeRegistry.active.borders.focusBorder.copyWith(
-                              color: Colors.white,
-                              width: 2,
-                            ),
-                          )
+                    shape: widget.landscape
+                        ? BoxShape.rectangle
+                        : BoxShape.circle,
+                    borderRadius: widget.landscape
+                        ? BorderRadius.circular(10)
                         : null,
+                    border: border,
                   ),
-                  child: CircleAvatar(
-                    radius: 48,
-                    backgroundColor: Colors.white.withValues(alpha: 0.1),
-                    backgroundImage: widget.imageUrl != null
-                        ? NetworkImage(
-                            widget.imageUrl!,
-                            headers: serverImageHeaders,
-                          )
-                        : null,
-                    child: widget.imageUrl == null
-                        ? const AdaptiveIcon(
-                            Icons.person,
-                            color: Colors.white54,
-                            size: 32,
-                          )
-                        : null,
-                  ),
+                  child: widget.landscape
+                      ? _landscapeImage(placeholder)
+                      : CircleAvatar(
+                          radius: 48,
+                          backgroundColor: Colors.white.withValues(alpha: 0.1),
+                          backgroundImage: widget.imageUrl != null
+                              ? NetworkImage(
+                                  widget.imageUrl!,
+                                  headers: serverImageHeaders,
+                                )
+                              : null,
+                          child: widget.imageUrl == null ? placeholder : null,
+                        ),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  widget.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                if (widget.landscape && _focused)
+                  MarqueeText(
+                    text: widget.name,
+                    style: _nameStyle,
+                    textAlign: TextAlign.center,
+                  )
+                else
+                  Text(
+                    widget.name,
+                    style: _nameStyle,
+                    textAlign: TextAlign.center,
+                    maxLines: widget.landscape ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
                 if (widget.subtitle.isNotEmpty)
                   Text(
                     widget.subtitle,

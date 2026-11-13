@@ -8,7 +8,10 @@ import '../../../data/models/aggregated_item.dart';
 import '../../../data/services/media_server_client_factory.dart';
 import '../../../data/viewmodels/folder_browse_view_model.dart';
 import '../../../preference/user_preferences.dart';
+import '../../../preference/preference_constants.dart';
 import '../../../util/focus/dpad_keys.dart';
+import '../../../util/game_library.dart';
+import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
 import '../../widgets/focus/request_initial_focus.dart';
 import '../../widgets/media_card.dart';
@@ -33,6 +36,10 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
   late final FolderBrowseViewModel _vm;
   final _scrollController = ScrollController();
   final Map<int, FocusNode> _gridItemFocusNodes = {};
+  // Never attached. As the initial focus target it keeps RequestInitialFocus
+  // from parking focus in the sidebar before the items load. Once items load
+  // the first grid item automatically grabs focus at that time
+  final _initialFocusNode = FocusNode(debugLabel: 'folderInitialContent');
   DateTime? _lastItemTapAt;
   String? _lastTappedItemId;
 
@@ -80,6 +87,7 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
       fn.dispose();
     }
     _gridItemFocusNodes.clear();
+    _initialFocusNode.dispose();
     _vm.removeListener(_onChanged);
     _vm.dispose();
     _scrollController.dispose();
@@ -212,9 +220,17 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
     }
   }
 
+  // The sidebar draws over the screen, so content moves past it to 60
+  double get _sidebarInset {
+    final prefs = GetIt.instance<UserPreferences>();
+    final sidebar =
+        prefs.get(UserPreferences.navbarPosition) == NavbarPosition.left;
+    return sidebar && !PlatformDetection.useMobileUi ? 60 : 0;
+  }
+
   @override
   Widget build(BuildContext context) => RequestInitialFocus(
-        targetNode: _vm.items.isNotEmpty ? _getGridItemFocusNode(0) : null,
+        targetNode: _vm.items.isNotEmpty ? _getGridItemFocusNode(0) : _initialFocusNode,
         child: _buildContent(context),
       );
 
@@ -222,27 +238,26 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
     return Scaffold(
       backgroundColor: AppColorScheme.background,
       body: NavigationLayout(
-        // The root keeps the exact route, so the toolbar's Folders button
-        // still lights up on it.
-        activeRoute: widget.folderId == 'root'
-            ? Destinations.folderView
-            : '/folder/${widget.folderId}',
+        activeRoute: '/folder/${widget.folderId}',
         showBackButton: true,
         child: QuickReturnWrapper(
           scrollController: _scrollController,
           topFocusNode: _vm.items.isNotEmpty ? _getGridItemFocusNode(0) : null,
           child: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 80),
-                if (_vm.breadcrumbs.isNotEmpty) _buildBreadcrumbs(),
-                Divider(
-                  color: ThemeRegistry.active.borders.chipBorder.color,
-                  height: 1,
-                ),
-                Expanded(child: _buildBody()),
-              ],
+            child: Padding(
+              padding: EdgeInsets.only(left: _sidebarInset),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 80),
+                  if (_vm.breadcrumbs.isNotEmpty) _buildBreadcrumbs(),
+                  Divider(
+                    color: ThemeRegistry.active.borders.chipBorder.color,
+                    height: 1,
+                  ),
+                  Expanded(child: _buildBody()),
+                ],
+              ),
             ),
           ),
         ),
@@ -268,31 +283,25 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
               ),
             Builder(
               builder: (context) {
+                final entry = _vm.breadcrumbs[i];
                 final isLast = i == _vm.breadcrumbs.length - 1;
-                final rawName = _vm.breadcrumbs[i].name;
-                final isRoot = i == 0 &&
-                    (_vm.breadcrumbs[i].id == 'root' ||
-                        rawName.toLowerCase() == 'root');
-                final displayName = isRoot
-                    ? AppLocalizations.of(context).folders
-                    : rawName;
-
                 return _BreadcrumbChip(
-                  label: displayName,
+                  label: entry.name,
                   isLast: isLast,
                   onTap: !isLast
-                      ? () {
-                          if (i == 0) {
-                            context.go(Destinations.folderView);
-                          } else {
-                            context.go(
-                              Destinations.folder(
-                                _vm.breadcrumbs[i].id,
-                                serverId: widget.serverId,
-                              ),
-                            );
-                          }
-                        }
+                      ? () => context.go(
+                          entry.isLibrary
+                              ? libraryRoute(
+                                  entry.id,
+                                  entry.collectionType,
+                                  entry.name,
+                                  serverId: widget.serverId,
+                                )
+                              : Destinations.folder(
+                                  entry.id,
+                                  serverId: widget.serverId,
+                                ),
+                        )
                       : null,
                 );
               },
@@ -415,6 +424,7 @@ class _FolderBrowseScreenState extends State<FolderBrowseScreen> {
                 : MediaCard.aspectRatioForType(item.type);
 
             return MediaCard(
+              posterBadgeItemId: isFolder ? null : item.id,
               title: _vm.getItemDisplayName(item),
               subtitle: _subtitleText(item, isFolder),
               imageUrl: _imageUrl(item, maxWidth: cardWidth.toInt()),

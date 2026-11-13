@@ -52,6 +52,7 @@ class _FakeSeerr extends Fake implements SeerrRepository {
     int? profileId,
     String? rootFolder,
     int? serverId,
+    int? tvdbId,
   }) async => const SeerrRequest(
     id: 1,
     status: SeerrRequest.statusApproved,
@@ -79,7 +80,7 @@ void main() {
 
       seerr.mediaInfo = const SeerrMediaInfo(
         status: 3,
-        downloadStatus: [SeerrDownloadingItem(size: 100, sizeLeft: 40)],
+        downloadStatus: [SeerrDownloadingItem(size: 100, sizeLeft: 40, downloadId: 'dl')],
       );
       async.elapse(const Duration(seconds: 30));
       expect(vm.state.hdDownload?.percent, 60);
@@ -115,7 +116,7 @@ void main() {
       vm.dispose();
       seerr.mediaInfo = const SeerrMediaInfo(
         status: 3,
-        downloadStatus: [SeerrDownloadingItem(size: 100, sizeLeft: 40)],
+        downloadStatus: [SeerrDownloadingItem(size: 100, sizeLeft: 40, downloadId: 'dl')],
       );
       held.complete();
       async.flushMicrotasks();

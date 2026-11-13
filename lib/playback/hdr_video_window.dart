@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'hdr_composition.dart';
@@ -96,17 +97,27 @@ class HdrVideoWindow {
   /// mounts before the outgoing one disposes - so a plain `setVisible(false)`
   /// in `dispose` lands last and wins, leaving mpv rendering into a window
   /// nobody can see. Claiming by identity makes the ordering irrelevant.
-  Object? _presenter;
+  ///
+  /// A notifier because the app's backdrop has to clear while the full player
+  /// holds the window, or it covers the video behind it.
+  final ValueNotifier<Object?> claimedBy = ValueNotifier<Object?>(null);
 
   Future<void> claim(Object presenter, Rect rect) async {
-    _presenter = presenter;
+    claimedBy.value = presenter;
     await setGeometry(rect);
     await setVisible(true);
   }
 
+  /// Gives the window to [to] where it stands, so the departing presenter's
+  /// release no longer hides it. The window keeps its place until the new
+  /// owner claims a rect.
+  void transferOwnership({required Object from, required Object to}) {
+    if (identical(claimedBy.value, from)) claimedBy.value = to;
+  }
+
   Future<void> release(Object presenter) async {
-    if (!identical(_presenter, presenter)) return;
-    _presenter = null;
+    if (!identical(claimedBy.value, presenter)) return;
+    claimedBy.value = null;
     await setVisible(false);
   }
 
