@@ -11,6 +11,7 @@ class _SettingsSearchEntry {
     required this.icon,
     required this.onOpen,
     required String matchText,
+    this.path = const [],
   }) : titleLower = title.toLowerCase(),
        haystack = matchText.toLowerCase();
 
@@ -19,6 +20,9 @@ class _SettingsSearchEntry {
   final String subtitle;
   final IconData icon;
   final VoidCallback onOpen;
+
+  /// The screen it opens, as a path from its category.
+  final List<String> path;
   final String titleLower;
   final String haystack;
 }
@@ -51,6 +55,7 @@ class _SearchSection {
         icon: icon,
         onOpen: open,
         matchText: [...path, ...keywords].join(' '),
+        path: path,
       );
 
   /// [header] is the section header the setting sits under, worth passing
@@ -70,6 +75,7 @@ class _SearchSection {
     icon: icon,
     onOpen: open,
     matchText: [title, ?subtitle, ...keywords, ...path].join(' '),
+    path: path,
   );
 }
 
@@ -115,375 +121,329 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
   required VoidCallback openAdmin,
   required VoidCallback openThemeEditor,
 }) {
+  final prefs = GetIt.instance<UserPreferences>();
   final seerrAvailable = GetIt.instance<PluginSyncService>().seerrAvailable;
   final tmdbAvailable = GetIt.instance<PluginSyncService>().tmdbAvailable;
+  final pluginAvailable = GetIt.instance<PluginSyncService>().pluginAvailable;
+  final calendarAvailable =
+      GetIt.instance<PluginSyncService>().calendarAvailable;
+  final calendarRemindersAvailable =
+      GetIt.instance<PluginSyncService>().calendarRemindersAvailable;
+  final liveTvOnAnyServer = liveTvOnAnySignedInServer();
+  final musicOnAnyServer = musicOnAnySignedInServer();
+  final playlistsOnAnyServer = playlistsOnAnySignedInServer();
+  final moonfinPluginOnAnyServer = moonfinPluginOnAnySignedInServer();
+  final seerrOnAnyServer = seerrOnAnySignedInServer();
+  // Retro games come from the Moonfin plugin's game libraries.
+  final gamesOnAnyServer = anySignedInServerSupports(
+    (f) => f.supportsRetroGames,
+  );
   final friendsAvailable =
       GetIt.instance<AchievementsService>().socialAvailable;
 
   final account = _SearchSection(
     slug: 'account',
-    path: [l10n.settingsAccountSecurity],
+    path: [l10n.account],
     icon: Icons.lock,
-    open: () => push(const _AuthenticationCategoryScreen()),
-  );
-  final personalization = _SearchSection(
-    slug: 'personalization',
-    path: [l10n.settingsPersonalization],
-    icon: Icons.palette,
-    open: () => push(const _CustomizationCategoryScreen()),
-  );
-  final playback = _SearchSection(
-    slug: 'playback',
-    path: [l10n.settingsPlaybackSyncplay],
-    icon: Icons.play_circle,
-    open: () => push(const _PlaybackCategoryScreen()),
-  );
-  final integrations = _SearchSection(
-    slug: 'integrations',
-    path: [l10n.integrations],
-    icon: Icons.hub,
-    open: () => push(const _IntegrationsScreen()),
+    open: () => push(const _AccountScreen()),
   );
   final pin = _SearchSection(
     slug: 'pin',
-    path: [l10n.settingsAccountSecurity, l10n.pinCode],
+    path: [l10n.account, l10n.pinCode],
     icon: Icons.pin,
     open: () => push(const PinCodeSettingsScreen()),
   );
   final kidsMode = _SearchSection(
     slug: 'kids-mode',
-    path: [l10n.settingsAccountSecurity, l10n.kidsMode],
+    path: [l10n.account, l10n.kidsMode],
     icon: Icons.child_care,
-    open: () => push(const _AuthenticationCategoryScreen()),
+    open: () => push(const _AccountScreen()),
   );
   final parental = _SearchSection(
     slug: 'parental',
-    path: [l10n.settingsAccountSecurity, l10n.settingsBlockedRatings],
+    path: [l10n.account, l10n.parentalControls],
     icon: Icons.shield,
     open: () => push(const ParentalSettingsScreen()),
   );
+  final settingsSync = _SearchSection(
+    slug: 'settings-sync',
+    path: [l10n.account, l10n.settingsSync],
+    icon: Icons.extension,
+    open: () => push(const _PluginScreen()),
+  );
+  final general = _SearchSection(
+    slug: 'general',
+    path: [l10n.general],
+    icon: Icons.tune,
+    open: () => push(const _GeneralScreen()),
+  );
   final style = _SearchSection(
-    slug: 'style',
-    path: [l10n.settingsPersonalization, l10n.settingsGeneralStyle],
+    slug: 'appearance',
+    path: [l10n.appearance],
     icon: Icons.style,
-    open: () => push(const _GeneralStyleScreen()),
+    open: () => push(const _AppearanceScreen()),
   );
   final themes = _SearchSection(
     slug: 'themes',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsGeneralStyle,
-      l10n.settingsAppearanceTheme,
-    ],
+    path: [l10n.appearance, l10n.settingsAppearanceTheme],
     icon: Icons.color_lens,
     open: () => push(const AppearanceThemeScreen()),
   );
   final themeStore = _SearchSection(
     slug: 'theme-store',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsGeneralStyle,
-      l10n.themeStore,
-    ],
+    path: [l10n.appearance, l10n.themeStore],
     icon: Icons.storefront,
     open: () => push(const ThemeStoreScreen()),
   );
   final savedThemes = _SearchSection(
     slug: 'saved-themes',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsGeneralStyle,
-      l10n.savedThemesTitle,
-    ],
+    path: [l10n.appearance, l10n.savedThemesTitle],
     icon: Icons.bookmark,
     open: () => push(const SavedThemesScreen()),
   );
-  final details = _SearchSection(
-    slug: 'details',
-    path: [l10n.settingsPersonalization, l10n.settingsDetailsScreen],
-    icon: Icons.article,
-    open: () => push(const _DetailsScreenSettingsScreen()),
-  );
-  final detailButtons = _SearchSection(
-    slug: 'detail-buttons',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsDetailsScreen,
-      l10n.detailButtons,
-    ],
-    icon: Icons.smart_button,
-    open: () => push(const _DetailButtonsScreen()),
-  );
-  final detailMetadata = _SearchSection(
-    slug: 'detail-metadata',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsDetailsScreen,
-      l10n.detailMetadata,
-    ],
-    icon: Icons.view_headline_outlined,
-    open: () => push(const _DetailMetadataScreen()),
-  );
-  final detailSections = _SearchSection(
-    slug: 'detail-sections',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.settingsDetailsScreen,
-      l10n.detailSections,
-    ],
-    icon: Icons.dashboard_customize_outlined,
-    open: () => push(const _DetailSectionsScreen()),
-  );
   final navigation = _SearchSection(
     slug: 'navigation',
-    path: [l10n.settingsPersonalization, l10n.navigation],
+    path: [l10n.appearance, l10n.navigationBar],
     icon: Icons.navigation,
     open: () => push(const _NavigationCategoryScreen()),
   );
   final bottomNavTabs = _SearchSection(
     slug: 'bottom-nav-tabs',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.navigation,
-      l10n.bottomNavbarTabs,
-    ],
+    path: [l10n.appearance, l10n.navigationBar, l10n.bottomNavbarTabs],
     icon: Icons.push_pin_outlined,
     open: () => push(const _BottomNavTabsScreen()),
   );
   final screensaver = _SearchSection(
     slug: 'screensaver',
-    path: [l10n.settingsPersonalization, l10n.screensaver],
+    path: [l10n.appearance, l10n.screensaver],
     icon: Icons.wallpaper,
     open: () => push(const ScreensaverSettingsScreen()),
   );
+  final seasonal = _SearchSection(
+    slug: 'seasonal',
+    path: [l10n.appearance, l10n.seasonalEffects],
+    icon: Icons.celebration,
+    open: () => push(const _SeasonalEffectsScreen()),
+  );
+  final loadingAnimation = _SearchSection(
+    slug: 'loading-animation',
+    path: [l10n.appearance, l10n.loadingAnimation],
+    icon: Icons.motion_photos_on_outlined,
+    open: () => push(const _LoadingAnimationScreen()),
+  );
   final home = _SearchSection(
     slug: 'home',
-    path: [l10n.settingsPersonalization, l10n.homeScreen],
+    path: [l10n.appearance, l10n.homeScreen],
     icon: Icons.home,
     open: () => push(const _HomeScreenCategoryScreen()),
   );
   final homeSections = _SearchSection(
     slug: 'home-sections',
-    path: [l10n.settingsPersonalization, l10n.homeScreen, l10n.homeSections],
+    path: [l10n.appearance, l10n.homeScreen, l10n.homeRows],
     icon: Icons.reorder,
-    open: () => push(const HomeSectionsScreen(showGeneralOptions: false)),
+    open: () => push(const HomeSectionsScreen()),
   );
   final rowToggles = _SearchSection(
-    slug: 'row-toggles',
-    path: [l10n.settingsPersonalization, l10n.homeScreen, l10n.homeRowToggles],
+    slug: 'row-options',
+    path: [l10n.appearance, l10n.homeScreen, l10n.rowOptions],
     icon: Icons.toggle_on,
     open: () => push(const HomeRowTogglesScreen()),
   );
   final rowImages = _SearchSection(
     slug: 'row-images',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.homeScreen,
-      l10n.perRowImageTypeSelection,
-    ],
+    path: [l10n.appearance, l10n.homeScreen, l10n.imageTypePerRow],
     icon: Icons.image,
     open: () => push(const HomeRowsImageTypeScreen()),
   );
-  final externalLists = _SearchSection(
-    slug: 'external-lists',
-    path: [l10n.integrations, l10n.externalLists],
-    icon: Icons.playlist_add,
-    open: () => push(const _ExternalListsScreen()),
-  );
   final imdbLists = _SearchSection(
     slug: 'imdb',
-    path: [l10n.integrations, l10n.externalLists, 'IMDb Lists'],
+    path: [l10n.appearance, l10n.homeScreen, 'IMDb Lists'],
     icon: Icons.list_alt,
     open: () => push(const _ImdbListsScreen()),
   );
+  final seasonalRow = _SearchSection(
+    slug: 'seasonal-row',
+    path: [l10n.appearance, l10n.homeScreen, l10n.seasonalRow],
+    icon: Icons.celebration_outlined,
+    open: () => push(const _SeasonalRowScreen()),
+  );
   final tmdbLists = _SearchSection(
     slug: 'tmdb',
-    path: [l10n.integrations, l10n.externalLists, 'TMDB Lists'],
+    path: [l10n.appearance, l10n.homeScreen, 'TMDB Lists'],
     icon: Icons.list_alt,
     open: () => push(const _TmdbListsScreen()),
   );
   final calendars = _SearchSection(
     slug: 'calendars',
-    path: [l10n.integrations, l10n.externalLists, 'Upcoming Calendars'],
+    path: [l10n.appearance, l10n.homeScreen, l10n.upcomingCalendars],
     icon: Icons.calendar_month,
     open: () => push(const _UpcomingCalendarsScreen()),
   );
   final seerrLists = _SearchSection(
-    slug: 'seerr-lists',
-    path: [l10n.integrations, l10n.externalLists, 'Seerr Lists'],
+    slug: 'seerr-rows',
+    path: [l10n.appearance, l10n.homeScreen, 'Seerr Rows'],
     icon: Icons.list_alt,
     open: () => push(const _SeerrListsScreen()),
   );
   final customRows = _SearchSection(
     slug: 'custom-rows',
-    path: [l10n.integrations, l10n.externalLists, 'Custom Home Rows Wizard'],
+    path: [l10n.appearance, l10n.homeScreen, 'Custom Rows'],
     icon: Icons.dashboard_customize,
     open: () => push(const _CustomListsScreen()),
   );
+  final mediaBar = _SearchSection(
+    slug: 'media-bar',
+    path: [l10n.appearance, l10n.homeScreen, l10n.mediaBar],
+    icon: Icons.featured_video,
+    open: () => push(const MediaBarSettingsScreen()),
+  );
   final libraries = _SearchSection(
     slug: 'libraries',
-    path: [l10n.settingsPersonalization, l10n.libraries],
+    path: [l10n.appearance, l10n.libraries],
     icon: Icons.video_library,
     open: () => push(const _LibrariesCategoryScreen()),
   );
   final libraryVisibility = _SearchSection(
     slug: 'library-visibility',
-    path: [
-      l10n.settingsPersonalization,
-      l10n.libraries,
-      l10n.libraryVisibility,
-    ],
+    path: [l10n.appearance, l10n.libraries, l10n.libraryVisibility],
     icon: Icons.visibility,
     open: () => push(const LibraryVisibilityScreen()),
   );
   final libraryOrder = _SearchSection(
     slug: 'library-order',
-    path: [l10n.settingsPersonalization, l10n.libraries, l10n.libraryOrder],
+    path: [l10n.appearance, l10n.libraries, l10n.libraryOrder],
     icon: Icons.swap_vert,
     open: () => push(const LibraryOrderScreen()),
   );
-  final mediaBar = _SearchSection(
-    slug: 'media-bar',
-    path: [l10n.settingsPersonalization, l10n.mediaBar],
-    icon: Icons.featured_video,
-    open: () => push(const MediaBarSettingsScreen()),
+  final details = _SearchSection(
+    slug: 'details',
+    path: [l10n.appearance, l10n.detailsPage],
+    icon: Icons.article,
+    open: () => push(const _DetailsScreenSettingsScreen()),
   );
-  final previews = _SearchSection(
-    slug: 'previews',
-    path: [l10n.settingsPersonalization, l10n.localPreviews],
-    icon: Icons.preview,
-    open: () => push(const LocalPreviewsSettingsScreen()),
+  final detailButtons = _SearchSection(
+    slug: 'detail-buttons',
+    path: [l10n.appearance, l10n.detailsPage, l10n.detailButtons],
+    icon: Icons.smart_button,
+    open: () => push(const _DetailButtonsScreen()),
   );
-  final seasonal = _SearchSection(
-    slug: 'seasonal',
-    path: [l10n.settingsPersonalization, l10n.seasonalEffects],
-    icon: Icons.celebration,
-    open: () => push(const _SeasonalEffectsScreen()),
+  final detailMetadata = _SearchSection(
+    slug: 'detail-metadata',
+    path: [l10n.appearance, l10n.detailsPage, l10n.detailMetadata],
+    icon: Icons.view_headline_outlined,
+    open: () => push(const _DetailMetadataScreen()),
   );
-  final themeMusic = _SearchSection(
-    slug: 'theme-music',
-    path: [l10n.settingsPersonalization, l10n.themeMusic],
-    icon: Icons.music_note,
-    open: () => push(const _ThemeMusicScreen()),
+  final detailSections = _SearchSection(
+    slug: 'detail-sections',
+    path: [l10n.appearance, l10n.detailsPage, l10n.detailSections],
+    icon: Icons.dashboard_customize_outlined,
+    open: () => push(const _DetailSectionsScreen()),
   );
-  final loadingAnimation = _SearchSection(
-    slug: 'loading-animation',
-    path: [l10n.settingsPersonalization, l10n.loadingAnimation],
-    icon: Icons.motion_photos_on_outlined,
-    open: () => push(const _LoadingAnimationScreen()),
+  final ratingSources = _SearchSection(
+    slug: 'rating-sources',
+    path: [l10n.appearance, l10n.detailsPage, l10n.ratingSources],
+    icon: Icons.star_half,
+    open: () => push(const RatingsConfigScreen()),
+  );
+  final playback = _SearchSection(
+    slug: 'playback',
+    path: [l10n.playback],
+    icon: Icons.play_circle,
+    open: () => push(const _PlaybackCategoryScreen()),
   );
   final video = _SearchSection(
-    slug: 'video',
-    path: [
-      l10n.settingsPlaybackSyncplay,
-      l10n.settingsVideoPlaybackPreferences,
-    ],
+    slug: 'player',
+    path: [l10n.playback, l10n.player],
     icon: Icons.play_circle_outline,
     open: () => push(const _VideoPlaybackScreen()),
   );
+  final quality = _SearchSection(
+    slug: 'quality',
+    path: [l10n.playback, l10n.qualityAndDecoding],
+    icon: Icons.high_quality_outlined,
+    open: () => push(const _QualityDecodingScreen()),
+  );
   final playbackTime = _SearchSection(
     slug: 'playback-time',
-    path: [
-      l10n.settingsPlaybackSyncplay,
-      l10n.settingsVideoPlaybackPreferences,
-      l10n.playbackTimeDisplay,
-    ],
+    path: [l10n.playback, l10n.player, l10n.playbackTimeDisplay],
     icon: Icons.timer_outlined,
     open: () => push(const _PlaybackTimeLayoutScreen()),
   );
   final osdButtons = _SearchSection(
     slug: 'osd-buttons',
-    path: [
-      l10n.settingsPlaybackSyncplay,
-      l10n.settingsVideoPlaybackPreferences,
-      l10n.osdButtons,
-    ],
+    path: [l10n.playback, l10n.player, l10n.osdButtons],
     icon: Icons.smart_button,
     open: () => push(const _OsdButtonsScreen()),
   );
   final audio = _SearchSection(
     slug: 'audio',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsAudioPreferences],
+    path: [l10n.playback, l10n.audio],
     icon: Icons.audiotrack,
     open: () => push(const _AudioPreferencesScreen()),
   );
   final subtitles = _SearchSection(
     slug: 'subtitles',
-    path: [l10n.settingsPlaybackSyncplay, l10n.subtitlePreferences],
+    path: [l10n.playback, l10n.subtitles],
     icon: Icons.subtitles,
     open: () => push(const SubtitleSettingsScreen()),
   );
   final subtitleStyle = _SearchSection(
     slug: 'subtitle-style',
-    path: [
-      l10n.settingsPlaybackSyncplay,
-      l10n.subtitlePreferences,
-      l10n.subtitleCustomization,
-    ],
+    path: [l10n.playback, l10n.subtitles, l10n.subtitleCustomization],
     icon: Icons.format_color_text,
     open: () => push(const SubtitleCustomizationScreen()),
   );
   final automation = _SearchSection(
     slug: 'automation',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsAutomationAndQueue],
+    path: [l10n.playback, l10n.skippingAndAutoplay],
     icon: Icons.queue_play_next,
     open: () => push(const _AutomationQueueScreen()),
   );
-  final downloads = _SearchSection(
-    slug: 'downloads',
-    path: [l10n.settingsPlaybackSyncplay, l10n.settingsOfflineDownloads],
-    icon: Icons.download_for_offline,
-    open: () => push(const DownloadSettingsScreen()),
-  );
   final emulatorCores = _SearchSection(
     slug: 'emulator-cores',
-    path: [l10n.settingsPlaybackSyncplay, l10n.emulatorCores],
+    path: [l10n.playback, l10n.emulatorCores],
     icon: Icons.videogame_asset,
     open: () => push(const EmulatorCoresScreen()),
   );
   final downloadedGames = _SearchSection(
     slug: 'downloaded-games',
-    path: [l10n.settingsPlaybackSyncplay, l10n.downloadedGames],
+    path: [l10n.playback, l10n.downloadedGames],
     icon: Icons.videogame_asset,
     open: () => push(const DownloadedGamesScreen()),
   );
   final syncplay = _SearchSection(
     slug: 'syncplay',
-    path: [l10n.settingsPlaybackSyncplay, l10n.syncPlay],
+    path: [l10n.playback, l10n.watchParties],
     icon: Icons.groups,
     open: () => push(const _SyncPlaySettingsScreen()),
   );
   final advanced = _SearchSection(
     slug: 'advanced',
-    path: [l10n.settingsPlaybackSyncplay, l10n.advancedOptions],
+    path: [l10n.playback, l10n.advancedPlayback],
     icon: Icons.tune,
     open: () => push(const _AdvancedOptionsScreen()),
   );
-  final plugin = _SearchSection(
-    slug: 'plugin',
-    path: [l10n.integrations, l10n.pluginLabel],
-    icon: Icons.extension,
-    open: () => push(const _PluginScreen()),
+  final downloads = _SearchSection(
+    slug: 'storage',
+    path: [l10n.storage],
+    icon: Icons.download_for_offline,
+    open: () => push(const DownloadSettingsScreen()),
   );
-  final metadata = _SearchSection(
-    slug: 'metadata',
-    path: [l10n.integrations, l10n.settingsMetadataAndRatings],
-    icon: Icons.star,
-    open: () => push(const _MetadataRatingsScreen()),
+  final services = _SearchSection(
+    slug: 'services',
+    path: [l10n.integrations],
+    icon: Icons.hub,
+    open: () => push(const _ServicesScreen()),
   );
-  final ratingSources = _SearchSection(
-    slug: 'rating-sources',
-    path: [
-      l10n.integrations,
-      l10n.settingsMetadataAndRatings,
-      l10n.ratingSources,
-    ],
-    icon: Icons.star_half,
-    open: () => push(const RatingsConfigScreen()),
+  final calendarSettings = _SearchSection(
+    slug: 'calendar-settings',
+    path: [l10n.integrations, l10n.calendar],
+    icon: Icons.calendar_month,
+    open: () => push(const _CalendarSettingsScreen()),
   );
   final seerr = _SearchSection(
     slug: 'seerr',
-    path: [l10n.integrations, l10n.seerr],
+    path: [l10n.integrations, seerrBrand(l10n.seerr)],
     icon: Icons.movie_filter,
     open: () => push(const SeerrConfigScreen()),
   );
@@ -539,25 +499,21 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       subtitle: l10n.requirePasswordWithToken,
       keywords: ['password'],
     ),
-    account.leaf('pref_language_override', l10n.interfaceLanguage, keywords: [
-      'locale',
-      'translation',
-    ]),
     if (!PlatformDetection.isWeb) ...[
       account.leaf('pref_user_sort_by', l10n.settingsSortServersBy, keywords: [
         'server order',
       ]),
       account.leaf(
-        'confirm_exit',
-        l10n.confirmExit,
-        subtitle: l10n.showConfirmationBeforeExiting,
-        keywords: ['quit', 'close'],
-      ),
-      account.leaf(
         'pref_allow_self_signed_certs',
         l10n.settingsAllowSelfSignedCerts,
         subtitle: l10n.settingsAllowSelfSignedCertsSubtitle,
         keywords: ['certificate', 'ssl', 'https', 'insecure'],
+      ),
+      account.leaf(
+        'client_certificates',
+        l10n.settingsClientCertificates,
+        subtitle: l10n.settingsClientCertificatesSubtitle,
+        keywords: ['certificate', 'mtls', 'client certificate', 'p12', 'pfx'],
       ),
     ],
     pin.screen(keywords: ['lock', 'passcode']),
@@ -579,9 +535,84 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'block',
       'kids',
     ]),
+    parental.leaf(
+      'pref_recommendations_apply_parental_rating_cap',
+      l10n.recommendationsApplyParentalRatingCap,
+      subtitle: l10n.recommendationsApplyParentalRatingCapSubtitle,
+    ),
 
-    personalization.screen(keywords: ['appearance', 'customization', 'theme']),
+
+    general.screen(keywords: ['language', 'clock', 'input', 'keyboard']),
+    general.leaf('pref_language_override', l10n.interfaceLanguage, keywords: [
+      'locale',
+      'translation',
+    ]),
+    general.leaf('pref_clock_behavior', l10n.clockDisplay, keywords: ['time']),
+    general.leaf(
+      'pref_use_24_hour_clock',
+      l10n.settingsTwentyFourHourClock,
+      subtitle: l10n.settingsTwentyFourHourClockSubtitle,
+      keywords: ['time format', 'am pm'],
+    ),
+    general.leaf(
+      'pref_date_format',
+      l10n.settingsDateFormat,
+      subtitle: l10n.settingsDateFormatDescription,
+      keywords: ['date format', 'calendar date'],
+    ),
+    if (PlatformDetection.isTV)
+      general.leaf(
+        'pref_keyboard_style',
+        l10n.keyboardStyle,
+        subtitle: l10n.keyboardStyleDescription,
+        keywords: [
+          'keyboard',
+          'input',
+          'native',
+          'system',
+          'classic',
+          'glass',
+          'docked',
+        ],
+      ),
+    if (PlatformDetection.isAppleTV)
+      general.leaf(
+        'pref_siri_remote_swipe_sensitivity',
+        l10n.siriRemoteSwipeSensitivity,
+        subtitle: l10n.siriRemoteSwipeSensitivityDescription,
+        keywords: ['siri remote', 'touchpad', 'swipe', 'scroll speed'],
+      ),
+    if (PlatformDetection.useDesktopUi)
+      general.leaf(
+        'pref_desktop_scroll_sensitivity',
+        l10n.scrollSensitivity,
+        subtitle: l10n.scrollSensitivitySubtitle,
+        keywords: ['mouse', 'wheel', 'speed', 'scrolling'],
+      ),
+    if (!PlatformDetection.isWeb)
+      general.leaf(
+        'confirm_exit',
+        l10n.confirmExit,
+        subtitle: l10n.showConfirmationBeforeExiting,
+        keywords: ['quit', 'close'],
+      ),
+    if (PlatformDetection.isAndroid)
+      general.leaf('pref_performance_mode', l10n.performanceMode, keywords: [
+        'memory',
+        'low ram',
+        'trailers',
+        'previews',
+        'slow',
+      ]),
+
     style.screen(keywords: ['appearance', 'look']),
+    if (GamepadNavigationScope.isConfigurable)
+      style.leaf(
+        'pref_gamepad_navigation_enabled',
+        l10n.gamepadNavigation,
+        subtitle: l10n.gamepadNavigationDescription,
+        keywords: ['gamepad', 'controller', 'input'],
+      ),
     style.leaf('pref_interface_style', l10n.interfaceStyle, keywords: [
       'classic',
       'modern',
@@ -604,34 +635,6 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'highlight',
       'accent',
     ]),
-    if (PlatformDetection.isTV)
-      style.leaf(
-        'pref_prefer_system_ime_keyboard',
-        l10n.keyboardPreferSystemIme,
-        subtitle: l10n.keyboardPreferSystemImeDescription,
-        keywords: ['keyboard', 'input'],
-      ),
-    if (GamepadNavigationScope.isConfigurable)
-      style.leaf(
-        'pref_gamepad_navigation_enabled',
-        l10n.gamepadNavigation,
-        subtitle: l10n.gamepadNavigationDescription,
-        keywords: ['gamepad', 'controller', 'input'],
-      ),
-    if (PlatformDetection.isAppleTV)
-      style.leaf(
-        'pref_siri_remote_swipe_sensitivity',
-        l10n.siriRemoteSwipeSensitivity,
-        subtitle: l10n.siriRemoteSwipeSensitivityDescription,
-        keywords: ['siri remote', 'touchpad', 'swipe', 'scroll speed'],
-      ),
-    style.leaf('pref_clock_behavior', l10n.clockDisplay, keywords: ['time']),
-    style.leaf(
-      'pref_use_24_hour_clock',
-      l10n.settingsTwentyFourHourClock,
-      subtitle: l10n.settingsTwentyFourHourClockSubtitle,
-      keywords: ['time format', 'am pm'],
-    ),
     if (!PlatformDetection.useMobileUi)
       style.leaf(
         'pref_card_focus_expansion',
@@ -644,18 +647,6 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'zoom',
       'scaling',
     ]),
-    style.leaf(
-      'pref_desktop_scroll_sensitivity',
-      l10n.scrollSensitivity,
-      subtitle: l10n.scrollSensitivitySubtitle,
-      keywords: ['mouse', 'wheel', 'speed', 'scrolling'],
-    ),
-    style.leaf(
-      'pref_show_backdrop',
-      l10n.backgroundBackdrops,
-      subtitle: l10n.showBackdropImages,
-      keywords: ['background images'],
-    ),
     style.leaf(
       'pref_oled_mode',
       l10n.oledMode,
@@ -680,6 +671,13 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       l10n.watchedIndicators,
       keywords: ['checkmark', 'seen', 'badge'],
     ),
+    if (_posterLabelsAvailable)
+      style.leaf(
+        'pref_show_poster_labels',
+        l10n.showPosterLabels,
+        subtitle: l10n.showPosterLabelsSubtitle,
+        keywords: ['badge', 'tag', 'quality', '4k', 'hdr'],
+      ),
     if (!PlatformDetection.useMobileUi) ...[
       style.leaf(
         'pref_page_transition_speed',
@@ -693,18 +691,6 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         subtitle: l10n.navigationSpeedSubtitle,
         keywords: ['focus', 'scroll', 'speed', 'animation', 'cursor'],
       ),
-      style.leaf(
-        'pref_modern_card_transition_speed',
-        l10n.modernCardsTransitionSpeed,
-        subtitle: l10n.modernCardsTransitionSpeedSubtitle,
-        keywords: ['cards', 'modern', 'expansion', 'speed', 'animation'],
-      ),
-      style.leaf(
-        'pref_delay_card_expansion_on_rapid_scroll',
-        l10n.delayCardExpansionOnRapidScroll,
-        subtitle: l10n.delayCardExpansionOnRapidScrollSubtitle,
-        keywords: ['debounce', 'rapid scroll', 'modern cards', 'expansion', 'delay'],
-      ),
     ],
 
     details.screen(keywords: ['movie page', 'show page', 'item page']),
@@ -714,7 +700,22 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'spotlight',
       'nouveau',
       'minimalist',
+      'stage',
+      'premiere',
+      'quick look',
+      'frost',
     ]),
+    details.leaf(
+      'pref_show_details_backdrop',
+      l10n.detailsScreenBackdrop,
+      keywords: ['background images'],
+    ),
+    if (PlatformDetection.useMobileUi)
+      details.leaf(
+        'pref_details_backdrop_size',
+        l10n.detailsBackdropSize,
+        keywords: ['fit', 'zoom', 'crop'],
+      ),
     details.leaf('detailsBackgroundBlurAmount', l10n.detailsBackgroundBlur),
     details.leaf(
       'pref_detail_expanded_tabs',
@@ -734,6 +735,12 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       keywords: ['youtube', 'trailer', 'external app'],
     ),
     details.leaf(
+      'mediaBarTrailerCaptions',
+      l10n.trailerCaptions,
+      subtitle: l10n.trailerCaptionsDescription,
+      keywords: ['subtitles'],
+    ),
+    details.leaf(
       'pref_hide_details_media_description',
       l10n.hideDetailsMediaDescription,
       subtitle: l10n.hideDetailsMediaDescriptionSubtitle,
@@ -751,9 +758,43 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       keywords: ['similar', 'suggestions'],
     ),
     details.leaf(
-      'pref_recommendations_apply_parental_rating_cap',
-      l10n.recommendationsApplyParentalRatingCap,
-      subtitle: l10n.recommendationsApplyParentalRatingCapSubtitle,
+      'enableAdditionalRatings',
+      l10n.additionalRatings,
+      subtitle: l10n.showMdbListAndTmdbRatings,
+      keywords: ['imdb', 'rotten tomatoes'],
+    ),
+    details.leaf(
+      'enableEpisodeRatings',
+      l10n.episodeRatings,
+      subtitle: l10n.showRatingsOnEpisodes,
+    ),
+    details.leaf(
+      'showRatingLabels',
+      l10n.ratingLabels,
+      subtitle: l10n.showLabelsNextToIcons,
+    ),
+    details.leaf(
+      'showRatingBadges',
+      l10n.ratingBadges,
+      subtitle: l10n.showDecorativeBadges,
+    ),
+    details.leaf(
+      'themeMusicEnabled',
+      l10n.themeMusic,
+      subtitle: l10n.playThemeMusicOnDetailPages,
+    ),
+    details.leaf('themeMusicVolume', l10n.themeMusicVolume),
+    if (!PlatformDetection.isMobile)
+      details.leaf(
+        'themeMusicOnHomeRows',
+        l10n.themeMusicOnHomeRows,
+        subtitle: l10n.playWhenBrowsingHomeScreen,
+      ),
+    details.leaf(
+      'themeMusicLoop',
+      l10n.loopThemeMusic,
+      subtitle: l10n.loopThemeMusicSubtitle,
+      keywords: ['repeat'],
     ),
     detailButtons.screen(keywords: [
       'action buttons',
@@ -795,7 +836,11 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'media info',
       'seerr',
       'recommendations',
+      'reviews',
+      'streaming',
       'biography',
+      'links',
+      'social media',
     ]),
 
     navigation.screen(keywords: ['navbar', 'toolbar', 'sidebar']),
@@ -845,16 +890,27 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       l10n.showFavoritesButton,
       subtitle: l10n.settingsShowFavoritesButtonInNavigation,
     ),
-    navigation.leaf(
-      'pref_show_live_tv_button',
-      l10n.showLiveTvButton,
-      subtitle: l10n.settingsShowLiveTvButtonInNavigation,
-      keywords: ['guide', 'channels'],
-    ),
+    if (liveTvOnAnyServer)
+      navigation.leaf(
+        'pref_show_live_tv_button',
+        l10n.showLiveTvButton,
+        subtitle: l10n.settingsShowLiveTvButtonInNavigation,
+        keywords: ['guide', 'channels'],
+      ),
     navigation.leaf(
       'pref_show_libraries_in_toolbar',
       l10n.showLibrariesInToolbar,
       subtitle: l10n.settingsShowLibrariesButtonInNavigation,
+    ),
+    navigation.leaf(
+      'pref_show_libraries_individually',
+      l10n.showLibrariesIndividually,
+      subtitle: l10n.showLibrariesIndividuallySubtitle,
+    ),
+    navigation.leaf(
+      'pref_show_syncplay_button',
+      l10n.settingsSyncplayButton,
+      subtitle: l10n.settingsSyncplayButtonSubtitle,
     ),
     navigation.leaf(
       'pref_navbar_always_expanded',
@@ -862,18 +918,19 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       subtitle: l10n.settingsAlwaysExpandNavbarLabels,
       keywords: ['labels'],
     ),
-    navigation.leaf(
-      'enable_folder_view',
-      l10n.enableFolderView,
-      subtitle: l10n.showFolderBrowsingOption,
-      keywords: ['directories'],
-    ),
     if (seerrAvailable)
       navigation.leaf(
         'pref_show_seerr_button',
-        l10n.showSeerrButton,
-        subtitle: l10n.settingsShowSeerrButtonInNavigation,
+        seerrBrand(l10n.showSeerrButton),
+        subtitle: seerrBrand(l10n.settingsShowSeerrButtonInNavigation),
         keywords: ['requests'],
+      ),
+    if (calendarAvailable)
+      navigation.leaf(
+        'pref_show_calendar_button',
+        l10n.showCalendarButton,
+        subtitle: l10n.showCalendarButtonSubtitle,
+        keywords: ['sonarr', 'radarr'],
       ),
     if (friendsAvailable)
       navigation.leaf(
@@ -899,10 +956,20 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         keywords: ['brightness'],
       ),
       screensaver.leaf(
-        'pref_screensaver_clock_mode',
-        l10n.showClock,
-        keywords: ['screensaver clock'],
+        'pref_screensaver_during_audio',
+        l10n.screensaverDuringAudio,
+        subtitle: l10n.screensaverDuringAudioDescription,
+        keywords: ['music', 'audiobook', 'burn in', 'now playing'],
       ),
+      if (ScreensaverController.sleepAfterIdleSupported)
+        screensaver.leaf(
+          'pref_sleep_after_idle',
+          l10n.sleepAfterIdle,
+          subtitle: PlatformDetection.isAppleTV
+              ? l10n.sleepAfterIdleDescriptionAppleTv
+              : l10n.sleepAfterIdleDescriptionAndroid,
+          keywords: ['close', 'quit', 'idle', 'auto exit', 'power'],
+        ),
     ],
 
     home.screen(keywords: ['home page', 'rows']),
@@ -910,18 +977,20 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'classic',
       'modern rows',
     ]),
-    home.leaf(
-      'pref_merge_continue_watching_next_up',
-      l10n.mergeContinueWatchingAndNextUp,
-      subtitle: l10n.combineBothRows,
-      keywords: ['continue watching', 'next up'],
-    ),
-    home.leaf(
-      'pref_next_up_max_days',
-      l10n.nextUpMaxDays,
-      subtitle: l10n.nextUpMaxDaysDescription,
-      keywords: ['next up', 'days', 'cutoff'],
-    ),
+    if (!PlatformDetection.useMobileUi) ...[
+      home.leaf(
+        'pref_modern_card_transition_speed',
+        l10n.modernCardsTransitionSpeed,
+        subtitle: l10n.modernCardsTransitionSpeedSubtitle,
+        keywords: ['cards', 'modern', 'expansion', 'speed', 'animation'],
+      ),
+      home.leaf(
+        'pref_delay_card_expansion_on_rapid_scroll',
+        l10n.delayCardExpansionOnRapidScroll,
+        subtitle: l10n.delayCardExpansionOnRapidScrollSubtitle,
+        keywords: ['debounce', 'rapid scroll', 'modern cards', 'expansion', 'delay'],
+      ),
+    ],
     home.leaf(
       'pref_enable_series_thumbnails',
       l10n.seriesThumbnails,
@@ -942,16 +1011,89 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         subtitle: l10n.showTitleMetadataOnHomeRows,
       ),
     home.leaf(
+      'pref_show_home_backdrop',
+      l10n.homeScreenBackdrop,
+      keywords: ['background images'],
+    ),
+    home.leaf(
       'pref_hide_home_media_description',
       l10n.hideHomeMediaDescription,
       subtitle: l10n.hideHomeMediaDescriptionSubtitle,
       keywords: ['spoiler', 'description', 'overview'],
+    ),
+    home.leaf(
+      'pref_hide_home_watch_progress',
+      l10n.hideHomeWatchProgress,
+      subtitle: l10n.hideHomeWatchProgressSubtitle,
+      keywords: ['resume', 'played'],
+    ),
+    home.leaf(
+      'pref_hide_home_unwatched_count',
+      l10n.hideHomeUnwatchedCount,
+      subtitle: l10n.hideHomeUnwatchedCountSubtitle,
+      keywords: ['unplayed'],
+    ),
+    home.leaf(
+      'mediaPreviewMode',
+      l10n.mediaPreview,
+      subtitle: l10n.mediaPreviewDescription,
+      keywords: ['trailer'],
+    ),
+    home.leaf(
+      'previewAudioEnabled',
+      l10n.previewAudio,
+      subtitle: l10n.enablePreviewAudio,
+      keywords: ['mute'],
+    ),
+    home.leaf(
+      'previewVolume',
+      l10n.previewVolume,
+      subtitle: l10n.previewVolumeDescription,
+      keywords: ['loud', 'quiet'],
     ),
     home.leaf('home_rows_padding', l10n.homeRowsPadding, keywords: [
       'spacing',
       'gap',
     ]),
     home.leaf('poster_size', l10n.cardSize, keywords: ['poster size']),
+    home.leaf(
+      'homeRowsEnableAdditionalRatings',
+      l10n.additionalRatings,
+      subtitle: l10n.showMdbListAndTmdbRatings,
+      keywords: ['imdb', 'rotten tomatoes'],
+      header: l10n.ratings,
+    ),
+    home.leaf(
+      'homeRowsEnabledRatings',
+      l10n.ratingSources,
+      subtitle: l10n.ratingSourcesDescription,
+      header: l10n.ratings,
+    ),
+    home.leaf(
+      'homeRowsEnableEpisodeRatings',
+      l10n.episodeRatings,
+      subtitle: l10n.showRatingsOnEpisodes,
+      header: l10n.ratings,
+    ),
+    home.leaf(
+      'homeRowsShowRatingLabels',
+      l10n.ratingLabels,
+      subtitle: l10n.showLabelsNextToIcons,
+      header: l10n.ratings,
+    ),
+    home.leaf(
+      'homeRowsShowRatingBadges',
+      l10n.ratingBadges,
+      subtitle: l10n.showDecorativeBadges,
+      header: l10n.ratings,
+    ),
+    if (PlatformDetection.isAppleTV)
+      home.leaf(
+        'pref_top_shelf_content',
+        l10n.topShelf,
+        subtitle: l10n.topShelfDescription,
+        keywords: ['apple tv', 'top shelf', 'banner', 'latest', 'launcher'],
+      ),
     homeSections.screen(keywords: [
       'reorder rows',
       'toggle rows',
@@ -970,11 +1112,42 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'since you watched',
     ]),
     rowToggles.leaf(
-      'pref_display_audio_rows',
-      l10n.displayAudioRows,
-      subtitle: l10n.displayAudioRowsSubtitle,
-      keywords: ['music'],
+      'pref_merge_continue_watching_next_up',
+      l10n.mergeContinueWatchingAndNextUp,
+      subtitle: l10n.combineBothRows,
+      keywords: ['continue watching', 'next up'],
     ),
+    rowToggles.leaf(
+      'pref_continue_watching_default_action',
+      l10n.continueWatchingDefaultAction,
+      subtitle: l10n.continueWatchingDefaultActionDescription,
+      keywords: ['continue watching', 'next up', 'play', 'details'],
+    ),
+    rowToggles.leaf(
+      'pref_next_up_max_days',
+      l10n.nextUpMaxDays,
+      subtitle: l10n.nextUpMaxDaysDescription,
+      keywords: ['next up', 'days', 'cutoff'],
+    ),
+    rowToggles.leaf(
+      'pref_hide_watched_in_recent_rows',
+      l10n.hideWatchedInRecentRows,
+      subtitle: l10n.hideWatchedInRecentRowsDescription,
+      keywords: ['watched', 'played', 'recent', 'recently added', 'recently released'],
+    ),
+    rowToggles.leaf(
+      'pref_merge_recent_rows_by_type',
+      l10n.mergeRecentRowsByType,
+      subtitle: l10n.mergeRecentRowsByTypeDescription,
+      keywords: ['combine', 'homepage', 'rows', 'recent', 'released'],
+    ),
+    if (musicOnAnyServer)
+      rowToggles.leaf(
+        'pref_display_audio_rows',
+        l10n.displayAudioRows,
+        subtitle: l10n.displayAudioRowsSubtitle,
+        keywords: ['music'],
+      ),
     rowToggles.leaf(
       'pref_display_collections_rows',
       l10n.displayCollectionsRows,
@@ -990,11 +1163,12 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       l10n.displayGenresRows,
       subtitle: l10n.displayGenresRowsSubtitle,
     ),
-    rowToggles.leaf(
-      'pref_display_playlists_rows',
-      l10n.displayPlaylistsRows,
-      subtitle: l10n.displayPlaylistsRowsSubtitle,
-    ),
+    if (playlistsOnAnyServer)
+      rowToggles.leaf(
+        'pref_display_playlists_rows',
+        l10n.displayPlaylistsRows,
+        subtitle: l10n.displayPlaylistsRowsSubtitle,
+      ),
     rowToggles.leaf(
       'pref_display_rewatch_row',
       'Display Rewatch Row',
@@ -1003,111 +1177,83 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
     ),
     rowToggles.leaf(
       'pref_display_since_you_watched_rows',
-      'Display Since You Watched Rows',
-      subtitle: 'Show and customize Since You Watched rows in Home Sections.',
+      l10n.displaySinceYouWatchedRows,
+      subtitle: l10n.displaySinceYouWatchedRowsSubtitle,
       keywords: ['recommendations'],
     ),
     rowImages.screen(keywords: ['poster', 'thumbnail', 'banner']),
-    if (seerrAvailable) ...[
-      externalLists.screen(keywords: [
-        'external home rows',
-        'imdb',
-        'tmdb',
-        'letterboxd',
-      ]),
+    if (pluginAvailable) ...[
+      seasonalRow.screen(keywords: ['holiday', 'christmas', 'halloween', 'seasonal']),
+      seasonalRow.leaf('seasonal_row_country', l10n.seasonalRowCountry),
+      seasonalRow.leaf('seasonal_row_hidden_holidays', l10n.seasonalRowHolidays),
+      if (GetIt.instance<MediaServerClient>().itemsApi is! ServerHomeSectionsApi)
+        seasonalRow.leaf('seasonal_row_all_year', l10n.seasonalRowAllYear, subtitle: l10n.seasonalRowAllYearDescription),
+    ],
+    if (pluginAvailable) ...[
       imdbLists.screen(keywords: ['top 250', 'popular', 'charts']),
-      imdbLists.leaf('imdb_top_250_movies_enabled', l10n.imdbTop250Movies),
-      imdbLists.leaf('imdb_top_250_tv_shows_enabled', l10n.imdbTop250TvShows),
-      imdbLists.leaf(
-        'imdb_most_popular_movies_enabled',
-        l10n.imdbMostPopularMovies,
-      ),
-      imdbLists.leaf(
-        'imdb_most_popular_tv_shows_enabled',
-        l10n.imdbMostPopularTvShows,
-      ),
-      imdbLists.leaf(
-        'imdb_lowest_rated_movies_enabled',
-        l10n.imdbLowestRatedMovies,
-      ),
-      imdbLists.leaf(
-        'imdb_top_english_movies_enabled',
-        l10n.imdbTopEnglishMovies,
-      ),
+      imdbLists.leaf('imdb_rows_sort_by', l10n.imdbRowsSorting),
+      imdbLists.leaf('imdb_rows_sort_order', l10n.sortOrder),
       if (tmdbAvailable) ...[
         tmdbLists.screen(keywords: ['popular', 'top rated', 'trending']),
-        tmdbLists.leaf('tmdb_popular_movies_enabled', 'Popular Movies'),
-        tmdbLists.leaf('tmdb_top_rated_movies_enabled', 'Top Rated Movies'),
-        tmdbLists.leaf('tmdb_now_playing_movies_enabled', 'Now Playing Movies'),
-        tmdbLists.leaf('tmdb_upcoming_movies_enabled', 'Upcoming Movies'),
-        tmdbLists.leaf('tmdb_popular_tv_enabled', 'Popular TV'),
-        tmdbLists.leaf('tmdb_top_rated_tv_enabled', 'Top Rated TV'),
-        tmdbLists.leaf('tmdb_airing_today_tv_enabled', 'Airing Today TV'),
-        tmdbLists.leaf('tmdb_on_the_air_tv_enabled', 'On The Air TV'),
-        tmdbLists.leaf(
-          'tmdb_trending_movie_daily_enabled',
-          'Trending Movies (Daily)',
-        ),
-        tmdbLists.leaf(
-          'tmdb_trending_movie_weekly_enabled',
-          'Trending Movies (Weekly)',
-        ),
-        tmdbLists.leaf('tmdb_trending_tv_daily_enabled', 'Trending TV (Daily)'),
-        tmdbLists.leaf(
-          'tmdb_trending_tv_weekly_enabled',
-          'Trending TV (Weekly)',
-        ),
-        tmdbLists.leaf(
-          'tmdb_trending_all_weekly_enabled',
-          'Trending All (Weekly)',
-        ),
+        tmdbLists.leaf('tmdb_rows_sort_by', l10n.tmdbRowsSorting),
+        tmdbLists.leaf('tmdb_rows_sort_order', l10n.sortOrder),
       ],
-      calendars.screen(keywords: ['radarr', 'sonarr', 'upcoming releases']),
-      calendars.leaf(
-        'merge_radarr_sonarr_calendars',
-        'Merge Sonarr and Radarr Calendars?',
-      ),
-      calendars.leaf(
-        'enable_radarr_calendar',
-        "Enable Radarr's Upcoming Calendar",
-        keywords: ['movies'],
-      ),
-      calendars.leaf(
-        'radarr_calendar_show_cinema',
-        'Show Upcoming Cinema Releases',
-        header: 'Radarr',
-      ),
-      calendars.leaf(
-        'radarr_calendar_show_digital',
-        'Show Upcoming Digital Releases',
-        header: 'Radarr',
-      ),
-      calendars.leaf(
-        'radarr_calendar_show_physical',
-        'Show Upcoming Physical Releases',
-        header: 'Radarr',
-      ),
-      calendars.leaf(
-        'radarr_calendar_show_date',
-        'Show Release Date on Home Screen?',
-        header: 'Radarr',
-      ),
-      calendars.leaf(
-        'enable_sonarr_calendar',
-        "Enable Sonarr's Upcoming Calendar",
-        keywords: ['shows', 'episodes'],
-      ),
-      calendars.leaf(
-        'sonarr_calendar_show_episode_info',
-        'Display Episode Information?',
-        header: 'Sonarr',
-      ),
-      calendars.leaf(
-        'sonarr_calendar_show_date',
-        'Show Release Date on Home Screen?',
-        header: 'Sonarr',
-      ),
-      seerrLists.screen(keywords: ['discovery rows', 'watchlist', 'trending']),
+      if (seerrAvailable) ...[
+        calendars.screen(keywords: ['radarr', 'sonarr', 'upcoming releases']),
+        calendars.leaf(
+          'merge_radarr_sonarr_calendars',
+          l10n.mergeRadarrSonarrCalendars,
+        ),
+        calendars.leaf(
+          'radarr_calendar_show_cinema',
+          l10n.radarrCalendarShowCinema,
+          header: 'Radarr',
+        ),
+        calendars.leaf(
+          'radarr_calendar_show_digital',
+          l10n.radarrCalendarShowDigital,
+          header: 'Radarr',
+        ),
+        calendars.leaf(
+          'radarr_calendar_show_physical',
+          l10n.radarrCalendarShowPhysical,
+          header: 'Radarr',
+        ),
+        calendars.leaf(
+          'radarr_calendar_show_date',
+          l10n.calendarShowReleaseDate,
+          header: 'Radarr',
+        ),
+        calendars.leaf(
+          'radarr_calendar_hide_downloaded',
+          l10n.radarrCalendarHideDownloaded,
+          header: 'Radarr',
+        ),
+        calendars.leaf(
+          'sonarr_calendar_show_episode_info',
+          l10n.sonarrCalendarShowEpisodeInfo,
+          header: 'Sonarr',
+        ),
+        calendars.leaf(
+          'sonarr_calendar_show_date',
+          l10n.calendarShowReleaseDate,
+          header: 'Sonarr',
+        ),
+        calendars.leaf(
+          'sonarr_calendar_hide_downloaded',
+          l10n.sonarrCalendarHideDownloaded,
+          header: 'Sonarr',
+        ),
+        if (calendarAvailable)
+          calendars.leaf(
+            'pref_calendar_row_see_all',
+            l10n.calendarRowSeeAll,
+            subtitle: l10n.calendarRowSeeAllSubtitle,
+          ),
+        seerrLists.screen(keywords: ['discovery rows', 'watchlist', 'trending']),
+        seerrLists.leaf('seerr_rows_sort_by', seerrBrand(l10n.seerrRowsSorting)),
+        seerrLists.leaf('seerr_rows_sort_order', l10n.sortOrder),
+      ],
       customRows.screen(keywords: ['letterboxd', 'mdblist', 'tmdb', 'custom']),
     ],
 
@@ -1135,11 +1281,32 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       keywords: ['books', 'audiobooks', 'open library', 'librivox'],
     ),
     libraries.leaf(
-      'pref_merge_recent_rows_by_type',
-      l10n.mergeRecentRowsByType,
-      subtitle: l10n.mergeRecentRowsByTypeDescription,
-      keywords: ['combine', 'homepage', 'rows', 'recent', 'released'],
+      'pref_book_folders_as_series',
+      l10n.bookFoldersAsSeries,
+      subtitle: l10n.bookFoldersAsSeriesDescription,
+      keywords: ['books', 'series', 'folder'],
     ),
+    libraries.leaf('pref_library_style', l10n.libraryStyle, keywords: [
+      'classic',
+      'modern',
+      'docked',
+      'header',
+      'toolbar',
+    ]),
+    libraries.leaf('pref_book_library_style', l10n.bookLibraryStyle, keywords: [
+      'books',
+      'audiobooks',
+      'classic',
+      'reading room',
+      'bookstore',
+    ]),
+    libraries.leaf('pref_music_library_style', l10n.musicLibraryStyle, keywords: [
+      'music',
+      'albums',
+      'classic',
+      'quick access',
+      'immersive',
+    ]),
     libraries.leaf(
       'pref_group_items_into_collections',
       l10n.groupItemsIntoCollections,
@@ -1152,14 +1319,20 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       subtitle: l10n.showMediaDetailsOnLibraryPageDescription,
     ),
     libraries.leaf(
-      'pref_use_detailed_sub_headings',
-      l10n.useDetailedSubHeadings,
-      subtitle: l10n.useDetailedSubHeadingsDescription,
+      'pref_library_card_titles',
+      l10n.libraryCardTitles,
+      subtitle: l10n.libraryCardTitlesDescription,
+      keywords: ['card text', 'names'],
     ),
     libraries.leaf(
       'pref_hide_backdrops_in_libraries',
-      l10n.hideBackdropsInLibraries,
-      keywords: ['background'],
+      l10n.libraryBackdrops,
+      keywords: ['background images', 'browsing'],
+    ),
+    libraries.leaf(
+      'pref_use_detailed_sub_headings',
+      l10n.useDetailedSubHeadings,
+      subtitle: l10n.useDetailedSubHeadingsDescription,
     ),
 
     mediaBar.screen(keywords: ['featured', 'carousel', 'banner', 'hero']),
@@ -1173,8 +1346,53 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'recently added',
       'recently released',
       'newest',
+      'new seasons',
+      'new episodes',
     ]),
+    mediaBar.leaf(
+      'mediaBarNewReleaseBanner',
+      l10n.mediaBarNewReleaseBanner,
+      subtitle: l10n.mediaBarNewReleaseBannerDescription,
+      keywords: ['new season', 'new episode', 'badge'],
+    ),
+    mediaBar.leaf(
+      'mediaBarNewReleaseDays',
+      l10n.mediaBarNewReleaseDays,
+      subtitle: l10n.mediaBarNewReleaseDaysDescription,
+    ),
+    if (!PlatformDetection.useMobileUi)
+      mediaBar.leaf(
+        'mediaBarRowPeek',
+        l10n.peekHomeRows,
+        subtitle: l10n.peekHomeRowsDescription,
+        keywords: ['peek', 'first row'],
+      ),
     mediaBar.leaf('mediaBarItemCount', l10n.itemCount),
+    mediaBar.leaf(
+      'mediaBarEnableAdditionalRatings',
+      l10n.additionalRatings,
+      subtitle: l10n.showMdbListAndTmdbRatings,
+      keywords: ['imdb', 'rotten tomatoes'],
+      header: l10n.ratings,
+    ),
+    mediaBar.leaf(
+      'mediaBarEnabledRatings',
+      l10n.ratingSources,
+      subtitle: l10n.ratingSourcesDescription,
+      header: l10n.ratings,
+    ),
+    mediaBar.leaf(
+      'mediaBarShowRatingLabels',
+      l10n.ratingLabels,
+      subtitle: l10n.showLabelsNextToIcons,
+      header: l10n.ratings,
+    ),
+    mediaBar.leaf(
+      'mediaBarShowRatingBadges',
+      l10n.ratingBadges,
+      subtitle: l10n.showDecorativeBadges,
+      header: l10n.ratings,
+    ),
     mediaBar.leaf('mediaBarLibraryIds', l10n.sourceLibraries),
     mediaBar.leaf('mediaBarCollectionIds', l10n.sourceCollections),
     mediaBar.leaf('mediaBarExcludedGenres', l10n.excludedGenres),
@@ -1185,57 +1403,61 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       keywords: ['rotate', 'slideshow'],
     ),
     mediaBar.leaf('mediaBarIntervalMs', l10n.autoAdvanceInterval),
-
-    previews.screen(keywords: ['trailers', 'autoplay']),
-    previews.leaf(
+    mediaBar.leaf(
       'mediaBarTrailerPreview',
       l10n.trailerPreview,
       subtitle: l10n.autoPlayTrailers,
     ),
-    previews.leaf(
+    mediaBar.leaf(
       'mediaBarTrailerAudio',
       l10n.trailerAudio,
       subtitle: l10n.enableTrailerAudio,
       keywords: ['mute'],
     ),
-    previews.leaf(
+    mediaBar.leaf(
+      'trailerVolume',
+      l10n.trailerVolume,
+      subtitle: l10n.trailerVolumeDescription,
+      keywords: ['loud', 'quiet'],
+    ),
+    mediaBar.leaf(
       'mediaBarTrailerCaptions',
       l10n.trailerCaptions,
       subtitle: l10n.trailerCaptionsDescription,
       keywords: ['subtitles'],
     ),
-    previews.leaf(
-      'episodePreviewEnabled',
-      l10n.mediaPreview,
-      subtitle: l10n.mediaPreviewDescription,
-    ),
-    previews.leaf(
-      'previewAudioEnabled',
-      l10n.previewAudio,
-      subtitle: l10n.enablePreviewAudio,
-      keywords: ['mute'],
-    ),
 
-    seasonal.screen(keywords: ['snow', 'fireworks', 'confetti', 'holiday']),
-    themeMusic.screen(keywords: ['soundtrack']),
-    themeMusic.leaf(
-      'themeMusicEnabled',
-      l10n.themeMusic,
-      subtitle: l10n.playThemeMusicOnDetailPages,
+
+    seasonal.screen(
+      keywords: [
+        'snow',
+        'christmas',
+        'fireworks',
+        'confetti',
+        'petals',
+        'spring',
+        'fireflies',
+        'summer',
+        'leaves',
+        'halloween',
+        'bats',
+        'holiday',
+      ],
     ),
-    themeMusic.leaf('themeMusicVolume', l10n.themeMusicVolume),
-    if (!PlatformDetection.isMobile)
-      themeMusic.leaf(
-        'themeMusicOnHomeRows',
-        l10n.themeMusicOnHomeRows,
-        subtitle: l10n.playWhenBrowsingHomeScreen,
+    seasonal.leaf(
+      'seasonalDensity',
+      l10n.seasonalDensity,
+      keywords: ['particles', 'amount', 'light', 'heavy'],
+    ),
+    if (PlatformDetection.isTV || PlatformDetection.isDesktop)
+      seasonal.leaf(
+        'seasonalFollower',
+        l10n.seasonalFollower,
+        subtitle: PlatformDetection.isTV
+            ? l10n.seasonalFollowerDescription
+            : l10n.seasonalFollowerPointerDescription,
+        keywords: ['planchette', 'cursor', 'pointer', 'mouse'],
       ),
-    themeMusic.leaf(
-      'themeMusicLoop',
-      l10n.loopThemeMusic,
-      subtitle: l10n.loopThemeMusicSubtitle,
-      keywords: ['repeat'],
-    ),
     loadingAnimation.screen(keywords: ['spinner', 'runner', 'moon', 'logo', 'loading']),
     loadingAnimation.leaf(
       'loadingAnimationImage',
@@ -1260,6 +1482,21 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
 
     playback.screen(keywords: ['video', 'audio', 'subtitles', 'player']),
     video.screen(keywords: ['player', 'playback']),
+    if (PlatformDetection.isAndroid)
+      video.leaf(
+        'playback_engine_preference',
+        l10n.settingsPlaybackEngineAndroidTv,
+        keywords: ['exoplayer', 'mpv', 'media3', 'engine'],
+      ),
+    if (offersApplePlayerChoice)
+      video.leaf(
+        'pref_apple_player_ui',
+        l10n.settingsApplePlayerUi,
+        subtitle: PlatformDetection.isAppleTV
+            ? null
+            : l10n.settingsApplePlayerUiDescription,
+        keywords: ['native player', 'apple tv player', 'player'],
+      ),
     video.leaf(
       'showDescriptionOnPause',
       l10n.showDescriptionOnPause,
@@ -1267,7 +1504,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
     ),
     video.leaf('player_zoom_mode', l10n.playerZoomMode, keywords: [
       'aspect ratio',
-      'crop',
+      'fill',
       'stretch',
     ]),
     if (PlatformDetection.isIOS)
@@ -1277,14 +1514,18 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         subtitle: l10n.keepVideoClearOfDynamicIslandDescription,
         keywords: ['notch', 'dynamic island', 'camera', 'safe area'],
       ),
-    if (letterboxCropSettingVisible())
-      video.leaf('crop_black_bars', l10n.cropBlackBars, keywords: [
-        'letterbox',
-        'cropdetect',
-        'black bars',
-        'mpv',
-        'android',
-      ]),
+    if (letterboxCropSettingVisible()) ...[
+      video.leaf(
+        'crop_black_bars',
+        l10n.cropBlackBars,
+        keywords: ['letterbox', 'cropdetect', 'black bars', 'mpv', 'android'],
+      ),
+      video.leaf(
+        'crop_black_bars_interval_seconds',
+        l10n.cropBlackBarsRecropInterval,
+        keywords: ['letterbox', 'dynamic crop', 'aspect ratio', 'imax'],
+      ),
+    ],
     playbackTime.screen(keywords: [
       'time left',
       'time remaining',
@@ -1355,6 +1596,18 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'seek forward',
     ]),
     video.leaf(
+      'controlsHideDelay',
+      l10n.settingsHideControlsAfter,
+      subtitle: l10n.settingsHideControlsAfterDescription,
+      keywords: ['osd', 'timeout', 'auto hide', 'player ui'],
+    ),
+    video.leaf(
+      'hdrControlsDimming',
+      l10n.settingsHdrControlsDimming,
+      subtitle: l10n.settingsHdrControlsDimmingDescription,
+      keywords: ['osd', 'brightness', 'dim', 'player ui'],
+    ),
+    video.leaf(
       'showChapterMarkers',
       l10n.showChapterMarkers,
       subtitle: l10n.showChapterMarkersDescription,
@@ -1373,6 +1626,20 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         subtitle: l10n.playerSwipeGesturesDescription,
         keywords: ['swipe', 'gestures', 'volume', 'brightness'],
       ),
+      video.leaf(
+        'pref_gesture_indicator_placement',
+        l10n.invertGestureIndicators,
+        subtitle: l10n.invertGestureIndicatorsDescription,
+        keywords: [
+          'gesture',
+          'indicator',
+          'invert',
+          'brightness',
+          'volume',
+          'swipe',
+          'opposite',
+        ],
+      ),
     ],
     osdButtons.screen(keywords: [
       'player buttons',
@@ -1382,72 +1649,111 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'zoom',
       'speed',
     ]),
-    if (PlatformDetection.isAndroid)
-      video.leaf(
-        'playback_engine_preference',
-        l10n.settingsPlaybackEngineAndroidTv,
-        keywords: ['exoplayer', 'mpv', 'media3', 'engine'],
+    if (!PlatformDetection.isTV)
+      osdButtons.leaf(
+        'pref_player_transport_position',
+        l10n.playerTransportPosition,
+        subtitle: l10n.playerTransportPositionDescription,
+        keywords: ['docked', 'on screen', 'play button', 'center', 'controls'],
       ),
-    if (PlatformDetection.isAndroid && PlatformDetection.isTV) ...[
-      video.leaf(
-        'redetect_display',
-        l10n.settingsRedetectDisplay,
-        subtitle: l10n.settingsRedetectDisplayDescription,
-        keywords: ['hdr', 'dolby vision', 'detect', 'edid', 'transcode'],
+    quality.screen(keywords: ['bitrate', 'resolution', 'hdr', 'decoder']),
+    quality.leaf('pref_max_bitrate', l10n.maxStreamingBitrate, keywords: [
+      'quality',
+      'bandwidth',
+      'transcode',
+    ]),
+    quality.leaf('pref_max_video_resolution', l10n.maxResolution, keywords: [
+      '4k',
+      '1080p',
+      'transcode',
+    ]),
+    if (liveTvOnAnyServer)
+      quality.leaf(
+        'pref_live_direct',
+        l10n.settingsLiveTvDirect,
+        subtitle: l10n.settingsLiveTvDirectSubtitle,
+        keywords: ['live tv'],
       ),
-      video.leaf(
-        'display_is_sdr',
-        l10n.settingsDisplayIsSdr,
-        keywords: ['hdr', 'sdr', 'dolby vision'],
-      ),
-      video.leaf(
-        'dolby_vision_fallback_behavior',
-        l10n.settingsDolbyVisionFallback,
-        keywords: ['hdr'],
-      ),
-      video.leaf(
-        'dolby_vision_profile7_direct_play_behavior',
-        l10n.settingsDolbyVisionProfile7DirectPlay,
-        keywords: ['hdr', 'profile 7'],
-      ),
-      video.leaf(
-        'refresh_rate_switching_behavior',
-        l10n.refreshRateSwitching,
-        keywords: ['frame rate', 'hz', '24p'],
-      ),
-    ],
     if (!PlatformDetection.isWeb && !PlatformDetection.isAppleTV)
-      video.leaf(
+      quality.leaf(
         'hardware_decoding',
         l10n.hardwareDecoding,
         subtitle: l10n.hardwareDecodingSubtitle,
         keywords: ['gpu', 'acceleration'],
       ),
-    if (PlatformDetection.isWindows)
-      video.leaf('auto_hdr_switching_behavior', l10n.autoHdrSwitching),
-    if (PlatformDetection.supportsNativeHdrWindow)
-      video.leaf(
-        'native_hdr_output',
-        l10n.nativeHdrOutput,
-        subtitle: l10n.nativeHdrOutputDescription,
-        keywords: ['hdr10', 'passthrough', 'tone mapping'],
+    if (PlatformDetection.offersHevcSoftwareDecode)
+      quality.leaf(
+        'hevc_software_direct_play',
+        l10n.hevcSoftwareDirectPlay,
+        subtitle: l10n.hevcSoftwareDirectPlaySubtitle,
+        keywords: ['hevc', 'h265', 'x265', 'software decode'],
       ),
-    video.leaf(
-      'pref_live_direct',
-      l10n.settingsLiveTvDirect,
-      subtitle: l10n.settingsLiveTvDirectSubtitle,
-      keywords: ['live tv'],
-    ),
-    video.leaf('pref_max_bitrate', l10n.maxStreamingBitrate, keywords: [
-      'quality',
-      'bandwidth',
-      'transcode',
-    ]),
-    video.leaf('pref_max_video_resolution', l10n.maxResolution, keywords: [
-      '4k',
-      '1080p',
-      'transcode',
-    ]),
+    if (PlatformDetection.offersAv1SoftwareUhd)
+      quality.leaf(
+        'av1_software_uhd_direct_play',
+        l10n.av1SoftwareUhdDirectPlay,
+        subtitle: l10n.av1SoftwareUhdDirectPlaySubtitle,
+        keywords: ['av1', '4k', 'uhd', 'software decode'],
+      ),
+    if (PlatformDetection.isAndroid && PlatformDetection.isTV) ...[
+      quality.leaf(
+        'exoplayer_prefer_ffmpeg',
+        l10n.preferSoftwareDecoders,
+        subtitle: l10n.preferSoftwareDecodersSubtitle,
+        keywords: ['ffmpeg'],
+      ),
+      quality.leaf(
+        'redetect_display',
+        l10n.settingsRedetectDisplay,
+        subtitle: l10n.settingsRedetectDisplayDescription,
+        keywords: ['hdr', 'dolby vision', 'detect', 'edid', 'transcode'],
+      ),
+      quality.leaf(
+        'display_is_sdr',
+        l10n.settingsDisplayIsSdr,
+        keywords: ['hdr', 'sdr', 'dolby vision'],
+      ),
+      quality.leaf(
+        'dolby_vision_fallback_behavior',
+        l10n.settingsDolbyVisionFallback,
+        keywords: ['hdr'],
+      ),
+      quality.leaf(
+        'dolby_vision_profile7_direct_play_behavior',
+        l10n.settingsDolbyVisionProfile7DirectPlay,
+        keywords: ['hdr', 'profile 7'],
+      ),
+      quality.leaf(
+        'refresh_rate_switching_behavior',
+        l10n.refreshRateSwitching,
+        keywords: ['frame rate', 'hz', '24p'],
+      ),
+    ],
+    if (PlatformDetection.isAppleTV)
+      quality.leaf(
+        'cadence_slowdown',
+        l10n.cadenceSlowdown,
+        subtitle: l10n.cadenceSlowdownSubtitle,
+        keywords: ['frame rate', 'hz', '24p', 'stutter', 'judder', 'match'],
+      ),
+    quality.leaf('video_start_delay', l10n.settingsVideoStartDelay),
+    if (PlatformDetection.isWindows)
+      quality.leaf('auto_hdr_switching_behavior', l10n.autoHdrSwitching),
+    if (PlatformDetection.supportsNativeHdrWindow)
+      quality.leaf(
+        'video_renderer',
+        l10n.videoRenderer,
+        subtitle: l10n.videoRendererDescription,
+        keywords: [
+          'native window',
+          'hdr10',
+          'passthrough',
+          'sdr',
+          'judder',
+          'stutter',
+          'compatibility',
+        ],
+      ),
 
     audio.screen(keywords: ['sound', 'passthrough']),
     audio.leaf(
@@ -1497,6 +1803,11 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       ),
       audio.leaf('audio_fallback_codec', l10n.settingsAudioFallbackCodec),
       audio.leaf(
+        'pref_transcode_audio_codecs',
+        l10n.transcodeAudioCodecs,
+        keywords: ['transcode', 'convert', 'aac', 'opus', 'pcm', 'direct play'],
+      ),
+      audio.leaf(
         'pref_passthrough_ac3',
         l10n.ac3Passthrough,
         keywords: ['dolby digital', 'bitstream'],
@@ -1531,6 +1842,21 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
     ]),
     subtitles.leaf('pref_subtitle_language', l10n.defaultSubtitleLanguage),
     subtitles.leaf(
+      'pref_subtitle_download_languages',
+      l10n.subtitleDownloadLanguages,
+      keywords: ['download', 'opensubtitles'],
+    ),
+    subtitles.leaf(
+      'pref_secondary_subtitles_enabled',
+      l10n.secondarySubtitleTrack,
+      subtitle: l10n.secondarySubtitlesEnabledSubtitle,
+      keywords: ['dual subtitles', 'two subtitles'],
+    ),
+    subtitles.leaf(
+      'pref_secondary_subtitle_language',
+      l10n.preferredSecondarySubtitleLanguage,
+    ),
+    subtitles.leaf(
       'pref_fallback_subtitle_language',
       l10n.fallbackSubtitleLanguage,
     ),
@@ -1539,6 +1865,18 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       l10n.preferSdhSubtitles,
       subtitle: l10n.preferSdhSubtitlesSubtitle,
       keywords: ['hearing impaired', 'accessibility'],
+    ),
+    subtitles.leaf(
+      'prefer_text_subtitles',
+      l10n.preferTextSubtitles,
+      subtitle: l10n.preferTextSubtitlesSubtitle,
+      keywords: ['text', 'srt', 'vtt', 'pgs', 'bitmap', 'accessibility'],
+    ),
+    subtitles.leaf(
+      'prefer_external_subtitles',
+      l10n.preferExternalSubtitles,
+      subtitle: l10n.preferExternalSubtitlesSubtitle,
+      keywords: ['external', 'sidecar', 'download'],
     ),
     subtitles.leaf(
       'pgs_enabled',
@@ -1573,6 +1911,23 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       keywords: ['position', 'height'],
     ),
     subtitleStyle.leaf(
+      'subtitles_stroke_width',
+      l10n.subtitleStrokeWidth,
+      keywords: ['outline', 'border', 'thickness'],
+    ),
+    subtitleStyle.leaf('subtitles_text_weight', l10n.subtitleBold),
+    subtitleStyle.leaf(
+      'subtitles_font',
+      l10n.subtitleFont,
+      subtitle: l10n.subtitleFontDescription,
+      keywords: ['typeface', 'font family'],
+    ),
+    subtitleStyle.leaf(
+      'subtitles_shadow',
+      l10n.subtitleShadow,
+      keywords: ['drop shadow', 'blur'],
+    ),
+    subtitleStyle.leaf(
       'subtitles_hdr_separate',
       l10n.subtitleHdrSeparate,
       subtitle: l10n.subtitleHdrSeparateSubtitle,
@@ -1585,6 +1940,12 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       l10n.settingsCinemaMode,
       subtitle: l10n.settingsCinemaModeSubtitle,
       keywords: ['trailers before movie'],
+    ),
+    automation.leaf(
+      'pref_cinema_mode_skip_enabled',
+      l10n.cinemaSkipPrerolls,
+      subtitle: l10n.cinemaSkipPrerollsDescription,
+      keywords: ['cinema mode trailer preroll pre-roll skip'],
     ),
     for (final type in configurableMediaSegmentTypes)
       automation.leaf(
@@ -1623,15 +1984,28 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       subtitle: l10n.replaceSkipOutroWithNextUpDisplaySubtitle,
     ),
     automation.leaf(
+      'pref_show_next_air_date',
+      l10n.showNextAirDate,
+      subtitle: l10n.showNextAirDateSubtitle,
+      keywords: ['next episode', 'upcoming', 'sonarr'],
+    ),
+    automation.leaf(
       'enable_still_watching',
       l10n.stillWatchingPrompt,
       subtitle: 'Prompt to Continue Watching after X consecutive episodes.',
       keywords: ['are you still watching'],
     ),
 
+    if (!PlatformDetection.isWeb) ...[
+      downloads.screen(keywords: ['offline', 'storage']),
+      downloads.leaf('image_cache_limit_mb', l10n.imageCacheLimit, keywords: [
+        'storage',
+        'disk',
+      ]),
+      downloads.leaf('clear_image_cache', l10n.clearImageCache),
+    ],
     if (PlatformDetection.supportsOfflineDownloads &&
         !PlatformDetection.isWeb) ...[
-      downloads.screen(keywords: ['offline', 'storage']),
       downloads.leaf(
         'download_default_quality',
         l10n.defaultDownloadQuality,
@@ -1650,7 +2024,27 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         keywords: ['parallel', 'simultaneous'],
       ),
       downloads.leaf('download_storage_limit_mb', l10n.storageLimit),
+      downloads.leaf(
+        'download_remove_watched_after_hours',
+        l10n.removeWatchedDownloads,
+        subtitle: l10n.removeWatchedDownloadsSubtitle,
+        keywords: ['delete', 'watched', 'automatic', 'cleanup', 'space'],
+        header: l10n.storage,
+      ),
       if (AutoDownloadService.isSupportedPlatform) ...[
+        downloads.leaf(
+          'smart_downloads_enabled',
+          l10n.smartDownloadsEnable,
+          subtitle: l10n.smartDownloadsEnableDescription,
+          keywords: ['smart', 'next episode', 'series', 'automatic', 'delete'],
+          header: l10n.smartDownloadsSection,
+        ),
+        downloads.leaf(
+          'smart_downloads_keep_ready',
+          l10n.smartDownloadsKeepReady,
+          keywords: ['smart', 'episodes', 'ahead'],
+          header: l10n.smartDownloadsSection,
+        ),
         downloads.leaf(
           'auto_download_enabled',
           l10n.autoDownloadEnable,
@@ -1667,7 +2061,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         downloads.leaf(
           'auto_download_delete_after_hours',
           l10n.autoDownloadDelete,
-          subtitle: l10n.autoDownloadDeleteSubtitle,
+          subtitle: l10n.autoDownloadDeleteFollowedSubtitle,
           keywords: ['watched', 'remove'],
           header: l10n.autoDownloadSection,
         ),
@@ -1690,54 +2084,58 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       ),
     ],
 
-    if (canToggleGameBackend)
+    if (canToggleGameBackend && gamesOnAnyServer)
       playback.leaf(
         'pref_use_native_emulator',
         l10n.useNativeEmulator,
         subtitle: l10n.useNativeEmulatorSubtitle,
         keywords: ['games', 'retroarch'],
       ),
-    if (supportsCoreDownloads && usesNativeGameBackend)
+    if (usesOnScreenControls)
+      playback.leaf(
+        'pref_game_playback_orientation',
+        l10n.gameOrientation,
+        subtitle: l10n.gameOrientationSubtitle,
+        keywords: ['rotate', 'landscape', 'portrait', 'games'],
+      ),
+    if (supportsCoreDownloads && usesNativeGameBackend && gamesOnAnyServer)
       emulatorCores.screen(keywords: ['retroarch', 'games', 'systems']),
     if (usesNativeGameBackend)
       downloadedGames.screen(keywords: ['roms', 'storage']),
 
-    syncplay.screen(keywords: ['watch together', 'group', 'sync']),
+    syncplay.screen(
+      keywords: ['watch together', 'watch party', 'syncplay', 'group', 'sync'],
+    ),
     syncplay.leaf(
       'pref_syncplay_enabled',
       l10n.settingsSyncplayEnabled,
       subtitle: l10n.settingsSyncplayEnabledSubtitle,
     ),
+    if (anySignedInServerSupports((f) => f.supportsSyncPlay))
+      syncplay.leaf(
+        'pref_watch_party_service',
+        l10n.watchPartyStartWith,
+        subtitle: l10n.watchPartyServiceNote,
+        keywords: ['syncplay', 'moonbase'],
+      ),
     syncplay.leaf(
-      'pref_show_syncplay_button',
-      l10n.settingsSyncplayButton,
-      subtitle: l10n.settingsSyncplayButtonSubtitle,
+      'pref_watch_party_chat_overlay',
+      l10n.watchPartyChatOverlay,
+      subtitle: l10n.watchPartyChatOverlaySubtitle,
+    ),
+    syncplay.leaf(
+      'pref_watch_party_alerts',
+      l10n.watchPartyAlerts,
+      subtitle: l10n.watchPartyAlertsSubtitle,
+      keywords: ['notifications', 'banner'],
     ),
 
-    advanced.screen(keywords: ['mpv', 'cache', 'tuning']),
-    advanced.leaf('video_start_delay', l10n.settingsVideoStartDelay),
-    if (PlatformDetection.isAndroid)
-      advanced.leaf('pref_performance_mode', l10n.performanceMode, keywords: [
-        'memory',
-        'low ram',
-        'trailers',
-        'previews',
-        'slow',
-      ]),
-    if (!PlatformDetection.isWeb) ...[
-      advanced.leaf('image_cache_limit_mb', l10n.imageCacheLimit, keywords: [
-        'storage',
-        'disk',
-      ]),
-      advanced.leaf('clear_image_cache', l10n.clearImageCache),
-    ],
+    if (PlatformDetection.isAndroid ||
+        (!PlatformDetection.isTV &&
+            !PlatformDetection.isIOS &&
+            !PlatformDetection.isWeb))
+      advanced.screen(keywords: ['mpv', 'tuning', 'external player']),
     if (PlatformDetection.isAndroid && PlatformDetection.isTV) ...[
-      advanced.leaf(
-        'exoplayer_prefer_ffmpeg',
-        l10n.preferSoftwareDecoders,
-        subtitle: l10n.preferSoftwareDecodersSubtitle,
-        keywords: ['ffmpeg'],
-      ),
       advanced.leaf(
         'media3_tunneling_disabled',
         l10n.enableTunnelingTitle,
@@ -1751,6 +2149,12 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         subtitle: l10n.useExternalPlayerSubtitle,
         keywords: ['vlc', 'just player'],
       ),
+      advanced.leaf(
+        'external_player_live_tv_only',
+        l10n.externalPlayerLiveTvOnly,
+        subtitle: l10n.externalPlayerLiveTvOnlySubtitle,
+        keywords: ['vlc', 'channel'],
+      ),
     ],
     if (!PlatformDetection.isTV &&
         !PlatformDetection.isIOS &&
@@ -1762,30 +2166,125 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
         keywords: ['mpv config'],
       ),
 
-    integrations.screen(keywords: ['plugin', 'seerr', 'ratings']),
-    plugin.screen(keywords: ['moonbase', 'server sync', 'status']),
-    metadata.screen(keywords: ['ratings', 'mdblist', 'tmdb']),
-    metadata.leaf(
-      'enableAdditionalRatings',
-      l10n.additionalRatings,
-      subtitle: l10n.showMdbListAndTmdbRatings,
-      keywords: ['imdb', 'rotten tomatoes'],
-    ),
-    metadata.leaf(
-      'enableEpisodeRatings',
-      l10n.episodeRatings,
-      subtitle: l10n.showRatingsOnEpisodes,
-    ),
-    metadata.leaf(
-      'showRatingLabels',
-      l10n.ratingLabels,
-      subtitle: l10n.showLabelsNextToIcons,
-    ),
-    metadata.leaf(
-      'showRatingBadges',
-      l10n.ratingBadges,
-      subtitle: l10n.showDecorativeBadges,
-    ),
+    if (_integrationsOffered)
+      services.screen(
+        keywords: ['seerr', 'calendar', 'achievements', 'services'],
+      ),
+    if (calendarAvailable) ...[
+      calendarSettings.screen(
+        keywords: ['sonarr', 'radarr', 'upcoming', 'schedule'],
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_style',
+        l10n.calendarSettingsStyle,
+        subtitle: l10n.calendarSettingsStyleDescription,
+        keywords: [
+          l10n.calendarSettingsStyleAgenda,
+          l10n.calendarSettingsStyleCountdown,
+        ],
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_week_start',
+        l10n.calendarSettingsWeekStart,
+        keywords: [l10n.adminDaySunday, l10n.adminDayMonday],
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_scope',
+        l10n.calendarSettingsScope,
+        subtitle: l10n.calendarSettingsScopeDescription,
+        keywords: [l10n.calendarSettingsScopeMyShows, 'favorites'],
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_show_episodes',
+        l10n.episodes,
+        keywords: ['sonarr'],
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_show_movies',
+        l10n.movies,
+        keywords: ['radarr'],
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'radarr_calendar_show_cinema',
+        l10n.radarrCalendarShowCinema,
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'radarr_calendar_show_digital',
+        l10n.radarrCalendarShowDigital,
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'radarr_calendar_show_physical',
+        l10n.radarrCalendarShowPhysical,
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_libraries',
+        l10n.libraries,
+        header: l10n.calendarSettingsWhatShows,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_unmonitored',
+        l10n.calendarSettingsUnmonitored,
+        subtitle: l10n.calendarSettingsUnmonitoredSubtitle,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_specials',
+        l10n.calendarSettingsSpecials,
+        subtitle: l10n.calendarSettingsSpecialsSubtitle,
+        keywords: ['season 0'],
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_badges',
+        l10n.calendarSettingsBadges,
+        subtitle: l10n.calendarSettingsBadgesSubtitle,
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_color_by',
+        l10n.calendarSettingsColorBy,
+        subtitle: l10n.calendarSettingsColorByDescription,
+      ),
+      if (prefs.get(UserPreferences.calendarStyle) ==
+          CalendarStyle.countdown)
+        calendarSettings.leaf(
+          'pref_calendar_image_type',
+          l10n.calendarSettingsImageType,
+          subtitle: l10n.calendarSettingsImageTypeDescription,
+          keywords: [l10n.imageTypePoster, l10n.imageTypeThumbnail],
+        ),
+      calendarSettings.leaf(
+        'pref_calendar_spoiler_safe',
+        l10n.calendarSettingsSpoilerSafe,
+        subtitle: l10n.calendarSettingsSpoilerSafeSubtitle,
+        keywords: ['spoilers'],
+      ),
+      calendarSettings.leaf(
+        'pref_calendar_select_action',
+        l10n.calendarSettingsSelectAction,
+        subtitle: l10n.calendarSettingsSelectActionDescription,
+      ),
+      if (seerrAvailable)
+        calendarSettings.leaf(
+          'pref_calendar_request_button',
+          l10n.calendarSettingsRequestButton,
+          subtitle: seerrBrand(l10n.calendarSettingsRequestButtonSubtitle),
+        ),
+      if (PlatformDetection.useMobileUi && calendarRemindersAvailable)
+        calendarSettings.leaf(
+          'pref_calendar_reminders',
+          l10n.calendarSettingsReminders,
+          subtitle: l10n.calendarSettingsRemindersSubtitle,
+          keywords: [l10n.calendarRemindMe, 'notifications'],
+        ),
+    ],
+    if (moonfinPluginOnAnyServer)
+      settingsSync.screen(
+        keywords: ['moonbase', 'plugin', 'server sync', 'status', 'profile'],
+      ),
     ratingSources.screen(keywords: [
       'rotten tomatoes',
       'imdb',
@@ -1794,14 +2293,17 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
       'letterboxd',
       'reorder',
     ]),
-    seerr.screen(keywords: [
-      'requests',
-      'jellyseerr',
-      'overseerr',
-      'discover',
-      'nsfw',
-      'notifications',
-    ]),
+    if (seerrOnAnyServer)
+      seerr.screen(keywords: [
+        'requests',
+        'jellyseerr',
+        'overseerr',
+        'discover',
+        'nsfw',
+        'notifications',
+        'badges',
+        'banner',
+      ]),
 
     about.screen(keywords: ['version', 'update', 'discord', 'license']),
     if (PlatformDetection.useDesktopUi)
@@ -1828,7 +2330,7 @@ List<_SettingsSearchEntry> _buildSettingsSearchIndex({
     diagnostics.screen(keywords: ['logs', 'report', 'debug']),
     diagnostics.leaf(
       'pref_crash_reports_enabled',
-      'Send crash reports to server',
+      'Send Crash Reports to Server',
       keywords: ['error', 'bug', 'crashes'],
     ),
   ];

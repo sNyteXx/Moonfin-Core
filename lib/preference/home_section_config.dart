@@ -31,7 +31,15 @@ enum HomeSectionPluginSource {
 
   playlists('playlists'),
 
-  custom('custom');
+  custom('custom'),
+
+  /// A slider an admin set up on Seerr's discover page.
+  seerr('seerr'),
+
+  /// A row the media server curates itself (Silo's home sections), through
+  /// `ServerHomeSectionsApi`. The row's id on the server goes in
+  /// `pluginSection`.
+  server('server');
 
   const HomeSectionPluginSource(this.serializedName);
   final String serializedName;
@@ -382,6 +390,21 @@ class HomeSectionConfig {
       type: HomeSectionType.rewatch,
       enabled: false,
       order: 45,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.seasonal,
+      enabled: false,
+      order: 46,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.onNow,
+      enabled: false,
+      order: 47,
+    ),
+    HomeSectionConfig(
+      type: HomeSectionType.mdblistWatchingNow,
+      enabled: false,
+      order: 48,
     ),
   ];
 

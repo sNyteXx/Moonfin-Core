@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Odaberite koji će se feedovi tema prikazati u Discoveru.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Primijeni",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Žanrovi audio knjiga",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Odaberite žanrove za prikaz u Discoveru audioknjiga.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Otkrijte audio knjige",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Popularni naslovi javne domene iz LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count, plural, one{{count} naslov} few{{count} naslova} other{{count} naslova}}",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Pomaknite se lijevo",
     "@scrollLeft": {
@@ -745,10 +720,6 @@
     "@discover": {
         "description": "Section title for book discovery"
     },
-    "trendingTitlesOpenLibrary": "Naslovi u trendu po predmetu iz Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
-    },
     "noBookmarkedItems": "Još nema označenih stavki",
     "@noBookmarkedItems": {
         "description": "Empty state for bookmarks grid"
@@ -914,7 +885,7 @@
             }
         }
     },
-    "audiobookCountLabel": "{count, plural, =1{1 audioknjiga} one{{count} audioknjiga} few{{count} audioknjige} other{{count} audioknjiga}}",
+    "audiobookCountLabel": "{count, plural, one{{count} audioknjiga} few{{count} audioknjige} other{{count} audioknjiga}}",
     "@audiobookCountLabel": {
         "description": "Subtitle showing number of audiobooks by an author",
         "placeholders": {
@@ -1036,7 +1007,7 @@
     "@publicationDateUnknown": {
         "description": "Placeholder when publication date is unknown"
     },
-    "seasonCount": "{count, plural, =1{1 sezona} one{{count} sezona} few{{count} sezone} other{{count} sezona}}",
+    "seasonCount": "{count, plural, one{{count} sezona} few{{count} sezone} other{{count} sezona}}",
     "@seasonCount": {
         "description": "Number of seasons for a series",
         "placeholders": {
@@ -1447,7 +1418,7 @@
             }
         }
     },
-    "trackCount": "{count, plural, =1{1 pjesma} one{{count} pjesma} few{{count} pjesme} other{{count} pjesama}}",
+    "trackCount": "{count, plural, one{{count} pjesma} few{{count} pjesme} other{{count} pjesama}}",
     "@trackCount": {
         "description": "Label showing number of tracks in an album",
         "placeholders": {
@@ -1456,7 +1427,7 @@
             }
         }
     },
-    "chapterCount": "{count, plural, =1{1 poglavlje} one{{count} poglavlje} few{{count} poglavlja} other{{count} poglavlja}}",
+    "chapterCount": "{count, plural, one{{count} poglavlje} few{{count} poglavlja} other{{count} poglavlja}}",
     "@chapterCount": {
         "description": "Label showing number of chapters in an audiobook",
         "placeholders": {
@@ -2490,7 +2461,7 @@
             }
         }
     },
-    "episodeCount": "{count, plural, =1{1 epizoda} one{{count} epizoda} few{{count} epizode} other{{count} epizoda}}",
+    "episodeCount": "{count, plural, one{{count} epizoda} few{{count} epizode} other{{count} epizoda}}",
     "@episodeCount": {
         "description": "Number of episodes with pluralization",
         "placeholders": {
@@ -3500,14 +3471,6 @@
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
     },
-    "enableFolderView": "Omogući prikaz mape",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Prikaži opciju pregledavanja mape",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
-    },
     "libraryVisibility": "Vidljivost knjižnice",
     "@libraryVisibility": {
         "description": "Section title for library visibility"
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Istaknuti sadržaj, izgled",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Veličina postera, vrsta slike, prikaz mape",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB i izvori ocjena",
     "@mdbListTmdbRatingSources": {
@@ -7192,7 +7151,7 @@
     "analyticsTopArtists": "Najbolji izvođači",
     "analyticsTopAuthors": "Najbolji autori",
     "analyticsTopContributors": "Najveći doprinositelji",
-    "analyticsLibrariesCount": "{count, plural, =1{1 biblioteka} one{{count} biblioteka} few{{count} biblioteke} other{{count} biblioteka}}",
+    "analyticsLibrariesCount": "{count, plural, one{{count} biblioteka} few{{count} biblioteke} other{{count} biblioteka}}",
     "@analyticsLibrariesCount": {
         "placeholders": {
             "count": {
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Izdvajanje .cbr arhive nije uspjelo.",
     "cb7ExtractionUnavailable": "Izdvajanje CB7-a nije dostupno na ovoj platformi.",
     "cb7ExtractionPluginUnavailable": "Dodatak za izdvajanje CB7-a nije dostupan na ovoj platformi.",
-    "closeGenrePanel": "Zatvori ploču žanrova",
     "loadingShuffle": "Učitavanje nasumične reprodukcije...",
     "libraryShuffleLabel": "NASUMIČNO IZ BIBLIOTEKE",
     "randomShuffleLabel": "NASUMIČNI ODABIR",
@@ -7494,7 +7452,7 @@
     "@latestAudiobooks": {
         "description": "Row title for recently added audiobooks in the book library"
     },
-    "bookSeriesItemCount": "{count, plural, =1{1 knjiga} one{{count} knjiga} few{{count} knjige} other{{count} knjiga}}",
+    "bookSeriesItemCount": "{count, plural, one{{count} knjiga} few{{count} knjige} other{{count} knjiga}}",
     "@bookSeriesItemCount": {
         "description": "Subtitle for a book series shelf entry showing how many books it contains",
         "placeholders": {
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Željeni jezik prikaza",
     "offlineBannerTitle": "Izvan mreže ste",
     "offlineBannerSubtitle": "Prikazuju se vaša preuzimanja",
-    "offlineBannerAction": "Preuzimanja",
     "serverUnreachableBannerTitle": "Poslužitelj nije dostupan",
     "serverUnreachableBannerSubtitle": "Reprodukcija iz preuzimanja dok se ne vrati",
     "contextMenuHideFromContinueWatching": "Sakrij iz odjeljka „Nastavite s gledanjem”",

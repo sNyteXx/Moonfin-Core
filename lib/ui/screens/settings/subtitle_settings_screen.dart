@@ -3,6 +3,7 @@ import 'package:get_it/get_it.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../util/language_codes.dart';
+import '../../../util/remote_subtitle_labels.dart';
 import '../../../preference/preference_constants.dart';
 import '../../../preference/user_preferences.dart';
 import '../../../l10n/app_localizations.dart';
@@ -11,6 +12,7 @@ import '../../widgets/adaptive/adaptive_list_section.dart';
 import '../../widgets/settings/settings_section_header.dart';
 import '../../widgets/settings/preference_tiles.dart';
 import '../../widgets/settings/settings_panel.dart';
+import '../../widgets/settings/settings_preview_scope.dart';
 import '../../widgets/settings/clean_settings_typography.dart';
 import 'settings_app_bar.dart';
 import 'subtitle_customization_screen.dart';
@@ -32,7 +34,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
     return withCleanSettingsTypography(
       context,
       Scaffold(
-        appBar: buildSettingsAppBar(context, Text(l10n.subtitlePreferences)),
+        appBar: buildSettingsAppBar(context, Text(l10n.subtitles)),
         body: ListenableBuilder(
           listenable: prefs,
           builder: (context, _) {
@@ -40,7 +42,9 @@ class SubtitleSettingsScreen extends StatelessWidget {
             final showStreamSettings = mode != SubtitleMode.none;
 
             return ListView(
-              padding: const EdgeInsets.only(bottom: 64.0),
+              padding: EdgeInsets.only(
+                bottom: 64.0 + MediaQuery.paddingOf(context).bottom,
+              ),
               children: [
                 SettingsSectionHeader(l10n.general),
                 adaptiveListSection(
@@ -68,6 +72,17 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         SubtitleMode.none => l10n.subtitleModeNoneDescription,
                       },
                     ),
+                    MultiSelectPreferenceTile(
+                      preference: UserPreferences.subtitleDownloadLanguages,
+                      title: l10n.subtitleDownloadLanguages,
+                      description: l10n.subtitleDownloadLanguagesDescription,
+                      icon: Icons.download,
+                      // Every language, since the providers cover far more
+                      // than the app is translated into.
+                      options: kIso6392Languages,
+                      emptyLabel: l10n.auto,
+                      maxSelected: maxSubtitleDownloadLanguages,
+                    ),
                   ],
                 ),
                 if (showStreamSettings) ...[
@@ -80,6 +95,20 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         icon: Icons.language,
                         options: langOptions,
                       ),
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.secondarySubtitlesEnabled,
+                        title: l10n.secondarySubtitleTrack,
+                        subtitle: l10n.secondarySubtitlesEnabledSubtitle,
+                        icon: Icons.subtitles_outlined,
+                      ),
+                      if (prefs.get(UserPreferences.secondarySubtitlesEnabled))
+                        StringPickerPreferenceTile(
+                          preference: UserPreferences
+                              .preferredSecondarySubtitleLanguage,
+                          title: l10n.preferredSecondarySubtitleLanguage,
+                          icon: Icons.language,
+                          options: langOptions,
+                        ),
                       StringPickerPreferenceTile(
                         preference: UserPreferences.fallbackSubtitleLanguage,
                         title: l10n.fallbackSubtitleLanguage,
@@ -91,6 +120,18 @@ class SubtitleSettingsScreen extends StatelessWidget {
                         title: l10n.preferSdhSubtitles,
                         subtitle: l10n.preferSdhSubtitlesSubtitle,
                         icon: Icons.hearing,
+                      ),
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.preferTextSubtitles,
+                        title: l10n.preferTextSubtitles,
+                        subtitle: l10n.preferTextSubtitlesSubtitle,
+                        icon: Icons.subtitles,
+                      ),
+                      SwitchPreferenceTile(
+                        preference: UserPreferences.preferExternalSubtitles,
+                        title: l10n.preferExternalSubtitles,
+                        subtitle: l10n.preferExternalSubtitlesSubtitle,
+                        icon: Icons.file_download,
                       ),
                     ],
                   ),
@@ -107,36 +148,43 @@ class SubtitleSettingsScreen extends StatelessWidget {
                   ),
                   adaptiveListSection(
                     children: [
-                      TvFocusHighlight(
-                        builder: (context, focused) {
-                          var pushed = false;
-                          final iconColor = focused
-                              ? AppColors.black.withValues(alpha: 0.54)
-                              : (Theme.of(context).iconTheme.color ??
-                                    AppColorScheme.onSurface);
-                          return ListTile(
-                            focusColor: Colors.transparent,
-                            hoverColor: Colors.transparent,
-                            leading: buildSettingsLeadingIconShell(
-                              context,
-                              icon: const Icon(Icons.style),
-                              focused: focused,
-                              iconColor: iconColor,
-                            ),
-                            title: Text(l10n.subtitleCustomization),
-                            subtitle: Text(
-                              l10n.subtitleCustomizationDescription,
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              if (pushed) return;
-                              pushed = true;
-                              context.pushSettingsScreen(
-                                const SubtitleCustomizationScreen(),
-                              );
-                            },
-                          );
-                        },
+                      SettingsPreviewReporter(
+                        describe: () => SettingsPreviewEntry(
+                          prefKey: UserPreferences.subtitlesTextColor.key,
+                          title: l10n.subtitleCustomization,
+                          description: l10n.subtitleCustomizationDescription,
+                        ),
+                        child: TvFocusHighlight(
+                          builder: (context, focused) {
+                            var pushed = false;
+                            final iconColor = focused
+                                ? AppColors.black.withValues(alpha: 0.54)
+                                : (Theme.of(context).iconTheme.color ??
+                                      AppColorScheme.onSurface);
+                            return ListTile(
+                              focusColor: Colors.transparent,
+                              hoverColor: Colors.transparent,
+                              leading: buildSettingsLeadingIconShell(
+                                context,
+                                icon: const Icon(Icons.style),
+                                focused: focused,
+                                iconColor: iconColor,
+                              ),
+                              title: Text(l10n.subtitleCustomization),
+                              subtitle: Text(
+                                l10n.subtitleCustomizationDescription,
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () {
+                                if (pushed) return;
+                                pushed = true;
+                                context.pushSettingsScreen(
+                                  const SubtitleCustomizationScreen(),
+                                );
+                              },
+                            );
+                          },
+                        ),
                       ),
                       if (PlatformDetection.isAndroid) ...[
                         SwitchPreferenceTile(

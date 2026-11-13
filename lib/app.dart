@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tvos/flutter_tvos.dart'
     show TvRemoteController, TvRemoteConfig, FlutterTvosPlatform;
 import 'package:get_it/get_it.dart';
+import 'package:server_core/server_core.dart';
 import 'package:go_router/go_router.dart';
 import 'package:playback_core/playback_core.dart';
 import 'package:window_manager/window_manager.dart';
@@ -20,6 +21,7 @@ import 'data/models/aggregated_item.dart';
 import 'data/services/achievements_service.dart';
 import 'data/services/cast/cast_service.dart';
 import 'data/services/connectivity_service.dart';
+import 'data/services/remove_watched_service.dart';
 import 'data/services/download_service.dart';
 import 'data/services/seerr_notification_service.dart';
 import 'data/services/plugin_sync_service.dart';
@@ -31,6 +33,7 @@ import 'data/services/topshelf_service.dart';
 import 'data/services/watch_next_service.dart';
 import 'di/providers.dart';
 import 'l10n/app_localizations.dart';
+import 'l10n/current_app_localizations.dart';
 import 'preference/preference_constants.dart' show GlassSettledQuality;
 import 'preference/user_preferences.dart';
 import 'syncplay/syncplay_manager.dart';
@@ -43,9 +46,15 @@ import 'ui/theme/app_theme.dart';
 import 'ui/theme/app_theme_controller.dart';
 import 'ui/widgets/app_update_banner.dart';
 import 'ui/widgets/cast_mini_player.dart';
+import 'ui/widgets/video_mini_player.dart';
 import 'ui/screens/settings/achievements_screen.dart';
 import 'ui/widgets/floating_notification.dart';
+import 'ui/screens/watch_party/silo_watch_party_screen.dart';
+import 'watch_party/moonbase_watch_party_api.dart';
+import 'watch_party/watch_party_rooms_service.dart';
 import 'ui/widgets/offline_banner.dart';
+import 'ui/widgets/playback/playback_tab_title.dart';
+import 'ui/widgets/times_up_gate.dart';
 import 'ui/widgets/settings/settings_panel.dart';
 import 'ui/widgets/server_messages_dialog.dart';
 import 'ui/widgets/exit_confirmation_dialog.dart';
@@ -88,6 +97,8 @@ class _MoonfinAppState extends State<MoonfinApp> {
   void initState() {
     super.initState();
     _prefs = GetIt.instance<UserPreferences>();
+    CustomKeyboard.onStylePicked = (style) =>
+        _prefs.set(UserPreferences.keyboardStyle, style);
     _themeController = AppThemeController.fromPreferences(_prefs);
     _lastResolvedLocale = _resolveLocale();
     AppUiIdiomResolver.setOverride(_prefs.get(UserPreferences.interfaceStyle));
@@ -242,22 +253,23 @@ class _MoonfinAppState extends State<MoonfinApp> {
               localizationsDelegates: AppLocalizations.localizationsDelegates,
               supportedLocales: AppLocalizations.supportedLocales,
               locale: _lastResolvedLocale,
-              localeResolutionCallback: (locale, supportedLocales) {
-                // Prefer exact match (language + country/script)
-                for (final supported in supportedLocales) {
-                  if (supported == locale) {
-                    return supported;
-                  }
-                }
-                // Fall back to language-only match
-                for (final supported in supportedLocales) {
-                  if (supported.languageCode == locale?.languageCode) {
-                    return supported;
-                  }
-                }
-                return const Locale('en');
-              },
+              localeResolutionCallback: (locale, _) =>
+                  resolveAppUiLocale(locale),
               builder: (context, child) {
+                final l10n = AppLocalizations.of(context);
+                CustomKeyboard.strings = KeyboardStrings(
+                  space: l10n.keyboardSpace,
+                  delete: l10n.delete,
+                  search: l10n.search,
+                  done: l10n.done,
+                  holdForAccents: l10n.keyboardHoldForAccents,
+                  close: l10n.keyboardClose,
+                  nativeStyle: l10n.keyboardStyleNative,
+                  classicStyle: l10n.keyboardStyleClassic,
+                  glassStyle: l10n.keyboardStyleGlass,
+                  dockedStyle: l10n.keyboardStyleDocked,
+                );
+
                 var path =
                     appRouter.routerDelegate.currentConfiguration.uri.path;
                 try {
@@ -267,10 +279,7 @@ class _MoonfinAppState extends State<MoonfinApp> {
                 final hidePlayer =
                     path.startsWith('/player/') ||
                     path == '/live-tv/player' ||
-                    path == '/' ||
-                    path == '/server-select' ||
-                    path == '/server' ||
-                    path == '/login';
+                    Destinations.isSignedOutRoute(path);
 
                 final overlay = Overlay(
                   initialEntries: [
@@ -299,6 +308,7 @@ class _MoonfinAppState extends State<MoonfinApp> {
                             ),
                             if (!hidePlayer)
                               const RepaintBoundary(child: CastMiniPlayer()),
+                            if (!hidePlayer) const VideoMiniPlayer(),
                           ],
                         );
                         final glass = AppColorScheme.isGlass;
@@ -311,14 +321,20 @@ class _MoonfinAppState extends State<MoonfinApp> {
                           fit: StackFit.expand,
                           children: [
                             Positioned.fill(
-                              child: glass
-                                  ? GlassBackdrop(
-                                      animated: GlassSettings.animatedBackdrop,
-                                    )
-                                  : const SizedBox.shrink(),
+                              child: VideoMiniPlayerHoleClip(
+                                child: glass
+                                    ? GlassBackdrop(
+                                        animated:
+                                            GlassSettings.animatedBackdrop,
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
                             ),
-                            shell,
+                            TimesUpFocusGuard(child: shell),
                             if (PlatformDetection.isTV) const ScreensaverHost(),
+                            // Last, so nothing sits above it and nothing can be
+                            // reached through it while the schedule is closed.
+                            const TimesUpGate(),
                           ],
                         );
                         if (GlassSettings.usePackageRenderer) {
@@ -362,7 +378,7 @@ class _MoonfinAppState extends State<MoonfinApp> {
                   ],
                 );
 
-                return ListenableBuilder(
+                final app = ListenableBuilder(
                   listenable: _prefs,
                   builder: (context, _) {
                     // Read here rather than hoisted above the builder, so a
@@ -390,6 +406,7 @@ class _MoonfinAppState extends State<MoonfinApp> {
                     );
                   },
                 );
+                return kIsWeb ? PlaybackTabTitle(child: app) : app;
               },
             );
           },
@@ -431,6 +448,53 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   DateTime? _lastMouseThumbNavAt;
   String? _pendingRouteHistoryLocation;
   bool _exitDialogShowing = false;
+  bool _checkingLiveTvShortcut = false;
+
+  /// Whether Home can take a Live TV shortcut now. Nothing focused (focus
+  /// back at the root after a pop, or parked on this scope by a desktop mouse
+  /// scroll) counts as Home. Focus in a dialog, popup or overlay sheet doesn't.
+  bool _canTakeLiveTvShortcut() {
+    if (!_isHomeRoute()) return false;
+    // A sheet takes focus a couple of frames after it opens.
+    if (OverlaySheetController.hasOpenSheet) return false;
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus == null ||
+        focus == FocusManager.instance.rootScope ||
+        focus == _focusNode) {
+      return true;
+    }
+    final focusContext = focus.context;
+    final focusRoute = focusContext == null || !focusContext.mounted
+        ? null
+        : ModalRoute.of(focusContext);
+    return focusRoute is PageRoute && focusRoute.isCurrent;
+  }
+
+  Future<void> _openLiveTvShortcut(LogicalKeyboardKey key) async {
+    if (_checkingLiveTvShortcut) return;
+    _checkingLiveTvShortcut = true;
+    try {
+      final client = GetIt.instance<MediaServerClient>();
+      final response = await client.liveTvApi.getChannels(
+        limit: 1,
+        enableTotalRecordCount: true,
+      );
+      final items = response['Items'] as List?;
+      final hasChannels =
+          (response['TotalRecordCount'] as int? ?? 0) > 0 ||
+          (items?.isNotEmpty ?? false);
+      if (!mounted || !hasChannels || !_canTakeLiveTvShortcut()) return;
+      appRouter.push(
+        key == LogicalKeyboardKey.guide
+            ? Destinations.liveTvGuide
+            : Destinations.liveTvRecordings,
+      );
+    } catch (_) {
+      // An unavailable or unauthorized Live TV service has no shortcut.
+    } finally {
+      _checkingLiveTvShortcut = false;
+    }
+  }
 
   @override
   void initState() {
@@ -535,6 +599,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
   }
 
   bool _handleMouseBackNavigation() {
+    if (TimesUpGate.isShowing()) return true;
     if (_isPlayerRoute()) {
       return false;
     }
@@ -554,6 +619,8 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
       return true;
     }
 
+    if (_leaveAdminArea()) return true;
+
     if (!_exitDialogShowing) {
       _exitDialogShowing = true;
       unawaited(_showExitConfirmation());
@@ -561,6 +628,16 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     }
 
     return false;
+  }
+
+  /// The admin area's group tabs replace the router's stack, so its top level
+  /// pages have nothing under them. Back there leaves the area for home
+  /// instead of offering to close the app.
+  bool _leaveAdminArea() {
+    final path = appRouter.routerDelegate.currentConfiguration.uri.path;
+    if (!path.startsWith(Destinations.admin)) return false;
+    appRouter.go(Destinations.home);
+    return true;
   }
 
   bool _handleMouseForwardNavigation() {
@@ -620,6 +697,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
 
   @override
   Future<bool> didPopRoute() async {
+    if (TimesUpGate.isShowing()) return true;
     if (PlatformDetection.isTV && _screensaverController.dismissIfVisible()) {
       return true;
     }
@@ -635,7 +713,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
       return true;
     }
     if (!appRouter.canPop()) {
-      if (!_exitDialogShowing) {
+      if (!_leaveAdminArea() && !_exitDialogShowing) {
         _exitDialogShowing = true;
         unawaited(_showExitConfirmation());
       }
@@ -715,6 +793,11 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
     }
 
     final key = event.logicalKey;
+    if ((key == LogicalKeyboardKey.guide || key.isRecordingsKey) &&
+        _canTakeLiveTvShortcut()) {
+      unawaited(_openLiveTvShortcut(key));
+      return true;
+    }
     final keys = HardwareKeyboard.instance.logicalKeysPressed;
     final ctrlPressed =
         keys.contains(LogicalKeyboardKey.controlLeft) ||
@@ -722,6 +805,8 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
 
     final isBackspace = key == LogicalKeyboardKey.backspace;
     if (key.isBackKey) {
+      // Nothing to go back to while the schedule is closed.
+      if (TimesUpGate.isShowing()) return true;
       final fromRemote = GamepadKeySynthesizer.isRemote(event.physicalKey);
       if (isBackspace && _isEditingText()) {
         return false;
@@ -789,6 +874,7 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
         if (PlatformDetection.isAndroid && key == LogicalKeyboardKey.goBack) {
           return true;
         }
+        if (_leaveAdminArea()) return true;
         _exitDialogShowing = true;
         unawaited(_showExitConfirmation());
       }
@@ -939,11 +1025,10 @@ class _GlobalShortcutScopeState extends State<_GlobalShortcutScope>
 
   @override
   void onWindowEvent(String eventName) {
-    if (eventName == 'maximize') {
-      _isMaximized = true;
-    } else if (eventName == 'unmaximize') {
-      _isMaximized = false;
-    }
+    _isMaximized = FullscreenHelper.maximizedAfterWindowEvent(
+      eventName,
+      _isMaximized,
+    );
     if (eventName == 'move' ||
         eventName == 'resize' ||
         eventName == 'moved' ||
@@ -1034,11 +1119,17 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
   StreamSubscription<ChatThread>? _chatMessageSub;
   StreamSubscription<AchievementUnlocks>? _unlockSub;
   StreamSubscription<SeerrNotificationEvent>? _seerrNotificationSub;
+  StreamSubscription<MoonbaseRoomSummary>? _partyAlertSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (GetIt.instance.isRegistered<WatchPartyRoomsService>()) {
+      _partyAlertSub = GetIt.instance<WatchPartyRoomsService>().alerts.listen(
+        _handlePartyAlert,
+      );
+    }
     ref.read(syncPlayRuntimeCoordinatorProvider);
     final manager = ref.read(syncPlayManagerProvider);
     _syncPlayEventsSub = manager.uiEvents.listen(_handleSyncPlayEvent);
@@ -1084,6 +1175,7 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     _chatMessageSub?.cancel();
     _unlockSub?.cancel();
     _seerrNotificationSub?.cancel();
+    _partyAlertSub?.cancel();
     if (GetIt.instance.isRegistered<ServerMessagesService>()) {
       GetIt.instance<ServerMessagesService>().removeListener(
         _handleServerMessagesChanged,
@@ -1105,6 +1197,11 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
       _backgroundAwareSession?.onAppResumed();
       if (GetIt.instance.isRegistered<ConnectivityService>()) {
         GetIt.instance<ConnectivityService>().onAppResumed();
+      }
+      if (GetIt.instance.isRegistered<RemoveWatchedService>()) {
+        unawaited(
+          GetIt.instance<RemoveWatchedService>().runForSignedInServer(),
+        );
       }
     }
   }
@@ -1172,6 +1269,55 @@ class _ConnectivityListenerState extends ConsumerState<_ConnectivityListener>
     final matches = appRouter.routerDelegate.currentConfiguration.matches;
     final path = matches.isEmpty ? '' : matches.last.matchedLocation;
     return Destinations.isPlayerRoute(path);
+  }
+
+  /// Party alerts: a TV banner that never takes focus and stays 8 seconds,
+  /// with the room first in the Home row, a toast with Join and Not now on
+  /// desktop, and a banner to tap on a phone.
+  void _handlePartyAlert(MoonbaseRoomSummary room) {
+    final navContext = _navigatorContext();
+    if (navContext == null) return;
+    final l10n = AppLocalizations.of(navContext);
+    final title = l10n.watchPartyStartedBy(room.hostName);
+    final body = room.isPlaying
+        ? '${watchPartyRoomTitle(l10n, room)} · '
+              '${l10n.watchPartyWatchingCount(room.memberCount)}'
+        : l10n.watchPartyInLobbyCount(
+            watchPartyRoomTitle(l10n, room),
+            room.memberCount,
+          );
+    void join() {
+      final context = _navigatorContext();
+      if (context != null) unawaited(joinListedRoom(context, room));
+    }
+
+    if (PlatformDetection.useLeanbackUi) {
+      FloatingNotification.show(
+        navContext,
+        title,
+        '$body\n${l10n.watchPartyFirstOnHome}',
+        null,
+        icon: Icons.groups_rounded,
+        duration: const Duration(seconds: 8),
+      );
+    } else if (PlatformDetection.isDesktop) {
+      FloatingNotification.show(
+        navContext,
+        title,
+        body,
+        null,
+        icon: Icons.groups_rounded,
+        actions: [(l10n.notNow, () {}), (l10n.syncPlayJoin, join)],
+      );
+    } else {
+      FloatingNotification.show(
+        navContext,
+        title,
+        body,
+        join,
+        icon: Icons.groups_rounded,
+      );
+    }
   }
 
   /// A banner for a chat message from a friend. Tapping it opens the chat.

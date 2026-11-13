@@ -1,10 +1,19 @@
+import 'package:dio/dio.dart';
+import 'package:get_it/get_it.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:server_core/server_core.dart';
 
+import '../../auth/models/user.dart';
 import '../../auth/repositories/session_repository.dart';
+import '../../auth/repositories/user_repository.dart';
+import '../../auth/services/silo_token_storage.dart';
+import '../services/moonbase_endpoint.dart';
+import '../services/seerr/arr_queue.dart';
 import '../services/seerr/seerr_api_models.dart';
+import '../services/seerr/seerr_discover_sliders.dart';
 import '../services/seerr/seerr_http_client.dart';
 import '../services/seerr/seerr_models.dart';
+import '../services/seerr/silo_seerr_http_client.dart';
 
 class SeerrRepository {
   final PreferenceStore _store;
@@ -26,10 +35,18 @@ class SeerrRepository {
   bool _serverReportsEnabled = false;
   Map<String, dynamic>? _cachedPublicSettings;
 
-  // Blocks further silent Quick Connect attempts after the server says it
-  // can't support them. Kept in memory only so an upgrade or restart retries
+  // Blocks further silent sign in attempts after the server says it can't
+  // support them. Kept in memory only so an upgrade or restart retries
   // instead of staying blocked forever.
-  bool _quickConnectSsoBlocked = false;
+  bool _ssoBlocked = false;
+
+  // For moonbaseEndpoint's ping, which finds Moonbase for Plex.
+  final _endpointDio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ),
+  );
 
   int _lastSessionCheckMs = 0;
   int _lastInitAttemptMs = 0;
@@ -41,6 +58,13 @@ class SeerrRepository {
   static const _badgeCountCacheDurationMs = 60 * 1000;
 
   final Map<String, SeerrMediaSummary> _mediaSummaryCache = {};
+
+  // Every slider row on Home asks for the list while it loads, so they share
+  // one read. Admins rarely touch it, and the Home settings screen forces a
+  // fresh one to pick up new sliders.
+  Future<List<SeerrDiscoverSlider>>? _discoverSliders;
+  int _discoverSlidersAtMs = 0;
+  static const _discoverSlidersCacheDurationMs = 5 * 60 * 1000;
 
   bool get isAvailable => _isAvailable;
   bool get isMoonfinMode => _isMoonfinMode;
@@ -133,17 +157,35 @@ class SeerrRepository {
   }
 
   Future<void> _initMoonfinMode() async {
-    final baseUrl = _client.baseUrl;
-    final token = _client.accessToken;
-    if (baseUrl.isEmpty || token == null || token.isEmpty) {
+    // Silo has requests of its own, and its session is the requests session.
+    final silo = siloClientOf(_client);
+    if (silo != null) {
+      _httpClient?.close();
+      _httpClient = SiloSeerrHttpClient(silo);
+      _cachedPublicSettings = null;
+      _discoverSliders = null;
+      _isMoonfinMode = true;
+      try {
+        final status = await _httpClient!.getMoonfinStatus();
+        _isAvailable = status.authenticated;
+        _serverReportsEnabled = status.enabled;
+      } catch (_) {
+        _isAvailable = false;
+        _serverReportsEnabled = false;
+      }
+      return;
+    }
+
+    final proxyConfig = await _proxyConfig(
+      _client.baseUrl,
+      _client.accessToken,
+    );
+    if (proxyConfig == null) {
       _isAvailable = false;
       return;
     }
 
-    _initClient(MoonfinProxyConfig(
-      jellyfinBaseUrl: baseUrl,
-      jellyfinToken: token,
-    ));
+    _initClient(proxyConfig);
     _isMoonfinMode = true;
 
     try {
@@ -156,10 +198,40 @@ class SeerrRepository {
     }
   }
 
+  /// Where the Seerr proxy is and how to sign calls to it. Jellyfin and Emby
+  /// serve it themselves, and Plex's is Moonbase for Plex, next to it.
+  Future<MoonfinProxyConfig?> _proxyConfig(String baseUrl, String? token) async {
+    if (token == null || token.isEmpty) return null;
+    if (_client.serverType == ServerType.plex) {
+      final ep = await moonbaseEndpoint(_client, _endpointDio);
+      if (ep == null) return null;
+      return MoonfinProxyConfig(
+        jellyfinBaseUrl: ep.base,
+        jellyfinToken: token,
+        authHeaders: ep.headers,
+      );
+    }
+    if (baseUrl.isEmpty) return null;
+    return MoonfinProxyConfig(jellyfinBaseUrl: baseUrl, jellyfinToken: token);
+  }
+
+  /// The plex.tv token of the Plex account signed in to the app, which is what
+  /// Seerr's Plex sign in takes. Null on other servers.
+  String? get _plexToken {
+    if (_client.serverType != ServerType.plex ||
+        !GetIt.instance.isRegistered<UserRepository>()) {
+      return null;
+    }
+    final user = GetIt.instance<UserRepository>().currentUser;
+    final token = user is PrivateUser ? user.plexToken : null;
+    return token == null || token.isEmpty ? null : token;
+  }
+
   void _initClient(MoonfinProxyConfig proxyConfig) {
     _httpClient?.close();
     _httpClient = SeerrHttpClient(proxyConfig: proxyConfig);
     _cachedPublicSettings = null;
+    _discoverSliders = null;
   }
 
   Future<T> _withClient<T>(
@@ -205,10 +277,9 @@ class SeerrRepository {
     if (userId == null) throw StateError('No active user');
     _lastUserId = userId;
 
-    _initClient(MoonfinProxyConfig(
-      jellyfinBaseUrl: jellyfinBaseUrl,
-      jellyfinToken: jellyfinToken,
-    ));
+    final proxyConfig = await _proxyConfig(jellyfinBaseUrl, jellyfinToken);
+    if (proxyConfig == null) throw StateError('No Moonbase to reach Seerr through');
+    _initClient(proxyConfig);
 
     final status = await _httpClient!.getMoonfinStatus();
     final effectiveEnabled = status.enabled && status.authenticated;
@@ -255,6 +326,11 @@ class SeerrRepository {
     if (status.authenticated) return;
     if (!status.enabled) return;
 
+    if (_client.serverType == ServerType.plex) {
+      await tryPlexSignIn();
+      return;
+    }
+
     final hasPassword = username != null &&
         username.isNotEmpty &&
         password != null &&
@@ -280,13 +356,27 @@ class SeerrRepository {
   /// saying it can't support the flow blocks further attempts this run, and
   /// anything else, including an old plugin answering with a generic error, is
   /// treated as transient so the startup retries can recover from it.
-  Future<bool> tryQuickConnectSignIn({String? username}) async {
-    if (_quickConnectSsoBlocked) return false;
+  Future<bool> tryQuickConnectSignIn({String? username}) => _trySsoSignIn(
+    (client) => client.moonfinQuickConnectLogin(username: username),
+  );
+
+  /// Signs in to Seerr with the Plex account signed in to the app, the way
+  /// [tryQuickConnectSignIn] does on Jellyfin.
+  Future<bool> tryPlexSignIn() async {
+    final token = _plexToken;
+    if (token == null) return false;
+    return _trySsoSignIn((client) => client.moonfinPlexLogin(authToken: token));
+  }
+
+  Future<bool> _trySsoSignIn(
+    Future<MoonfinSsoResult> Function(SeerrHttpClient client) signIn,
+  ) async {
+    if (_ssoBlocked) return false;
     final client = _httpClient;
     if (client == null) return false;
 
     try {
-      final result = await client.moonfinQuickConnectLogin(username: username);
+      final result = await signIn(client);
       if (result.success) {
         await _store.setString(
           _moonfinDisplayNameKey,
@@ -307,8 +397,9 @@ class SeerrRepository {
       }
 
       if (result.errorCode == 'sso_unsupported' ||
-          result.errorCode == 'quickconnect_disabled') {
-        _quickConnectSsoBlocked = true;
+          result.errorCode == 'quickconnect_disabled' ||
+          result.errorCode == 'plex_unsupported') {
+        _ssoBlocked = true;
       }
       return false;
     } catch (_) {
@@ -336,6 +427,7 @@ class SeerrRepository {
       username: username,
       password: password,
       authType: authType,
+      authToken: authType == 'plex' ? _plexToken : null,
     );
 
     await _store.setString(
@@ -498,6 +590,54 @@ class SeerrRepository {
     ),
   );
 
+  /// The sliders on Seerr's discover page. A failed read isn't kept, so the
+  /// next caller tries again.
+  Future<List<SeerrDiscoverSlider>> getDiscoverSliders({bool force = false}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final cached = _discoverSliders;
+    if (!force &&
+        cached != null &&
+        now - _discoverSlidersAtMs < _discoverSlidersCacheDurationMs) {
+      return cached;
+    }
+    final fresh = _withClient(
+      (c) async => (await c.getDiscoverSliders())
+          .map(SeerrDiscoverSlider.tryFromJson)
+          .whereType<SeerrDiscoverSlider>()
+          .toList(growable: false),
+    );
+    _discoverSliders = fresh;
+    _discoverSlidersAtMs = now;
+    fresh.catchError((Object _) {
+      if (identical(_discoverSliders, fresh)) _discoverSliders = null;
+      return const <SeerrDiscoverSlider>[];
+    });
+    return fresh;
+  }
+
+  /// One page of [slider]'s results. A search slider also finds people, which
+  /// have no page to open, so only movies and series are kept.
+  Future<SeerrDiscoverPage> getSliderPage(
+    SeerrDiscoverSlider slider, {
+    int page = 1,
+  }) async {
+    final query = slider.query;
+    if (query == null) return const SeerrDiscoverPage();
+    final result = await _withClient(
+      (c) async => SeerrDiscoverPage.fromJson(
+        await c.getSliderPage(query.path, query.params, page: page),
+      ),
+    );
+    return SeerrDiscoverPage(
+      results: result.results
+          .where((item) => item.mediaType == 'movie' || item.mediaType == 'tv')
+          .toList(growable: false),
+      totalPages: result.totalPages,
+      totalResults: result.totalResults,
+      page: result.page,
+    );
+  }
+
   Future<List<SeerrLanguage>> getLanguages() => _withClient(
     (c) async => (await c.getLanguages())
         .whereType<Map>()
@@ -634,6 +774,7 @@ class SeerrRepository {
     int? profileId,
     String? rootFolder,
     int? serverId,
+    int? tvdbId,
   }) => _withClient(
     (c) async => SeerrRequest.fromJson(
       await c.createRequest(
@@ -645,6 +786,7 @@ class SeerrRepository {
         profileId: profileId,
         rootFolder: rootFolder,
         serverId: serverId,
+        tvdbId: tvdbId,
       ),
     ),
   );
@@ -838,6 +980,20 @@ class SeerrRepository {
         ),
       );
 
+  /// Sonarr's matches for a series TMDB has no TVDB id for. A match without a
+  /// TVDB id is no use for the request, so it is left out.
+  Future<List<SeerrSonarrSeries>> lookupSonarrSeries(int tmdbId) =>
+      _withClient(
+        (c) async => [
+          for (final e in await c.lookupSonarrSeries(tmdbId))
+            if (e is Map<String, dynamic> &&
+                e['tvdbId'] is num &&
+                (e['tvdbId'] as num) > 0 &&
+                e['title'] is String)
+              SeerrSonarrSeries.fromJson(e),
+        ],
+      );
+
   Future<List<SeerrRadarrSettings>> getRadarrSettings() => _withClient(
     (c) async => (await c.getRadarrSettings())
         .cast<Map<String, dynamic>>()
@@ -857,6 +1013,21 @@ class SeerrRepository {
 
   Future<List<dynamic>> getSonarrCalendar({String? start, String? end}) =>
       _withClient((c) => c.getSonarrCalendar(start: start, end: end));
+
+  /// Null when Moonbase can't see the arr for this title.
+  Future<ArrQueue?> getArrQueue({int? tmdbId, int? tvdbId}) => _withClient(
+    (c) async {
+      final json = await c.getArrQueue(tmdbId: tmdbId, tvdbId: tvdbId);
+      return json == null ? null : ArrQueue.fromJson(json);
+    },
+  );
+
+  Future<void> removeArrQueueItem({
+    required bool radarr,
+    required int queueId,
+  }) => _withClient(
+    (c) => c.removeArrQueueItem(radarr: radarr, queueId: queueId),
+  );
 
   Future<SeerrStatus> getStatus() => _withClient((c) => c.getStatus());
 

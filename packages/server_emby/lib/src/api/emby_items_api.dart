@@ -15,15 +15,18 @@ class EmbyItemsApi implements ItemsApi {
 
   static String? _knownFields(String? fields) {
     if (fields == null) return null;
-    if (!_unknownToEmbyFields.any(fields.contains)) return fields;
     final kept = fields
         .split(',')
         .map((field) => field.trim())
         .where(
           (field) => field.isNotEmpty && !_unknownToEmbyFields.contains(field),
         )
-        .join(',');
-    return kept.isEmpty ? null : kept;
+        .toList();
+    // Emby leaves LastPlayedDate out of UserData unless it's asked for by name.
+    if (kept.contains('UserData') && !kept.contains('UserDataLastPlayedDate')) {
+      kept.add('UserDataLastPlayedDate');
+    }
+    return kept.isEmpty ? null : kept.join(',');
   }
 
   bool _shouldRetryCollectionFallback(int statusCode) {
@@ -123,7 +126,7 @@ class EmbyItemsApi implements ItemsApi {
       'Is4K': ?is4K,
       'Is3D': ?is3D,
       'IsFavorite': ?isFavorite,
-      'CollapseBoxSetItems': ?collapseBoxSetItems,
+      'GroupItemsIntoCollections': ?collapseBoxSetItems,
       'EnableTotalRecordCount': ?enableTotalRecordCount,
       'EnableImageTypes': ?enableImageTypes,
       'ImageTypeLimit': ?imageTypeLimit,
@@ -334,6 +337,7 @@ class EmbyItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
     bool recursive = false,
+    bool? hideWatched,
   }) async {
     final userId = _getUserId();
     final response = await _dio.get(
@@ -343,6 +347,7 @@ class EmbyItemsApi implements ItemsApi {
         if (recursive) 'Recursive': true,
         if (includeItemTypes != null)
           'IncludeItemTypes': includeItemTypes.join(','),
+        if (hideWatched == true) 'Filters': 'IsUnplayed',
         if (limit != null) 'Limit': limit,
         'Fields': ?_knownFields(fields),
         if (enableImageTypes != null) 'EnableImageTypes': enableImageTypes,
@@ -485,12 +490,14 @@ class EmbyItemsApi implements ItemsApi {
     String playlistId, {
     int? startIndex,
     int? limit,
+    String? fields,
   }) async {
     final response = await _dio.get(
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams',
+            fields ??
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams,DateCreated,SortName',
         'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
         'StartIndex': ?startIndex,
@@ -500,6 +507,7 @@ class EmbyItemsApi implements ItemsApi {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Emby only reads Ids as a comma list and fails on an array.
   @override
   Future<Map<String, dynamic>> createPlaylist({
     required String name,
@@ -507,7 +515,7 @@ class EmbyItemsApi implements ItemsApi {
   }) async {
     final response = await _dio.post(
       '/Playlists',
-      data: {'Name': name, 'Ids': ?itemIds},
+      queryParameters: {'Name': name, 'Ids': ?itemIds?.join(',')},
     );
     return response.data as Map<String, dynamic>;
   }
@@ -635,9 +643,12 @@ class EmbyItemsApi implements ItemsApi {
     );
   }
 
+  /// Emby has no playlist update route, so the name goes through the item
+  /// update, which wants the whole item back.
   @override
   Future<void> renamePlaylist(String playlistId, String name) async {
-    await _dio.post('/Playlists/$playlistId', data: {'Name': name});
+    final item = await getItem(playlistId);
+    await _dio.post('/Items/$playlistId', data: {...item, 'Name': name});
   }
 
   @override
@@ -758,6 +769,15 @@ class EmbyItemsApi implements ItemsApi {
     } catch (_) {
       return const [];
     }
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async {
+    final response = await _dio.get(
+      '/Videos/$itemId/AdditionalParts',
+      queryParameters: {'UserId': _getUserId()},
+    );
+    return _parseItemListResponse(response.data);
   }
 
   @override

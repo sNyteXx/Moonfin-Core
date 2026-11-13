@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:moonfin_design/moonfin_design.dart';
 
 import '../../../data/models/media_bar_slide_item.dart';
+import 'media_bar_nav_arrow.dart';
+import 'media_bar_new_release_label.dart';
 import 'media_bar_title.dart';
 import '../../../data/models/media_bar_state.dart';
 import '../../../data/viewmodels/media_bar_view_model.dart';
@@ -248,14 +250,20 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
     final item = items[index];
 
     final isMobile = PlatformDetection.useMobileUi;
-    final navbarAtTop =
-        widget.prefs.get(UserPreferences.navbarPosition) == NavbarPosition.top;
+    // A phone's bar is about 2:1, where a banner would be a thin strip.
+    final bannerUrl = isMobile ? null : item.bannerUrl;
+    final navbarPosition = widget.prefs.get(UserPreferences.navbarPosition);
+    final navbarAtTop = navbarPosition == NavbarPosition.top;
     final topInset = isMobile
         ? MediaQuery.paddingOf(context).top + (navbarAtTop ? 60.0 : 0.0)
         : 0.0;
+    // The left sidebar is drawn over the banner, so the banner starts past it.
+    final sidebarInset =
+        !isMobile && navbarPosition == NavbarPosition.left ? 56.0 : 0.0;
+    final showArrows = items.length > 1 && PlatformDetection.useDesktopUi;
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, topInset, 16, 8),
+      padding: EdgeInsets.fromLTRB(16 + sidebarInset, topInset, 16, 8),
       child: Focus(
         focusNode: widget.focusNode,
         autofocus: widget.focusNode == null && PlatformDetection.useLeanbackUi,
@@ -301,7 +309,10 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _backdrop(item),
+                    if (bannerUrl != null)
+                      _banner(bannerUrl, item)
+                    else
+                      _backdrop(item),
                     const DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -312,16 +323,30 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
                       ),
                     ),
                     Positioned(
-                      left: 20,
+                      // Leaves room for the previous arrow.
+                      left: showArrows ? 72 : 20,
                       right: 20,
                       bottom: 16,
-                      child: _content(context, item),
+                      child: _content(
+                        context,
+                        item,
+                        // The banner carries the title already.
+                        showTitle: bannerUrl == null,
+                      ),
                     ),
                     if (items.length > 1)
                       Positioned(
                         top: 12,
                         right: 16,
                         child: _Dots(count: items.length, active: index),
+                      ),
+                    if (showArrows)
+                      ...mediaBarNavArrows(
+                        context,
+                        onPrevious: index > 0
+                            ? () => _setIndex(index - 1)
+                            : null,
+                        onNext: () => _setIndex(index + 1),
                       ),
                   ],
                 ),
@@ -346,7 +371,33 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
     );
   }
 
-  Widget _content(BuildContext context, MediaBarSlideItem item) {
+  /// The banner whole, since cropping it would cut the title painted into
+  /// it, over a blurred copy that fills whatever space its shape leaves.
+  Widget _banner(String url, MediaBarSlideItem item) => Stack(
+    fit: StackFit.expand,
+    children: [
+      BoundedNetworkImage(
+        imageUrl: url,
+        scale: 0.3,
+        minWidth: 320,
+        maxWidth: 640,
+        blurSigma: 24,
+      ),
+      BoundedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.contain,
+        minWidth: 640,
+        maxWidth: 1280,
+        errorBuilder: (_, _, _) => _backdrop(item),
+      ),
+    ],
+  );
+
+  Widget _content(
+    BuildContext context,
+    MediaBarSlideItem item, {
+    bool showTitle = true,
+  }) {
     final theme = Theme.of(context);
     final shadows = <Shadow>[
       Shadow(blurRadius: 10, color: AppColorScheme.scrim.withValues(alpha: 0.8)),
@@ -368,26 +419,34 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (item.logoUrl != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              width: 240,
-              height: 56,
-              child: OfflineAwareImage(
-                imageUrl: item.logoUrl!,
-                fit: BoxFit.contain,
-                alignment: Alignment.centerLeft,
-                fadeInDuration: Duration.zero,
-                errorWidget: (_, _, _) =>
-                    MediaBarTitle(title: item.title, shadows: shadows),
+        if (showTitle)
+          if (item.logoUrl != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 240,
+                height: 56,
+                child: OfflineAwareImage(
+                  imageUrl: item.logoUrl!,
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
+                  fadeInDuration: Duration.zero,
+                  errorWidget: (_, _, _) =>
+                      MediaBarTitle(title: item.title, shadows: shadows),
+                ),
               ),
-            ),
-          )
-        else
-          MediaBarTitle(title: item.title, shadows: shadows),
+            )
+          else
+            MediaBarTitle(title: item.title, shadows: shadows),
+        if (item.newRelease case final release?) ...[
+          if (showTitle) const SizedBox(height: 8),
+          MediaBarNewReleaseLine(
+            release: release,
+            showMessage: !PlatformDetection.useMobileUi,
+          ),
+        ],
         if (meta.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          if (showTitle || item.newRelease != null) const SizedBox(height: 6),
           Text(
             meta,
             maxLines: 1,
@@ -406,9 +465,11 @@ class _BannerMediaBarState extends State<BannerMediaBar> {
             communityRating: item.communityRating,
             criticRating: item.criticRating,
             enableAdditionalRatings: widget.prefs.get(
-              UserPreferences.enableAdditionalRatings,
+              UserPreferences.mediaBarEnableAdditionalRatings,
             ),
-            enabledRatings: widget.prefs.get(UserPreferences.enabledRatings),
+            enabledRatings: widget.prefs.get(
+              UserPreferences.mediaBarEnabledRatings,
+            ),
             showLabels: false,
             showBadges: false,
           ),

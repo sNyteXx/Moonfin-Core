@@ -196,6 +196,40 @@ void main() {
       expect((await h.api.getItem('a5'))['Id'], 'a5');
     });
 
+    test('additional parts of a hidden movie never reach the server', () async {
+      h.server.add('lib-anime-movies', {
+        'Id': 'm1-part-2',
+        'Name': 'Hidden disc 2',
+        'Type': 'Movie',
+        'PartOfId': 'm1',
+        'Tags': <String>[],
+      });
+      await expectLater(
+        h.api.getAdditionalParts('m1'),
+        throwsA(isA<HiddenContentRefusal>()),
+      );
+      expect(h.server.count('getAdditionalParts'), 0);
+    });
+
+    test('additional parts of a visible movie are filtered', () async {
+      h.server.add('lib-movies', {
+        'Id': 'part-visible',
+        'Name': 'Visible disc 2',
+        'Type': 'Movie',
+        'PartOfId': 'f1',
+        'Tags': <String>[],
+      });
+      h.server.add('lib-movies', {
+        'Id': 'part-hidden',
+        'Name': 'Hidden disc 3',
+        'Type': 'Movie',
+        'PartOfId': 'f1',
+        'Tags': ['Adult'],
+      });
+      final parts = await h.api.getAdditionalParts('f1');
+      expect(parts.map((part) => part['Id']), ['part-visible']);
+    });
+
     test(
       'series episodes of a hidden series are empty outside the vault',
       () async {

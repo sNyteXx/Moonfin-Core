@@ -29,6 +29,8 @@ import '../../../util/focus/grid_section_target.dart';
 import '../../../util/platform_detection.dart';
 import '../../navigation/destinations.dart';
 import '../../navigation/route_lifecycle_observer.dart';
+import '../../widgets/alphabet_scrub_rail.dart';
+import '../../widgets/bottom_nav/bottom_navbar.dart';
 import '../../widgets/fullscreen_backdrop_switcher.dart';
 import '../../widgets/focus/context_menu_sheet.dart';
 import '../../widgets/focus/focusable_toolbar_button.dart';
@@ -38,6 +40,8 @@ import '../../widgets/overlay_sheet.dart';
 import '../../widgets/quick_return_wrapper.dart';
 import '../../widgets/rating_display.dart';
 import '../detail/item_detail_screen.dart';
+import '../detail/playlist_sort_filter_bar.dart';
+import 'library_header_styles.dart';
 import '../../widgets/local_search_field.dart';
 import '../../widgets/skeleton/skeleton_library_grid.dart';
 import '../../../l10n/app_localizations.dart';
@@ -99,6 +103,43 @@ double _desktopUiScaleFactor() {
       .scaleFactor;
 }
 
+/// Shared by the Sort & Filter dialog and the labeled header controls.
+String _librarySortLabel(
+  LibraryBrowseViewModel vm,
+  LibrarySortBy option,
+  AppLocalizations l10n,
+) {
+  if (option == LibrarySortBy.runtime &&
+      (vm.isMusicBrowse || vm.isSongsBrowse)) {
+    return l10n.librarySortLength;
+  }
+  return librarySortLabel(option, l10n);
+}
+
+String _playedStatusLabel(
+  LibraryBrowseViewModel vm,
+  PlayedStatusFilter status,
+  AppLocalizations l10n,
+) => switch (status) {
+  PlayedStatusFilter.all => l10n.all,
+  PlayedStatusFilter.watched => vm.isBookLibrary
+      ? l10n.readStatus
+      : l10n.watched,
+  PlayedStatusFilter.unwatched => vm.isBookLibrary
+      ? l10n.unread
+      : l10n.unwatched,
+  PlayedStatusFilter.inProgress => l10n.filterInProgress,
+};
+
+String _groupByLabel(LibraryGroupBy groupBy, AppLocalizations l10n) =>
+    switch (groupBy) {
+      LibraryGroupBy.none => l10n.none,
+      LibraryGroupBy.decade => l10n.groupByDecade,
+      LibraryGroupBy.genres => l10n.genres,
+      LibraryGroupBy.parentalRatings => l10n.groupByParentalRating,
+      LibraryGroupBy.studio => l10n.groupByStudio,
+    };
+
 class LibraryBrowseScreen extends StatefulWidget {
   final String libraryId;
   final String? serverId;
@@ -107,6 +148,10 @@ class LibraryBrowseScreen extends StatefulWidget {
   final String? studioName;
   final List<String>? includeItemTypes;
   final bool favoritesOnly;
+
+  /// Set by the settings live preview, which draws the library in this style
+  /// with its first card held in focus and leaves the app's backdrop alone.
+  final LibraryStyle? previewStyle;
 
   const LibraryBrowseScreen({
     super.key,
@@ -117,6 +162,7 @@ class LibraryBrowseScreen extends StatefulWidget {
     this.studioName,
     this.includeItemTypes,
     this.favoritesOnly = false,
+    this.previewStyle,
   });
 
   @override
@@ -130,6 +176,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _homeButtonFocusNode = FocusNode(debugLabel: 'library_home_button');
+  final _sortFocusNode = FocusNode(debugLabel: 'library_sort_button');
+  final _dockedPanelScope = FocusScopeNode(debugLabel: 'library_docked_panel');
   Timer? _backdropDebounce;
   bool? _hasSubtitlesCache;
   final _prefs = GetIt.instance<UserPreferences>();
@@ -157,16 +205,42 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     _vm.addListener(_onChanged);
     _vm.load();
     _scrollController.addListener(_onScroll);
-    _backgroundSub = _backgroundService.backgroundStream.listen((url) {
-      if (mounted) setState(() => _backdropUrl = url);
-    });
-    _backdropUrl = _backgroundService.currentUrl;
+    if (widget.previewStyle == null) {
+      _backgroundSub = _backgroundService.backgroundStream.listen((url) {
+        if (mounted) setState(() => _backdropUrl = url);
+      });
+      _backdropUrl = _backgroundService.currentUrl;
+    }
     _prefs.addListener(_onChanged);
+    InlineBackInterceptor.push(_backToAlphabet);
   }
 
   ModalRoute<dynamic>? _observedRoute;
 
   final _allLetterFocusNode = FocusNode(debugLabel: 'alpha_all_letter');
+  final _gridAreaFocusNode = FocusNode(
+    debugLabel: 'library_grid_area',
+    canRequestFocus: false,
+    skipTraversal: true,
+  );
+
+  /// The node keeps its context after the bar goes away, for instance when a
+  /// sort without letters replaces the one it opened with, so only a mounted
+  /// one is on screen.
+  bool get _alphabetBarShown => _allLetterFocusNode.context?.mounted ?? false;
+
+  /// On TV, Back from the grid moves up to the alphabet bar when it's shown,
+  /// and the next Back leaves the library. It has to run before the route
+  /// pops, which a card's key handler can't do.
+  bool _backToAlphabet() {
+    if (!PlatformDetection.isTV ||
+        !_alphabetBarShown ||
+        !_gridAreaFocusNode.hasFocus) {
+      return false;
+    }
+    _allLetterFocusNode.requestFocus();
+    return true;
+  }
 
   @override
   void didPopNext() {
@@ -183,7 +257,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     _searchController.dispose();
     _searchFocusNode.dispose();
     _homeButtonFocusNode.dispose();
+    _sortFocusNode.dispose();
+    _dockedPanelScope.dispose();
+    InlineBackInterceptor.remove(_backToAlphabet);
     _allLetterFocusNode.dispose();
+    _gridAreaFocusNode.dispose();
     _backdropDebounce?.cancel();
     _backgroundSub?.cancel();
     _scrollController.dispose();
@@ -216,6 +294,13 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   void _onChanged() {
     _hasSubtitlesCache = null;
+    if (widget.previewStyle != null &&
+        _vm.focusedItem == null &&
+        _vm.currentCategoryItems.isNotEmpty) {
+      final first = _vm.currentCategoryItems.first;
+      _backdropUrl = _backgroundService.backdropUrlsFor(first).firstOrNull;
+      _vm.setFocusedItem(first);
+    }
     if (mounted) setState(() {});
     _maybeBumpGridVersion();
   }
@@ -226,6 +311,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   bool get _hasSubtitles => _hasSubtitlesCache ??= _vm.items.any(
         (item) => (_cardSubtitle(item)?.isNotEmpty ?? false),
       );
+
+  bool get _showCardTitles => _prefs.get(UserPreferences.libraryCardTitles);
 
   @override
   void didChangeDependencies() {
@@ -322,8 +409,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   int _letterJumpGeneration = 0;
 
   /// Scrolls the first item whose sort name starts with [letter] to the
-  /// leading edge, loading pages first if it hasn't arrived yet.
-  Future<void> _jumpToLetter(String letter) async {
+  /// leading edge, loading pages first if it hasn't arrived yet. The phone rail
+  /// passes [scrubbing] so a jump per letter doesn't flash the spinner.
+  Future<void> _jumpToLetter(String letter, {bool scrubbing = false}) async {
     // Scrubbing along the alphabet bar starts a jump per letter, and an older
     // one would keep re-asserting its own offset against the newest, so each
     // jump checks in after every await and bows out once superseded.
@@ -332,7 +420,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
     _vm.setLetterFilter(letter);
     if (!mounted) return;
-    setState(() => _isJumpingToLetter = true);
+    setState(() => _isJumpingToLetter = !scrubbing);
 
     try {
       await _vm.ensureItemsLoadedForPrefix(letter).timeout(
@@ -401,8 +489,27 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   /// The field sits at the top of the screen, so sideways and upward presses
   /// have nowhere to go and would otherwise throw focus out of the header.
+  /// Modern puts it in the bar between Home and Sort, and Docked in the panel
+  /// where Up, Down and Right move on through the panel and out to the grid.
   KeyEventResult _onTvSearchKey(FocusNode node, KeyEvent event) {
     if (!event.isActionable) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    switch (_prefs.get(UserPreferences.libraryStyle)) {
+      case LibraryStyle.modern:
+        if (key.isLeftKey) {
+          _homeButtonFocusNode.requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (key.isRightKey) {
+          _sortFocusNode.requestFocus();
+          return KeyEventResult.handled;
+        }
+        return key.isUpKey ? KeyEventResult.handled : KeyEventResult.ignored;
+      case LibraryStyle.docked:
+        return key.isLeftKey ? KeyEventResult.handled : KeyEventResult.ignored;
+      case LibraryStyle.classic:
+        break;
+    }
     if (event.logicalKey.isUpKey ||
         event.logicalKey.isLeftKey ||
         event.logicalKey.isRightKey) {
@@ -429,7 +536,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   void _onItemTap(AggregatedItem item) {
     if (_vm.isNavigableFolder(item)) {
-      context.push(Destinations.folder(item.id));
+      context.push(Destinations.folder(item.id, serverId: item.serverId));
       return;
     }
 
@@ -810,21 +917,211 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   }
 
   @override
-  Widget build(BuildContext context) =>
-      RequestInitialFocus(
-        targetNode: _homeButtonFocusNode,
-        child: QuickReturnWrapper(
-          scrollController: _scrollController,
-          scrollDirection:
-              _vm.scrollDirection == LibraryScrollDirection.horizontal
-              ? Axis.horizontal
-              : Axis.vertical,
-          // cleanupGridFocusNodes disposes node 0 once the list empties, and
-          // the wrapper would keep holding it, so pass nothing instead.
-          topFocusNode: _vm.items.isNotEmpty ? getGridItemFocusNode(0) : null,
-          child: _buildContent(context),
-        ),
+  Widget build(BuildContext context) {
+    Widget screen = QuickReturnWrapper(
+      scrollController: _scrollController,
+      scrollDirection:
+          _vm.scrollDirection == LibraryScrollDirection.horizontal
+          ? Axis.horizontal
+          : Axis.vertical,
+      // cleanupGridFocusNodes disposes node 0 once the list empties, and
+      // the wrapper would keep holding it, so pass nothing instead.
+      topFocusNode: _vm.items.isNotEmpty ? getGridItemFocusNode(0) : null,
+      child: _buildContent(context),
+    );
+    // The wrapper floats its button above whatever this scope says covers
+    // the bottom of the screen.
+    if (_usesDockedBar) {
+      screen = BottomNavInsetScope(
+        height: _dockedBarInset(context),
+        child: screen,
       );
+    }
+    return RequestInitialFocus(
+      targetNode: _homeButtonFocusNode,
+      child: screen,
+    );
+  }
+
+  LibraryStyle get _libraryStyle =>
+      widget.previewStyle ?? _prefs.get(UserPreferences.libraryStyle);
+
+  bool get _usesDockedPanel =>
+      _libraryStyle == LibraryStyle.docked && !_isCompact(context);
+
+  bool get _usesDockedBar =>
+      _libraryStyle == LibraryStyle.docked && _isCompact(context);
+
+  /// Songs render as one flat track list where a letter jump has nowhere
+  /// sensible to land, and only the name sorts line up with the letters.
+  bool get _alphabetApplies =>
+      !_isSongsBrowse &&
+      (_vm.isMusicBrowse ||
+          _vm.sortBy == LibrarySortBy.name ||
+          _vm.sortBy == LibrarySortBy.foldersFirst ||
+          _vm.sortBy == LibrarySortBy.albumArtist ||
+          _vm.sortBy == LibrarySortBy.album);
+
+  bool get _showsScrubRail =>
+      _alphabetApplies &&
+      _prefs.get(UserPreferences.showAlphabeticalFilters) &&
+      _isCompact(context);
+
+  /// What the floating Docked bar covers, counting its margin and the system
+  /// inset under it.
+  double _dockedBarInset(BuildContext context) =>
+      kDockedBarHeight +
+      kDockedBarMargin +
+      MediaQuery.paddingOf(context).bottom;
+
+  /// [base] everywhere but under the Docked bar, where the last row has to
+  /// scroll clear of it.
+  double _gridBottomPadding(double base) => _usesDockedBar
+      ? math.max(base, _dockedBarInset(context) + 16)
+      : base;
+
+  String _libraryTitle(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (_vm.favoritesOnly) return l10n.favorites;
+    final types = _vm.includeItemTypes;
+    if (types != null && types.isNotEmpty) {
+      switch (types.first) {
+        case 'MusicAlbum':
+          return l10n.albums;
+        case 'AlbumArtist':
+          return l10n.albumArtists;
+        case 'MusicArtist':
+          return l10n.artists;
+        case 'Audio':
+          return l10n.songs;
+      }
+    }
+    return _vm.libraryName;
+  }
+
+  void _onBack() =>
+      PlatformDetection.isWeb ? context.popOrHome() : context.pop();
+
+  LibraryHeaderModel _headerModel(BuildContext context, bool isMobile) {
+    final l10n = AppLocalizations.of(context);
+    final showMediaDetails = _prefs.get(
+      UserPreferences.showMediaDetailsOnLibraryPage,
+    );
+    return LibraryHeaderModel(
+      title: _libraryTitle(context),
+      itemCount: _vm.totalCount,
+      homeFocusNode: _homeButtonFocusNode,
+      sortFocusNode: _sortFocusNode,
+      searchFocusNode: _searchFocusNode,
+      allLetterFocusNode: _allLetterFocusNode,
+      searchController: _searchController,
+      onSearchChanged: _vm.setSearchQuery,
+      onTvSearchKey: _onTvSearchKey,
+      onHome: PlatformDetection.isTV
+          ? () => context.go(Destinations.home)
+          : _onBack,
+      sortLabel: _librarySortLabel(_vm, _vm.sortBy, l10n),
+      sortAscending: _vm.sortDirection == SortDirection.ascending,
+      onSort: () => _showFilterSortDialog(context),
+      groupLabel: _groupByLabel(_vm.groupBy, l10n),
+      onGroupBy: _vm.canGroup ? _showGroupByDialog : null,
+      showLabel: _playedStatusLabel(_vm, _vm.playedFilter, l10n),
+      onShow: _vm.isMusicBrowse
+          ? null
+          : () => _showFilterSortDialog(context, initialSection: 'played'),
+      displayLabel: _vm.isPlaylistBrowse
+          ? null
+          : switch (_vm.imageType) {
+              ImageType.poster => l10n.posterLabel,
+              ImageType.thumb => l10n.thumbnailLabel,
+              ImageType.banner => l10n.bannerLabel,
+            },
+      onDisplay: _vm.isMusicBrowse ? null : () => _showSettingsDialog(context),
+      onShuffle: _isSongsBrowse ? _shuffleSongsLibrary : null,
+      alphabetApplies: _alphabetApplies,
+      alphabetOn: _prefs.get(UserPreferences.showAlphabeticalFilters),
+      onToggleAlphabet: () => _prefs.set(
+        UserPreferences.showAlphabeticalFilters,
+        !_prefs.get(UserPreferences.showAlphabeticalFilters),
+      ),
+      onLetter: _jumpToLetter,
+      hud: showMediaDetails && !isMobile
+          ? _FocusedItemHud(
+              item: _vm.focusedItem,
+              ratings: _vm.focusedRatings,
+              enableAdditionalRatings: _prefs.get(
+                UserPreferences.enableAdditionalRatings,
+              ),
+              enabledRatings: _prefs.get(UserPreferences.enabledRatings),
+              showLabels: _prefs.get(UserPreferences.showRatingLabels),
+              showBadges: _prefs.get(UserPreferences.showRatingBadges),
+            )
+          : null,
+    );
+  }
+
+  /// Left from the grid's first column and Up from its top row land on the
+  /// panel control used last, or Home before any was.
+  void _focusDockedPanel() {
+    if (_dockedPanelScope.focusedChild != null) {
+      _dockedPanelScope.requestFocus();
+    } else {
+      _homeButtonFocusNode.requestFocus();
+    }
+  }
+
+  /// Right out of the panel goes back to the card focused last, or the first.
+  void _focusDockedGrid() {
+    final last = lastFocusedGridIndex;
+    final remembered = last == null ? null : gridItemFocusNodes[last];
+    final target = remembered?.context != null
+        ? remembered!
+        : _vm.items.isNotEmpty
+        ? getGridItemFocusNode(0)
+        : null;
+    if (target?.context != null) target!.requestFocus();
+  }
+
+  Widget _buildGridArea(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+    final showRail = _showsScrubRail;
+    // A vertical phone grid keeps 16 of its own padding at the edge, so it
+    // only needs what the rail takes past that. Sideways rows scroll under
+    // that edge instead, so they stop short of the whole rail.
+    final scrollsSideways =
+        _vm.scrollDirection == LibraryScrollDirection.horizontal &&
+        !_isSongsBrowse;
+    final railGap = showRail
+        ? padding.right + kAlphabetScrubRailWidth + (scrollsSideways ? 4 : -12)
+        : 0.0;
+    // The rail stops above the quick return button, which is 48 tall and
+    // floats 24 up, or 12 above the Docked bar.
+    final buttonBottom = _usesDockedBar
+        ? _dockedBarInset(context) + 12
+        : 24 + padding.bottom;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          right: railGap,
+          child: Focus(
+            focusNode: _gridAreaFocusNode,
+            child: _buildBody(),
+          ),
+        ),
+        if (showRail)
+          Positioned(
+            top: 0,
+            right: padding.right,
+            bottom: buttonBottom + 48 + 8,
+            width: kAlphabetScrubRailWidth,
+            child: AlphabetScrubRail(
+              onLetter: (letter) => _jumpToLetter(letter, scrubbing: true),
+            ),
+          ),
+      ],
+    );
+  }
 
   Widget _buildContent(BuildContext context) {
     final isMobile = _isCompact(context);
@@ -833,6 +1130,108 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     final blurAmount = _prefs
       .get(UserPreferences.browsingBackgroundBlurAmount)
       .toDouble();
+    final style = _libraryStyle;
+    final model = style == LibraryStyle.classic
+        ? null
+        : _headerModel(context, isMobile);
+    final Widget content;
+    if (model == null) {
+      content = Column(
+        children: [
+          _LibraryHeader(
+            libraryName: _libraryTitle(context),
+            totalCount: _vm.totalCount,
+            focusedItem: _vm.focusedItem,
+            focusedRatings: _vm.focusedRatings,
+            enableAdditionalRatings: _prefs.get(
+              UserPreferences.enableAdditionalRatings,
+            ),
+            enabledRatings: _prefs.get(UserPreferences.enabledRatings),
+            showLabels: _prefs.get(UserPreferences.showRatingLabels),
+            showBadges: _prefs.get(UserPreferences.showRatingBadges),
+            showMediaDetails: _prefs.get(
+              UserPreferences.showMediaDetailsOnLibraryPage,
+            ),
+            alphabetApplies: _alphabetApplies,
+            letterFilter: _vm.letterFilter,
+            allLetterFocusNode: _allLetterFocusNode,
+            homeFocusNode: _homeButtonFocusNode,
+            onTvSearchKey: _onTvSearchKey,
+            isMusicBrowse: _vm.isMusicBrowse,
+            searchController: _searchController,
+            searchFocusNode: _searchFocusNode,
+            onSearchChanged: (query) => _vm.setSearchQuery(query),
+            onBack: _onBack,
+            onSort: () => _showFilterSortDialog(context),
+            onGroupBy: () => _showGroupByDialog(),
+            canGroup: _vm.canGroup,
+            onSettings: () => _showSettingsDialog(context),
+            onShuffle: _isSongsBrowse ? () => _shuffleSongsLibrary() : null,
+            onLetterChanged: (l) => _jumpToLetter(l),
+          ),
+          Expanded(child: _buildGridArea(context)),
+        ],
+      );
+    } else if (style == LibraryStyle.docked && !isMobile) {
+      final scale = _desktopUiScaleFactor();
+      content = Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DockedLibraryPanel(
+            model: model,
+            scopeNode: _dockedPanelScope,
+            onExitRight: _focusDockedGrid,
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                SizedBox(height: 12 * scale),
+                if (model.hud != null)
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: _horizontalPadding * scale,
+                    ),
+                    // The panel leaves less width than the HUD's ratings need
+                    // on one line, and its height is fixed, so it shrinks
+                    // rather than wrapping out of its box.
+                    child: SizedBox(
+                      height: _FocusedItemHud.heightFor(
+                        _prefs.get(UserPreferences.showRatingLabels),
+                      ),
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.topLeft,
+                          child: model.hud,
+                        ),
+                      ),
+                    ),
+                  ),
+                Expanded(child: _buildGridArea(context)),
+              ],
+            ),
+          ),
+        ],
+      );
+    } else {
+      content = Column(
+        children: [
+          if (style == LibraryStyle.modern)
+            ModernLibraryHeader(model: model, compact: isMobile)
+          else
+            CompactLibraryHeader(model: model, showControls: false),
+          Expanded(child: _buildGridArea(context)),
+        ],
+      );
+    }
+    final padding = MediaQuery.paddingOf(context);
+    // The keyboard pushes the body up, and a bar riding on top of it would
+    // cover the results being typed for.
+    final showDockedBar =
+        model != null &&
+        _usesDockedBar &&
+        MediaQuery.viewInsetsOf(context).bottom == 0;
     return Scaffold(
       backgroundColor: _navyBackground,
       body: Stack(
@@ -861,65 +1260,14 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 ),
               ),
             ),
-          Column(
-            children: [
-              _LibraryHeader(
-                libraryName: () {
-                  if (_vm.favoritesOnly) {
-                    return AppLocalizations.of(context).favorites;
-                  }
-                  if (_vm.includeItemTypes != null &&
-                      _vm.includeItemTypes!.isNotEmpty) {
-                    final type = _vm.includeItemTypes!.first;
-                    if (type == 'MusicAlbum') {
-                      return AppLocalizations.of(context).albums;
-                    } else if (type == 'AlbumArtist') {
-                      return AppLocalizations.of(context).albumArtists;
-                    } else if (type == 'MusicArtist') {
-                      return AppLocalizations.of(context).artists;
-                    } else if (type == 'Audio') {
-                      return AppLocalizations.of(context).songs;
-                    }
-                  }
-                  return _vm.libraryName;
-                }(),
-                totalCount: _vm.totalCount,
-                focusedItem: _vm.focusedItem,
-                focusedRatings: _vm.focusedRatings,
-                enableAdditionalRatings: _prefs.get(
-                  UserPreferences.enableAdditionalRatings,
-                ),
-                enabledRatings: _prefs.get(UserPreferences.enabledRatings),
-                showLabels: _prefs.get(UserPreferences.showRatingLabels),
-                showBadges: _prefs.get(UserPreferences.showRatingBadges),
-                showMediaDetails: _prefs.get(
-                  UserPreferences.showMediaDetailsOnLibraryPage,
-                ),
-                sortBy: _vm.sortBy,
-                letterFilter: _vm.letterFilter,
-                allLetterFocusNode: _allLetterFocusNode,
-                homeFocusNode: _homeButtonFocusNode,
-                onTvSearchKey: _onTvSearchKey,
-                isMusicBrowse: _vm.isMusicBrowse,
-                playedFilter: _vm.playedFilter,
-                searchController: _searchController,
-                searchFocusNode: _searchFocusNode,
-                onSearchChanged: (query) => _vm.setSearchQuery(query),
-                onBack: () => PlatformDetection.isWeb
-                    ? context.popOrHome()
-                    : context.pop(),
-                onSort: () => _showFilterSortDialog(context),
-                onGroupBy: () => _showGroupByDialog(),
-                isMovieOrSeriesLibrary: _vm.isMovieOrSeriesLibrary,
-                onSettings: () => _showSettingsDialog(context),
-                onShuffle: _isSongsBrowse ? () => _shuffleSongsLibrary() : null,
-                isSongsBrowse: _isSongsBrowse,
-                onLetterChanged: (l) => _jumpToLetter(l),
-                onPlayedFilterChanged: (status) => _vm.setPlayedFilter(status),
-              ),
-              Expanded(child: _buildBody()),
-            ],
-          ),
+          content,
+          if (showDockedBar)
+            Positioned(
+              left: kDockedBarMargin + padding.left,
+              right: kDockedBarMargin + padding.right,
+              bottom: kDockedBarMargin + padding.bottom,
+              child: DockedLibraryBar(model: model),
+            ),
         ],
       ),
     );
@@ -997,10 +1345,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   }
 
   void _showGroupByDialog() {
-    showDialog<void>(
+    showFocusRestoringDialog(
       context: context,
-      builder: (context) => _GroupByDialog(vm: _vm),
-    );
+      useRootNavigator: false,
+      builder: (_) => _GroupByDialog(vm: _vm),
+    ).whenComplete(_restoreGridFocusAfterDialog);
   }
 
   /// The chevrons drive [_scrollController], which only runs horizontally for
@@ -1010,7 +1359,19 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   bool get _horizontalGridIsScrollable =>
       _vm.scrollDirection == LibraryScrollDirection.horizontal &&
       !_isSongsBrowse &&
-      !_vm.isGrouping;
+      !_vm.isGrouping &&
+      !(_vm.isPlaylistBrowse && _vm.groupByType);
+
+  static String _playlistSectionTitle(AppLocalizations l10n, String key) =>
+      switch (key) {
+        'Video' => l10n.videoPlaylistsSection,
+        'MusicVideo' => l10n.musicVideoPlaylistsSection,
+        'Audio' => l10n.audioPlaylistsSection,
+        'AudioBook' => l10n.audiobookPlaylistsSection,
+        'Book' => l10n.bookPlaylistsSection,
+        'Photo' => l10n.photoPlaylistsSection,
+        _ => l10n.mixedPlaylistsSection,
+      };
 
   void _nudgeHorizontalGrid(double delta) {
     if (!_scrollController.hasClients) return;
@@ -1112,7 +1473,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
       controller: _scrollController,
       slivers: [
         SliverPadding(
-          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, 32),
+          padding: EdgeInsets.fromLTRB(hPad, 8, hPad, _gridBottomPadding(32)),
           sliver: SliverFixedExtentList.builder(
             itemExtent: _kSongRowHeight,
             itemCount: items.length,
@@ -1123,15 +1484,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 track: track,
                 focusNode: getGridItemFocusNode(index),
                 onFocused: () => _onItemFocused(track),
-                onArrowUp: index == 0
-                    ? () {
-                        if (_allLetterFocusNode.context != null) {
-                          _allLetterFocusNode.requestFocus();
-                        } else {
-                          _homeButtonFocusNode.requestFocus();
-                        }
-                      }
-                    : null,
+                onArrowUp: index == 0 ? _focusAboveGrid : null,
                 index: index + 1,
                 totalCount: items.length,
                 currentIndex: index,
@@ -1195,7 +1548,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             crossAxisCount;
         final ar = _gridBaseAspectRatio();
         final desktopTextScale = MediaQuery.textScalerOf(context).scale(1.0);
-        final textHeight = (_hasSubtitles ? 50.0 : 26.0) * desktopTextScale;
+        final textHeight = _showCardTitles
+            ? (_hasSubtitles ? 50.0 : 26.0) * desktopTextScale
+            : 0.0;
         final imageHeight = cellWidth / ar;
         final cellHeight = imageHeight + textHeight;
         final childAspectRatio = cellWidth / cellHeight;
@@ -1245,15 +1600,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             final categoryKey = groupEntries[s].key;
             final categoryItems = groupEntries[s].value;
 
-            final categoryTitle = switch (categoryKey) {
-              'Video' => l10n.videoPlaylistsSection,
-              'MusicVideo' => l10n.musicVideoPlaylistsSection,
-              'Audio' => l10n.audioPlaylistsSection,
-              'AudioBook' => l10n.audiobookPlaylistsSection,
-              'Book' => l10n.bookPlaylistsSection,
-              'Photo' => l10n.photoPlaylistsSection,
-              _ => l10n.mixedPlaylistsSection,
-            };
+            final categoryTitle = _playlistSectionTitle(l10n, categoryKey);
 
             slivers.add(
               SliverPadding(
@@ -1345,6 +1692,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
               ),
             );
           }
+          if (_usesDockedBar) {
+            slivers.add(
+              SliverToBoxAdapter(child: SizedBox(height: _gridBottomPadding(0))),
+            );
+          }
 
           return CustomScrollView(
             controller: _scrollController,
@@ -1371,7 +1723,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                 gridPadding,
                 topPadding,
                 gridPadding,
-                math.max(16.0, upwardGrowth),
+                _gridBottomPadding(math.max(16.0, upwardGrowth)),
               ),
               sliver: SliverGrid(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1430,9 +1782,12 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
   }
 
   /// The alphabet bar sits directly above the grid, so it takes focus from the
-  /// top row, and the header button covers a page that shows no bar.
+  /// top row, and the header button covers a page that shows no bar. Nothing
+  /// sits above the grid in Docked, so the panel takes it there.
   void _focusAboveGrid() {
-    if (_allLetterFocusNode.context != null) {
+    if (_usesDockedPanel) {
+      _focusDockedPanel();
+    } else if (_alphabetBarShown) {
       _allLetterFocusNode.requestFocus();
     } else {
       _homeButtonFocusNode.requestFocus();
@@ -1473,8 +1828,11 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     Widget card(BuildContext? revealContext) {
       return MediaCard(
         animeMarkerItemId: item.id,
+        posterBadgeItemId: item.id,
+        recordingItemId: item.id,
         title: item.name,
         subtitle: _cardSubtitle(item),
+        showLabel: _showCardTitles,
         imageUrl: _imageUrl(item, cellWidth: cellWidth),
         width: double.infinity,
         aspectRatio: itemAspectRatio,
@@ -1511,6 +1869,13 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         onHoverStart: isMobile ? null : () => _onItemFocused(item),
         onHoverEnd: isMobile ? null : () => _vm.setFocusedItem(null),
         onKeyEvent: (_, event) {
+          if (event.isActionable &&
+              event.logicalKey.isLeftKey &&
+              positionInSection % crossAxisCount == 0 &&
+              _usesDockedPanel) {
+            _focusDockedPanel();
+            return KeyEventResult.handled;
+          }
           if (PlatformDetection.isTV &&
               event.isActionable &&
               event.logicalKey.isUpKey) {
@@ -1518,7 +1883,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
               onTvUp();
               return KeyEventResult.handled;
             } else if (positionInSection < crossAxisCount) {
-              _homeButtonFocusNode.requestFocus();
+              _focusAboveGrid();
               return KeyEventResult.handled;
             }
           }
@@ -1527,13 +1892,6 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
               event.logicalKey.isDownKey &&
               onTvDown != null) {
             onTvDown();
-            return KeyEventResult.handled;
-          }
-          if (PlatformDetection.isTV &&
-              event.isActionable &&
-              event.logicalKey.isBackKey &&
-              _allLetterFocusNode.context != null) {
-            _allLetterFocusNode.requestFocus();
             return KeyEventResult.handled;
           }
           if (event.isActionable && event.logicalKey.isRightKey) {
@@ -1573,8 +1931,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     return isGrouped ? Builder(builder: card) : card(null);
   }
 
-  Widget _buildGroupedHorizontalRows() {
-    final categories = _vm.groupedCategories;
+  Widget _buildGroupedHorizontalRows(
+    Map<String, List<AggregatedItem>> categories,
+  ) {
     if (categories.isEmpty) {
       return Center(
         child: Text(
@@ -1590,7 +1949,9 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     final ar = _gridBaseAspectRatio();
     final watchedBehavior = _prefs.get(UserPreferences.watchedIndicatorBehavior);
     final desktopTextScale = MediaQuery.textScalerOf(context).scale(1.0);
-    final textHeight = (_hasSubtitles ? 42.0 : 24.0) * desktopTextScale;
+    final textHeight = _showCardTitles
+        ? (_hasSubtitles ? 42.0 : 24.0) * desktopTextScale
+        : 0.0;
     final rowCardHeight = cardWidth / ar + textHeight;
     final rowContainerHeight = rowCardHeight + _kGroupedRowFocusPadding;
 
@@ -1615,7 +1976,10 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
       policy: ReadingOrderTraversalPolicy(),
       child: ListView.builder(
         controller: _scrollController,
-        padding: EdgeInsets.symmetric(vertical: gridPadding),
+        padding: EdgeInsets.only(
+          top: gridPadding,
+          bottom: _gridBottomPadding(gridPadding),
+        ),
         itemCount: keys.length,
         itemBuilder: (context, idx) {
           final key = keys[idx];
@@ -1642,8 +2006,16 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
 
   Widget _buildHorizontalGrid() {
     if (_vm.isGrouping) {
-      return _buildGroupedHorizontalRows();
+      return _buildGroupedHorizontalRows(_vm.groupedCategories);
     }
+    if (_vm.isPlaylistBrowse && _vm.groupByType) {
+      final l10n = AppLocalizations.of(context);
+      return _buildGroupedHorizontalRows({
+        for (final entry in _vm.groupedPlaylists.entries)
+          _playlistSectionTitle(l10n, entry.key): entry.value,
+      });
+    }
+    final items = _vm.visiblePlaylists;
     final cardFocusExpansion = _prefs.get(UserPreferences.cardFocusExpansion);
     final watchedBehavior = _prefs.get(UserPreferences.watchedIndicatorBehavior);
     final focusColor = Color(_prefs.get(UserPreferences.focusColor).colorValue);
@@ -1655,9 +2027,12 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         final isMobile = _isCompact(context);
         final horizPadding = isMobile ? 16.0 : _horizontalPadding;
         final vertPadding = isMobile ? 12.0 : 20.0;
+        final bottomPadding = _gridBottomPadding(vertPadding);
         final ar = _gridBaseAspectRatio();
         final desktopTextScale = MediaQuery.textScalerOf(context).scale(1.0);
-        final textHeight = (_hasSubtitles ? 46.0 : 30.0) * desktopTextScale;
+        final textHeight = _showCardTitles
+            ? (_hasSubtitles ? 46.0 : 30.0) * desktopTextScale
+            : 0.0;
 
         final cellWidth = _cardWidth();
         final spacing = cardFocusExpansion && !isMobile
@@ -1666,7 +2041,8 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
         final targetImageHeight = cellWidth / ar;
         final targetCellHeight = targetImageHeight + textHeight;
 
-        final availableHeight = constraints.maxHeight - vertPadding * 2;
+        final availableHeight =
+            constraints.maxHeight - vertPadding - bottomPadding;
         final rawRows = (availableHeight + spacing) / (targetCellHeight + spacing);
         final rowCount = (rawRows >= _kHorizontalRowRoundUpThreshold
                 ? rawRows.round()
@@ -1712,7 +2088,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
             slivers: [
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(
-                  horizPadding, vertPadding, horizPadding, vertPadding,
+                  horizPadding, vertPadding, horizPadding, bottomPadding,
                 ),
                 sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -1725,11 +2101,14 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                     (context, index) {
                       // No childCount on this delegate, so returning null is
                       // what tells the sliver where the list ends.
-                      if (index >= _vm.items.length) return null;
-                      final item = _vm.items[index];
+                      if (index >= items.length) return null;
+                      final item = items[index];
                       return MediaCard(
+                        posterBadgeItemId: item.id,
+                        recordingItemId: item.id,
                         title: item.name,
                         subtitle: _cardSubtitle(item),
+                        showLabel: _showCardTitles,
                         imageUrl: _imageUrl(item, cellWidth: actualCellWidth),
                         width: double.infinity,
                         aspectRatio: _itemAspectRatio(item),
@@ -1747,6 +2126,13 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                         onHoverStart: () => _onItemFocused(item),
                         onHoverEnd: () => _vm.setFocusedItem(null),
                         onKeyEvent: (_, event) {
+                          if (event.isActionable &&
+                              event.logicalKey.isLeftKey &&
+                              index < rowCount &&
+                              _usesDockedPanel) {
+                            _focusDockedPanel();
+                            return KeyEventResult.handled;
+                          }
                           if (!_vm.hasMore && !_vm.loadingMore) {
                             return KeyEventResult.ignored;
                           }
@@ -1756,7 +2142,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                           }
                           final col = index ~/ rowCount;
                           final isLastCol =
-                              (col + 1) * rowCount >= _vm.items.length;
+                              (col + 1) * rowCount >= items.length;
                           if (!isLastCol) return KeyEventResult.ignored;
                           _vm.loadMore();
                           return KeyEventResult.handled;
@@ -1769,7 +2155,7 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
                         onTap: () => _onItemTap(item),
                       );
                     },
-                    childCount: _vm.items.length,
+                    childCount: items.length,
                   ),
                 ),
               ),
@@ -1859,11 +2245,12 @@ class _LibraryBrowseScreenState extends State<LibraryBrowseScreen>
     return parts.isEmpty ? null : parts.join('  ');
   }
 
-  void _showFilterSortDialog(BuildContext context) {
+  void _showFilterSortDialog(BuildContext context, {String? initialSection}) {
     showFocusRestoringDialog(
       context: context,
       useRootNavigator: false,
-      builder: (_) => _FilterSortDialog(vm: _vm),
+      builder: (_) =>
+          _FilterSortDialog(vm: _vm, initialSection: initialSection),
     ).whenComplete(_restoreGridFocusAfterDialog);
   }
 
@@ -1895,28 +2282,22 @@ class _LibraryHeader extends StatelessWidget {
   final bool showLabels;
   final bool showBadges;
   final bool showMediaDetails;
-  final LibrarySortBy sortBy;
+  final bool alphabetApplies;
   final String letterFilter;
   final FocusNode? allLetterFocusNode;
   final bool isMusicBrowse;
-  final PlayedStatusFilter playedFilter;
   final VoidCallback? onGroupBy;
-  final bool isMovieOrSeriesLibrary;
+  final bool canGroup;
   final VoidCallback onBack;
   final VoidCallback onSort;
   final VoidCallback onSettings;
   final VoidCallback? onShuffle;
   final ValueChanged<String> onLetterChanged;
-  final ValueChanged<PlayedStatusFilter> onPlayedFilterChanged;
   final FocusNode? homeFocusNode;
   final KeyEventResult Function(FocusNode, KeyEvent)? onTvSearchKey;
   final TextEditingController? searchController;
   final FocusNode? searchFocusNode;
   final ValueChanged<String>? onSearchChanged;
-
-  /// Songs render as one flat track list where a letter jump has nowhere
-  /// sensible to land, so the alphabet bar stays hidden there.
-  final bool isSongsBrowse;
 
   const _LibraryHeader({
     required this.libraryName,
@@ -1928,45 +2309,33 @@ class _LibraryHeader extends StatelessWidget {
     this.showLabels = true,
     this.showBadges = true,
     required this.showMediaDetails,
-    required this.sortBy,
+    required this.alphabetApplies,
     required this.letterFilter,
     this.allLetterFocusNode,
     this.homeFocusNode,
     this.onTvSearchKey,
     this.isMusicBrowse = false,
-    this.playedFilter = PlayedStatusFilter.all,
     this.onGroupBy,
-    this.isMovieOrSeriesLibrary = false,
+    this.canGroup = false,
     required this.onBack,
     required this.onSort,
     required this.onSettings,
     this.onShuffle,
     required this.onLetterChanged,
-    required this.onPlayedFilterChanged,
     this.searchController,
     this.searchFocusNode,
     this.onSearchChanged,
-    this.isSongsBrowse = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isMobile = _isCompact(context);
     final desktopScale = _desktopUiScaleFactor();
-    final size = MediaQuery.sizeOf(context);
-    final isLandscape = size.width > size.height;
-    final isCompactLandscape = isMobile && isLandscape;
-    final isCompactPortrait = isMobile && !isLandscape;
     final prefs = GetIt.instance<UserPreferences>();
     final showAlpha =
-        !isSongsBrowse &&
-        prefs.get(UserPreferences.showAlphabeticalFilters) &&
-        (isMusicBrowse ||
-            sortBy == LibrarySortBy.name ||
-            sortBy == LibrarySortBy.albumArtist ||
-            sortBy == LibrarySortBy.album);
-    final showInlineAlpha = showAlpha && (!isMobile || isCompactLandscape);
-    final showBelowAlpha = showAlpha && isCompactPortrait;
+        alphabetApplies && prefs.get(UserPreferences.showAlphabeticalFilters);
+    // Phones draw the scrub rail along the grid instead.
+    final showInlineAlpha = showAlpha && !isMobile;
     final topPad = (isMobile ? MediaQuery.of(context).padding.top : 0.0) + 8.0;
     final hPad = isMobile ? 16.0 : _horizontalPadding * desktopScale;
 
@@ -1990,7 +2359,7 @@ class _LibraryHeader extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: (isMobile && !showInlineAlpha)
+            mainAxisAlignment: isMobile
                 ? MainAxisAlignment.center
                 : MainAxisAlignment.start,
             children: [
@@ -2023,7 +2392,7 @@ class _LibraryHeader extends StatelessWidget {
                 onTap: onSort,
                 onUpKey: _focusSearch,
               ),
-              if (isMovieOrSeriesLibrary && onGroupBy != null) ...[
+              if (canGroup && onGroupBy != null) ...[
                 SizedBox(width: 2 * desktopScale),
                 FocusableToolbarButton(
                   icon: Icons.category_outlined,
@@ -2059,7 +2428,7 @@ class _LibraryHeader extends StatelessWidget {
               if (showInlineAlpha) ...[
                 SizedBox(width: 10 * desktopScale),
                 Expanded(
-                  child: _AlphaPickerBar(
+                  child: AlphaPickerBar(
                     onChanged: onLetterChanged,
                     allFocusNode: allLetterFocusNode,
                     onUpKey: _focusSearch,
@@ -2068,14 +2437,6 @@ class _LibraryHeader extends StatelessWidget {
               ],
             ],
           ),
-          if (showBelowAlpha) ...[
-            const SizedBox(height: 8),
-            _AlphaPickerBar(
-              onChanged: onLetterChanged,
-              allFocusNode: allLetterFocusNode,
-              onUpKey: _focusSearch,
-            ),
-          ],
         ],
       ),
     );
@@ -2102,7 +2463,7 @@ class _LibraryHeader extends StatelessWidget {
         if (totalCount > 0) ...[
           SizedBox(width: 12 * desktopScale),
           Text(
-            '$totalCount Items',
+            AppLocalizations.of(context).itemCountLabel(totalCount),
             style: TextStyle(
               fontSize: 12 * desktopScale,
               color: Colors.white.withAlpha(102),
@@ -2183,11 +2544,13 @@ class _FocusedItemHud extends StatelessWidget {
     this.showBadges = true,
   });
 
+  static double heightFor(bool showLabels) =>
+      (showLabels ? 105.0 : 86.0) * _desktopUiScaleFactor();
+
   @override
   Widget build(BuildContext context) {
-    final hudHeight = (showLabels ? 105.0 : 86.0) * _desktopUiScaleFactor();
     return SizedBox(
-      height: hudHeight,
+      height: heightFor(showLabels),
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 200),
         child: item == null
@@ -2314,157 +2677,22 @@ class _MetadataRow extends StatelessWidget {
   }
 }
 
-class _AlphaPickerBar extends StatelessWidget {
-  final FocusNode? allFocusNode;
-  final ValueChanged<String> onChanged;
-  final VoidCallback? onUpKey;
-
-  const _AlphaPickerBar({
-    required this.onChanged,
-    this.allFocusNode,
-    this.onUpKey,
-  });
-
-  static const _letters = [
-    '#',
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
-    'M',
-    'N',
-    'O',
-    'P',
-    'Q',
-    'R',
-    'S',
-    'T',
-    'U',
-    'V',
-    'W',
-    'X',
-    'Y',
-    'Z',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: _letters.map((letter) {
-          return _AlphaLetterButton(
-            label: letter.isEmpty ? AppLocalizations.of(context).all : letter,
-            onTap: () => onChanged(letter),
-            focusNode: letter.isEmpty ? allFocusNode : null,
-            onUpKey: onUpKey,
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _AlphaLetterButton extends StatefulWidget {
-  final String label;
-  final VoidCallback onTap;
-  final FocusNode? focusNode;
-  final VoidCallback? onUpKey;
-
-  const _AlphaLetterButton({
-    required this.label,
-    required this.onTap,
-    this.focusNode,
-    this.onUpKey,
-  });
-
-  @override
-  State<_AlphaLetterButton> createState() => _AlphaLetterButtonState();
-}
-
-class _AlphaLetterButtonState extends State<_AlphaLetterButton>
-    with FocusStateMixin {
-  @override
-  Widget build(BuildContext context) {
-    final desktopScale = _desktopUiScaleFactor();
-    final focusColor = Color(
-      GetIt.instance<UserPreferences>()
-          .get(UserPreferences.focusColor)
-          .colorValue,
-    );
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setHovered(true),
-      onExit: (_) => setHovered(false),
-      child: Focus(
-        focusNode: widget.focusNode,
-        onFocusChange: (f) => setFocused(f),
-        onKeyEvent: (_, event) {
-          if (event.isActionable && event.logicalKey.isUpKey && widget.onUpKey != null) {
-            widget.onUpKey!();
-            return KeyEventResult.handled;
-          }
-          if (isActivateKey(event)) {
-            widget.onTap();
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 30 * desktopScale,
-            height: 30 * desktopScale,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: AppRadius.circular(4),
-              border: showFocusBorder
-                  ? Border.fromBorderSide(
-                      ThemeRegistry.active.borders.focusBorder.copyWith(
-                        color: focusColor,
-                        width: 1.5,
-                      ),
-                    )
-                  : null,
-            ),
-            child: Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 15 * desktopScale,
-                fontWeight: focused || hovered ? FontWeight.w700 : FontWeight.w500,
-                color: focused || hovered ? _jellyfinBlue : AppColorScheme.onSurface.withValues(alpha: 0.85),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FilterSortDialog extends StatefulWidget {
   final LibraryBrowseViewModel vm;
 
-  const _FilterSortDialog({required this.vm});
+  /// The group to open on, the sort group when null.
+  final String? initialSection;
+
+  const _FilterSortDialog({required this.vm, this.initialSection});
 
   @override
   State<_FilterSortDialog> createState() => _FilterSortDialogState();
 }
 
 class _FilterSortDialogState extends State<_FilterSortDialog> {
-  /// Only one group stays open at a time and the panel opens on the sort
-  /// group. A library can hold hundreds of tags or years, so the rest sit
-  /// closed as a heading until they are asked for.
-  String? _expandedSection = 'sort';
+  /// Only one group stays open at a time, and every group starts closed as a
+  /// heading unless the panel was opened for one.
+  late String? _expandedSection = widget.initialSection;
 
   /// Shorter lists are quicker to scroll through than to search.
   static const _searchableMinimum = 10;
@@ -2515,28 +2743,11 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
 
     // Every label is read twice, once for its own row and once for the summary
     // the closed heading carries.
-    String sortLabel(LibrarySortBy option) {
-      if (option == LibrarySortBy.runtime &&
-          (vm.isMusicBrowse || vm.isSongsBrowse)) {
-        return 'Length';
-      }
-      if (option == LibrarySortBy.premiereDate &&
-          (vm.isMusicBrowse || vm.isSongsBrowse)) {
-        return 'Release Date';
-      }
-      return option.displayName;
-    }
+    String sortLabel(LibrarySortBy option) =>
+        _librarySortLabel(vm, option, l10n);
 
-    String playedLabel(PlayedStatusFilter status) => switch (status) {
-      PlayedStatusFilter.all => l10n.all,
-      PlayedStatusFilter.watched => isBookBrowse
-          ? l10n.readStatus
-          : l10n.watched,
-      PlayedStatusFilter.unwatched => isBookBrowse
-          ? l10n.unread
-          : l10n.unwatched,
-      PlayedStatusFilter.inProgress => l10n.filterInProgress,
-    };
+    String playedLabel(PlayedStatusFilter status) =>
+        _playedStatusLabel(vm, status, l10n);
 
     String likedLabel(LikedStatusFilter status) => switch (status) {
       LikedStatusFilter.all => l10n.all,
@@ -2715,6 +2926,14 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
               accent: accent,
               onSurface: onSurface,
             ),
+            if (vm.canFolderView)
+              _DialogCheckboxTile(
+                label: l10n.libraryFolderView,
+                checked: vm.folderView,
+                onTap: () => vm.setFolderView(!vm.folderView),
+                accent: accent,
+                onSurface: onSurface,
+              ),
             ...section(
               key: 'sort',
               title: l10n.sortBy,
@@ -2781,24 +3000,25 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
                     ),
                 ],
               ),
-            ...section(
-              key: 'liked',
-              title: l10n.personalRatingMine,
-              summary: vm.likedFilter == LikedStatusFilter.all
-                  ? null
-                  : likedLabel(vm.likedFilter),
-              body: () => [
-                for (final status in LikedStatusFilter.values)
-                  _DialogRadioTile(
-                    label: likedLabel(status),
-                    selected: vm.likedFilter == status,
-                    onTap: () => vm.setLikedFilter(status),
-                    accent: accent,
-                    onSurface: onSurface,
-                  ),
-              ],
-            ),
-            if (vm.isSeriesLibrary)
+            if (vm.supportsExtraFilters)
+              ...section(
+                key: 'liked',
+                title: l10n.personalRatingMine,
+                summary: vm.likedFilter == LikedStatusFilter.all
+                    ? null
+                    : likedLabel(vm.likedFilter),
+                body: () => [
+                  for (final status in LikedStatusFilter.values)
+                    _DialogRadioTile(
+                      label: likedLabel(status),
+                      selected: vm.likedFilter == status,
+                      onTap: () => vm.setLikedFilter(status),
+                      accent: accent,
+                      onSurface: onSurface,
+                    ),
+                ],
+              ),
+            if (vm.isSeriesLibrary && vm.supportsExtraFilters)
               ...section(
                 key: 'series',
                 title: l10n.seriesStatus,
@@ -2819,23 +3039,24 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
                 ],
               ),
             if (vm.supportsVideoFilters) ...[
-              ...section(
-                key: 'features',
-                title: l10n.features,
-                summary: countSummary(vm.featureFilters.length),
-                body: () => [
-                  if (vm.featureFilters.isNotEmpty)
-                    clearGroupTile('features', LibraryFilterGroup.features),
-                  for (final option in LibraryFeatureFilter.values)
-                    _DialogCheckboxTile(
-                      label: featureLabel(option),
-                      checked: vm.featureFilters.contains(option),
-                      onTap: () => vm.toggleFeatureFilter(option),
-                      accent: accent,
-                      onSurface: onSurface,
-                    ),
-                ],
-              ),
+              if (vm.supportsExtraFilters)
+                ...section(
+                  key: 'features',
+                  title: l10n.features,
+                  summary: countSummary(vm.featureFilters.length),
+                  body: () => [
+                    if (vm.featureFilters.isNotEmpty)
+                      clearGroupTile('features', LibraryFilterGroup.features),
+                    for (final option in LibraryFeatureFilter.values)
+                      _DialogCheckboxTile(
+                        label: featureLabel(option),
+                        checked: vm.featureFilters.contains(option),
+                        onTap: () => vm.toggleFeatureFilter(option),
+                        accent: accent,
+                        onSurface: onSurface,
+                      ),
+                  ],
+                ),
               ...section(
                 key: 'quality',
                 title: l10n.quality,
@@ -2844,8 +3065,10 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
                   if (vm.videoQualityFilters.isNotEmpty)
                     clearGroupTile('quality', LibraryFilterGroup.quality),
                   for (final option in LibraryVideoQualityFilter.values)
-                    if (option != LibraryVideoQualityFilter.uhd ||
-                        vm.supportsUhdFilter)
+                    if ((option != LibraryVideoQualityFilter.uhd ||
+                            vm.supportsUhdFilter) &&
+                        (option != LibraryVideoQualityFilter.threeD ||
+                            vm.supportsExtraFilters))
                       _DialogCheckboxTile(
                         label: qualityLabel(option),
                         checked: vm.videoQualityFilters.contains(option),
@@ -2855,23 +3078,24 @@ class _FilterSortDialogState extends State<_FilterSortDialog> {
                       ),
                 ],
               ),
-              ...section(
-                key: 'source',
-                title: l10n.source,
-                summary: countSummary(vm.videoSourceFilters.length),
-                body: () => [
-                  if (vm.videoSourceFilters.isNotEmpty)
-                    clearGroupTile('source', LibraryFilterGroup.source),
-                  for (final option in LibraryVideoSourceFilter.values)
-                    _DialogCheckboxTile(
-                      label: option.displayName,
-                      checked: vm.videoSourceFilters.contains(option),
-                      onTap: () => vm.toggleVideoSourceFilter(option),
-                      accent: accent,
-                      onSurface: onSurface,
-                    ),
-                ],
-              ),
+              if (vm.supportsExtraFilters)
+                ...section(
+                  key: 'source',
+                  title: l10n.source,
+                  summary: countSummary(vm.videoSourceFilters.length),
+                  body: () => [
+                    if (vm.videoSourceFilters.isNotEmpty)
+                      clearGroupTile('source', LibraryFilterGroup.source),
+                    for (final option in LibraryVideoSourceFilter.values)
+                      _DialogCheckboxTile(
+                        label: option.displayName,
+                        checked: vm.videoSourceFilters.contains(option),
+                        onTap: () => vm.toggleVideoSourceFilter(option),
+                        accent: accent,
+                        onSurface: onSurface,
+                      ),
+                  ],
+                ),
             ],
             ...facetSection(
               key: 'genres',
@@ -3439,7 +3663,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   ),
                 ),
               ),
-              for (final size in PosterSize.values)
+              for (final size in PosterSize.gridValues)
                 _posterSizeRadioTile(vm, size),
             ],
             if (vm.isPlaylistBrowse) ...[
@@ -3518,8 +3742,13 @@ class _SettingsDialogState extends State<_SettingsDialog> {
     final selected = vm.imageType == type;
     final accent = _jellyfinBlue;
     final onSurface = AppColorScheme.onSurface;
+    final l10n = AppLocalizations.of(context);
     return _DialogRadioTile(
-      label: type.name[0].toUpperCase() + type.name.substring(1),
+      label: switch (type) {
+        ImageType.poster => l10n.imageTypePoster,
+        ImageType.thumb => l10n.imageTypeThumbnail,
+        ImageType.banner => l10n.imageTypeBanner,
+      },
       selected: selected,
       onTap: () => vm.setImageType(type),
       accent: accent,
@@ -3535,7 +3764,8 @@ class _SettingsDialogState extends State<_SettingsDialog> {
       PosterSize.small => AppLocalizations.of(context).small,
       PosterSize.medium => AppLocalizations.of(context).medium,
       PosterSize.large => AppLocalizations.of(context).large,
-      PosterSize.extraLarge => AppLocalizations.of(context).extraLarge,
+      PosterSize.extraLarge ||
+      PosterSize.grandparents => AppLocalizations.of(context).extraLarge,
     };
     return _DialogRadioTile(
       label: label,
@@ -3585,12 +3815,12 @@ class _GroupByDialogState extends State<_GroupByDialog> {
       360.0,
     );
 
-    final options = [
-      (LibraryGroupBy.none, l10n.none),
-      (LibraryGroupBy.decade, l10n.groupByDecade),
-      (LibraryGroupBy.genres, l10n.genres),
-      (LibraryGroupBy.parentalRatings, l10n.groupByParentalRating),
-      (LibraryGroupBy.studio, l10n.groupByStudio),
+    const options = [
+      LibraryGroupBy.none,
+      LibraryGroupBy.decade,
+      LibraryGroupBy.genres,
+      LibraryGroupBy.parentalRatings,
+      LibraryGroupBy.studio,
     ];
 
     return Dialog(
@@ -3621,10 +3851,10 @@ class _GroupByDialogState extends State<_GroupByDialog> {
             Divider(color: dividerColor),
             for (final opt in options)
               _DialogRadioTile(
-                label: opt.$2,
-                selected: vm.groupBy == opt.$1,
+                label: _groupByLabel(opt, l10n),
+                selected: vm.groupBy == opt,
                 onTap: () {
-                  vm.setGroupBy(opt.$1);
+                  vm.setGroupBy(opt);
                   Navigator.of(context).pop();
                 },
                 accent: _jellyfinBlue,

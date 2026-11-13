@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Pick which subject feeds to show in Discover.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Apply",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Audiobook Genres",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Pick which genres to show in Audiobook Discover.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Discover Audiobooks",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Popular public domain titles from LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count} titles",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Scroll left",
     "@scrollLeft": {
@@ -744,10 +719,6 @@
     "discover": "Discover",
     "@discover": {
         "description": "Section title for book discovery"
-    },
-    "trendingTitlesOpenLibrary": "Trending titles by subject from Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
     },
     "noBookmarkedItems": "No bookmarked items yet",
     "@noBookmarkedItems": {
@@ -2828,9 +2799,9 @@
     "@fit": {
         "description": "Zoom mode: fit"
     },
-    "autoCrop": "Auto Crop",
+    "autoCrop": "Zoom to Fill",
     "@autoCrop": {
-        "description": "Zoom mode: auto crop"
+        "description": "Zoom mode: scales the video to fill the screen and cuts off the edges. It doesn't detect or remove black bars."
     },
     "stretch": "Stretch",
     "@stretch": {
@@ -3499,14 +3470,6 @@
     "showLibrariesFromAllServers": "Show libraries from all connected servers",
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
-    },
-    "enableFolderView": "Enable Folder View",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Show folder browsing option",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
     },
     "libraryVisibility": "Library Visibility",
     "@libraryVisibility": {
@@ -4226,10 +4189,6 @@
     "featuredContentAppearance": "Featured content, appearance",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Poster size, image type, folder view",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB, and rating sources",
     "@mdbListTmdbRatingSources": {
@@ -6593,7 +6552,7 @@
     "settingsDoNothing": "Do Nothing",
     "settingsMaxBitrateDescription": "Cap the streaming bitrate. Content above this threshold will be transcoded to fit.",
     "settingsMaxResolutionDescription": "Limit the maximum resolution the player will request. Higher-resolution content will be transcoded down.",
-    "settingsPlayerZoomDescription": "How video should be scaled to fit the screen.",
+    "settingsPlayerZoomDescription": "How video is scaled to the screen. Zoom to Fill enlarges the picture until it fills the screen and cuts off the edges. It doesn't detect black bars.",
     "settingsPlaybackEngineAndroidTv": "Playback Engine (Android TV)",
     "settingsPlaybackEngineAndroidTvDescription": "Choose the default playback engine on Android TV devices. Changes apply to the next playback session.",
     "settingsPlaybackEngineMedia3Recommended": "Media3 (recommended)",
@@ -6634,7 +6593,7 @@
             }
         }
     },
-    "settingsLiveTvDirect": "Live TV Direct",
+    "settingsLiveTvDirect": "Live TV Direct Play",
     "settingsLiveTvDirectSubtitle": "Enable direct play for Live TV",
     "settingsOpenGroups": "Open Groups",
     "settingsOpenGroupsSubtitle": "Create, join, or manage SyncPlay groups",
@@ -7309,7 +7268,6 @@
     "failedToExtractCbrArchive": "Failed to extract .cbr archive.",
     "cb7ExtractionUnavailable": "CB7 extraction is not available on this platform.",
     "cb7ExtractionPluginUnavailable": "CB7 extraction plugin is not available on this platform.",
-    "closeGenrePanel": "Close genre panel",
     "loadingShuffle": "Loading shuffle…",
     "libraryShuffleLabel": "LIBRARY SHUFFLE",
     "randomShuffleLabel": "RANDOM SHUFFLE",
@@ -7635,7 +7593,7 @@
     "@detailScreenStyle": {
         "description": "Label for the media detail screen layout style setting"
     },
-    "detailScreenStyleSubtitle": "Classic is the original centred Moonfin layout. Modern is a responsive cinematic layout. Spotlight is a hero-first layout with pop-up content cards. Nouveau is a full-screen layout with sections stacked down the page. Minimalist is artwork, one play button and the episodes.",
+    "detailScreenStyleSubtitle": "How a movie or show looks when you open it.",
     "@detailScreenStyleSubtitle": {
         "description": "Explanation under the detail screen style setting"
     },
@@ -8265,7 +8223,7 @@
     "@trailerCaptions": {
         "description": "Setting for YouTube trailer captions"
     },
-    "trailerCaptionsDescription": "Show captions on YouTube trailers in the media bar",
+    "trailerCaptionsDescription": "Show captions on YouTube trailers",
     "@trailerCaptionsDescription": {
         "description": "Description for YouTube trailer captions"
     },
@@ -8957,7 +8915,6 @@
     "adminGeneralDisplayLanguage": "Preferred display language",
     "offlineBannerTitle": "You're offline",
     "offlineBannerSubtitle": "Showing your downloads",
-    "offlineBannerAction": "Downloads",
     "serverUnreachableBannerTitle": "Can't reach your server",
     "serverUnreachableBannerSubtitle": "Playing from downloads until it's back",
     "contextMenuHideFromContinueWatching": "Hide from Continue Watching",
@@ -11290,7 +11247,7 @@
     "@showSeerrAvailabilityBadges": {
         "description": "Setting title for showing Seerr availability badges on media details pages"
     },
-    "showSeerrAvailabilityBadgesDescription": "Show season availability badges on media details pages",
+    "showSeerrAvailabilityBadgesDescription": "Show the Seerr status on posters and seasons across the app",
     "@showSeerrAvailabilityBadgesDescription": {
         "description": "Setting description for showing Seerr availability badges on media details pages"
     },
@@ -12133,10 +12090,6 @@
     "autoDownloadDelete": "Delete downloaded episodes",
     "@autoDownloadDelete": {
         "description": "Setting that picks how soon an auto-downloaded episode is removed after it was watched"
-    },
-    "autoDownloadDeleteSubtitle": "When to remove automatically downloaded episodes after you watch them",
-    "@autoDownloadDeleteSubtitle": {
-        "description": "Explains the delete-after-watching setting"
     },
     "autoDownloadDeleteNever": "Never",
     "@autoDownloadDeleteNever": {

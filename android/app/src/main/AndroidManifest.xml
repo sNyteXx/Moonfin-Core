@@ -20,7 +20,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false"/>
     <application
         android:label="${appName}"
-        android:name="${applicationName}"
+        android:name=".MoonfinApplication"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true"
         android:banner="@drawable/moonfin_tv_banner"
@@ -46,7 +46,8 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
-            <!-- moonfin://item?id=... / moonfin://play?id=... deep links,
+            <!-- moonfin://item?id=... / moonfin://play?id=... / moonfin://search?query=... /
+                 moonfin://live-tv/guide / moonfin://live-tv/recordings deep links,
                  delivered to Dart by app_links. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
@@ -87,10 +88,10 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="seerr_notifications" />
 
-        <!-- Impeller renderer, set per flavor in build.gradle.kts. Off on TV
-             boxes, whose GPUs (often PowerVR) stutter on the Impeller GLES
-             fallback. This manifest flag is the value the Android engine
-             actually reads. -->
+        <!-- Impeller renderer, set per flavor in build.gradle.kts. Off by
+             default on TV boxes, whose GPUs (often PowerVR) stutter on the
+             Impeller GLES fallback. MoonfinApplication turns it on at runtime
+             for boxes where it runs on Vulkan. -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="${enableImpeller}" />

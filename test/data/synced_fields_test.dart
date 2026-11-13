@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jellyfin_preference/jellyfin_preference.dart';
 import 'package:moonfin/data/services/synced_fields.dart';
+import 'package:moonfin/preference/preference_constants.dart';
 import 'package:moonfin/preference/user_preferences.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,6 +15,24 @@ void main() {
   // Every server key the table is expected to carry. A field disappearing is silent at
   // runtime, it just stops syncing, so the list is pinned.
   const expectedServerKeys = <String>{
+    'showCalendarButton',
+    'calendarStyle',
+    'calendarWeekStart',
+    'calendarScope',
+    'calendarShowEpisodes',
+    'calendarShowMovies',
+    'calendarLibraryIds',
+    'calendarIncludeUnmonitored',
+    'calendarShowSpecials',
+    'calendarShowBadges',
+    'calendarColorBy',
+    'calendarImageType',
+    'calendarSpoilerSafe',
+    'calendarSelectAction',
+    'calendarRequestButton',
+    'calendarReminders',
+    'calendarRowSeeAll',
+    'showNextAirDate',
     'allGenresImageType',
     'assDirectPlay',
     'audioNightMode',
@@ -25,18 +44,21 @@ void main() {
     'autoDownloadEnabled',
     'autoDownloadKeepUnwatched',
     'autoplayNextEpisode',
-    'backdropEnabled',
     'browsingBlur',
     'cardFocusExpansion',
     'cinemaModeEnabled',
     'cinemaModeEpisodesEnabled',
+    'cinemaModeSkipEnabled',
     'clockBehavior',
     'collectionsRowShowEpisodes',
     'collectionsRowSortBy',
     'collectionsRowSortOrder',
     'confirmExit',
+    'continueWatchingDefaultAction',
+    'controlsHideDelay',
     'crashReportsEnabled',
     'customThemeId',
+    'dateFormat',
     'defaultAudioLanguage',
     'defaultDownloadQuality',
     'defaultFavoritesFilter',
@@ -54,6 +76,8 @@ void main() {
     'detailShowTechnicalDetails',
     'detailTrailersExternal',
     'detailUseSeriesThumbnails',
+    'detailsBackdropEnabled',
+    'detailsBackdropSize',
     'detailsScreenBlur',
     'diagnosticLoggingEnabled',
     'displayAudioAlbumArtists',
@@ -73,7 +97,6 @@ void main() {
     'displaySinceYouWatchedRows',
     'downloadStorageLimitMb',
     'downloadWifiOnly',
-    'enableFolderView',
     'enableMultiServerLibraries',
     'enableRadarrCalendar',
     'enableSonarrCalendar',
@@ -91,6 +114,7 @@ void main() {
     'genresRowSortOrder',
     'glassQuality',
     'groupItemsIntoCollections',
+    'hdrControlsDimming',
     'hiddenContinueWatchingItems',
     'hiddenDetailButtonsDesktop',
     'hiddenDetailButtonsMobile',
@@ -108,11 +132,20 @@ void main() {
     'hideBackdropsInLibraries',
     'hideDetailsMediaDescription',
     'hideHomeMediaDescription',
+    'hideHomeUnwatchedCount',
+    'hideHomeWatchProgress',
+    'hideWatchedInRecentRows',
+    'homeBackdropEnabled',
+    'homeBackdropStyle',
     'homeImageTypeContinueWatching',
     'homeImageUseSeriesImage',
     'homeRowInfoOverlay',
     'homeRowsImageType',
     'homeRowsImageTypeOverride',
+    'homeRowsMdblistEnabled',
+    'homeRowsMdblistShowRatingBadges',
+    'homeRowsMdblistShowRatingNames',
+    'homeRowsTmdbEpisodeRatingsEnabled',
     'homeRowsStyle',
     'modernHomeRowsPadding',
     'classicHomeRowsPadding',
@@ -123,9 +156,16 @@ void main() {
     'imdbTop250MoviesEnabled',
     'imdbTop250TvShowsEnabled',
     'imdbTopEnglishMoviesEnabled',
+    'imdbRowsSortBy',
+    'imdbRowsSortOrder',
     'interfaceStyle',
+    'keyboardStyle',
     'languageOverride',
+    'libraryCardTitles',
     'libraryPosterSize',
+    'libraryStyle',
+    'bookLibraryStyle',
+    'musicLibraryStyle',
     'loadingAnimationImage',
     'loadingAnimationPosition',
     'loadingAnimationSize',
@@ -139,17 +179,25 @@ void main() {
     'mdblistShowRatingBadges',
     'mdblistShowRatingNames',
     'mediaBarAutoAdvance',
+    'mediaBarMdblistEnabled',
+    'mediaBarMdblistShowRatingBadges',
+    'mediaBarMdblistShowRatingNames',
     'mediaBarCollectionIds',
     'mediaBarExcludedGenres',
+    'mediaBarExternalLists',
     'mediaBarIntervalMs',
     'mediaBarItemCount',
     'mediaBarLibraryIds',
+    'mediaBarNewReleaseBanner',
+    'mediaBarNewReleaseDays',
     'mediaBarOpacity',
     'mediaBarOverlayColor',
+    'mediaBarRowPeek',
     'mediaBarSourceType',
     'mediaBarTrailerAudio',
     'mediaBarTrailerCaptions',
     'mediaBarTrailerPreview',
+    'mediaPreviewMode',
     'mediaQueuingEnabled',
     'mediaSegmentActions',
     'mediaSegmentAutoHide',
@@ -192,11 +240,14 @@ void main() {
     'posterSize',
     'preferAudioDescription',
     'preferDefaultAudioTrack',
+    'preferExternalSubtitles',
     'preferSdhSubtitles',
-    'preferSystemImeKeyboard',
+    'preferTextSubtitles',
     'previewAudioEnabled',
+    'previewVolume',
     'radarrCalendarShowCinema',
     'radarrCalendarShowDate',
+    'radarrCalendarHideDownloaded',
     'radarrCalendarShowDigital',
     'radarrCalendarShowPhysical',
     'recentlyReleasedSeriesType',
@@ -216,6 +267,7 @@ void main() {
     'screensaverComponent',
     'screensaverContentType',
     'screensaverDimming',
+    'screensaverDuringAudio',
     'screensaverEnabled',
     'screensaverExcludedGenres',
     'screensaverLibraryIds',
@@ -226,21 +278,33 @@ void main() {
     'screensaverRequireRating',
     'screensaverSize',
     'screensaverTimeout',
+    'seasonalDensity',
+    'seasonalFollower',
+    'seasonalRowAllYear',
+    'seasonalRowCountry',
+    'seasonalRowEnabled',
+    'seasonalRowHiddenHolidays',
     'seasonalSurprise',
+    'seerrBadgeStyle',
     'seerrBlockNsfw',
     'seerrEnabled',
     'seerrShowMissingCollectionItems',
+    'seerrRowsSortBy',
+    'seerrRowsSortOrder',
     'showBookDiscoverTab',
+    'bookFoldersAsSeries',
     'showChapterMarkers',
     'showDescriptionOnPause',
     'showDownloadsButton',
     'showFavoritesButton',
     'showFriendsButton',
     'showGenresButton',
+    'showLibrariesIndividually',
     'showLibrariesInToolbar',
     'showLiveTvButton',
     'showLoadingAnimationText',
     'showMediaDetailsOnLibraryPage',
+    'showPosterLabels',
     'showSeerrAvailabilityBadges',
     'showSeerrButton',
     'showServerMessagesButton',
@@ -258,6 +322,8 @@ void main() {
     'sinceYouWatchedSourceType',
     'skipBackLength',
     'skipForwardLength',
+    'sleepAfterIdle',
+    'sonarrCalendarHideDownloaded',
     'sonarrCalendarShowDate',
     'sonarrCalendarShowEpisodeInfo',
     'stillWatchingBehavior',
@@ -267,6 +333,7 @@ void main() {
     'subtitleMode',
     'subtitleTextStrokeColor',
     'subtitlesBackgroundColor',
+    'subtitlesFont',
     'subtitlesHdrBackgroundColor',
     'subtitlesHdrOffsetPosition',
     'subtitlesHdrSeparate',
@@ -275,6 +342,11 @@ void main() {
     'subtitlesHdrTextStrokeColor',
     'subtitlesHdrTextWeight',
     'subtitlesOffsetPosition',
+    'subtitlesShadow',
+    'subtitlesShadowBlur',
+    'subtitlesShadowIntensity',
+    'subtitlesShadowOffset',
+    'subtitlesStrokeWidth',
     'subtitlesTextColor',
     'subtitlesTextSize',
     'subtitlesTextWeight',
@@ -304,17 +376,24 @@ void main() {
     'tmdbTopRatedMoviesEnabled',
     'tmdbTopRatedTvEnabled',
     'tmdbTrendingAllWeeklyEnabled',
+    'mdblistWatchingNowEnabled',
     'tmdbTrendingMovieDailyEnabled',
     'tmdbTrendingMovieWeeklyEnabled',
     'tmdbTrendingTvDailyEnabled',
     'tmdbTrendingTvWeeklyEnabled',
     'tmdbUpcomingMoviesEnabled',
+    'tmdbRowsSortBy',
+    'tmdbRowsSortOrder',
+    'trailerVolume',
     'unpauseRewindDuration',
     'updateNotificationsEnabled',
     'use24HourClock',
     'useDetailedSubHeadings',
     'videoStartDelay',
     'visualTheme',
+    'watchPartyAlerts',
+    'watchPartyChatOverlay',
+    'watchPartyService',
     'watchedIndicator',
   };
 
@@ -368,6 +447,12 @@ void main() {
         final effective = prefs.getEffectivePreference(field.pref);
         if (effective.key == field.pref.key) unscoped.add(field.serverKey);
       }
+      for (final type in HomeSectionType.values) {
+        final pref = UserPreferences.homeRowImageType(type);
+        if (prefs.getEffectivePreference(pref).key == pref.key) {
+          unscoped.add('homeRowImageTypes ${type.serializedName}');
+        }
+      }
 
       expect(unscoped, isEmpty,
           reason: 'these would leak across servers: \$unscoped');
@@ -375,6 +460,57 @@ void main() {
   });
 
   scopeAdoptionTests();
+  homeRowImageTypeTests();
+}
+
+void homeRowImageTypeTests() {
+  group('home row image types', () {
+    test('round-trip through the wire format', () {
+      final types = {
+        HomeSectionType.genres: ImageType.thumb,
+        HomeSectionType.nextUp: ImageType.banner,
+        HomeSectionType.seerrTrending: ImageType.poster,
+      };
+      final encoded = encodeHomeRowImageTypes(types)!;
+
+      expect(encoded, 'genres:thumb,nextup:banner,seerr_trending:poster');
+      expect(decodeHomeRowImageTypes(encoded), types);
+    });
+
+    test('Continue Watching stays on its own key', () {
+      expect(
+        encodeHomeRowImageTypes({
+          HomeSectionType.resume: ImageType.thumb,
+          HomeSectionType.genres: ImageType.thumb,
+        }),
+        'genres:thumb',
+      );
+      expect(decodeHomeRowImageTypes('resume:thumb,genres:thumb'), {
+        HomeSectionType.genres: ImageType.thumb,
+      });
+    });
+
+    test('sends nothing when no row has a type', () {
+      expect(encodeHomeRowImageTypes({}), isNull);
+      expect(
+        encodeHomeRowImageTypes({HomeSectionType.resume: ImageType.thumb}),
+        isNull,
+      );
+    });
+
+    test("skips pairs it doesn't recognize and ignores case", () {
+      expect(
+        decodeHomeRowImageTypes(
+          'Genres:Thumb,nosuchrow:poster,nextup:square,latestmedia,,rewatch:banner:x, livetv : BANNER ',
+        ),
+        {
+          HomeSectionType.genres: ImageType.thumb,
+          HomeSectionType.liveTv: ImageType.banner,
+        },
+      );
+      expect(decodeHomeRowImageTypes(''), isEmpty);
+    });
+  });
 }
 
 // Moving a preference to per-server storage changes which key reads consult, so an existing

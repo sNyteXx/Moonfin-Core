@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Pasirinkite, kuriuos temų kanalus rodyti „Discover“.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Taikyti",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Garsinių knygų žanrai",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Pasirinkite, kuriuos žanrus rodyti garso knygoje Discover.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Atraskite garsines knygas",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Populiarūs viešojo domeno pavadinimai iš LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "Pavadinimų: {count}",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Slinkite kairėn",
     "@scrollLeft": {
@@ -745,10 +720,6 @@
     "@discover": {
         "description": "Section title for book discovery"
     },
-    "trendingTitlesOpenLibrary": "Populiarūs pavadinimai pagal temą iš Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
-    },
     "noBookmarkedItems": "Dar nėra pažymėtų elementų",
     "@noBookmarkedItems": {
         "description": "Empty state for bookmarks grid"
@@ -914,7 +885,7 @@
             }
         }
     },
-    "audiobookCountLabel": "{count, plural, =1{1 garso knyga} one{{count} garso knyga} few{{count} garso knygos} many{{count} garso knygos} other{{count} garso knygų}}",
+    "audiobookCountLabel": "{count, plural, one{{count} garso knyga} few{{count} garso knygos} many{{count} garso knygos} other{{count} garso knygų}}",
     "@audiobookCountLabel": {
         "description": "Subtitle showing number of audiobooks by an author",
         "placeholders": {
@@ -1036,7 +1007,7 @@
     "@publicationDateUnknown": {
         "description": "Placeholder when publication date is unknown"
     },
-    "seasonCount": "{count, plural, =1{1 sezonas} one{{count} sezonas} few{{count} sezonai} many{{count} sezono} other{{count} sezonų}}",
+    "seasonCount": "{count, plural, one{{count} sezonas} few{{count} sezonai} many{{count} sezono} other{{count} sezonų}}",
     "@seasonCount": {
         "description": "Number of seasons for a series",
         "placeholders": {
@@ -1447,7 +1418,7 @@
             }
         }
     },
-    "trackCount": "{count, plural, =1{1 takelis} one{{count} takelis} few{{count} takeliai} many{{count} takelio} other{{count} takelių}}",
+    "trackCount": "{count, plural, one{{count} takelis} few{{count} takeliai} many{{count} takelio} other{{count} takelių}}",
     "@trackCount": {
         "description": "Label showing number of tracks in an album",
         "placeholders": {
@@ -1456,7 +1427,7 @@
             }
         }
     },
-    "chapterCount": "{count, plural, =1{1 skyrius} one{{count} skyrius} few{{count} skyriai} many{{count} skyriaus} other{{count} skyrių}}",
+    "chapterCount": "{count, plural, one{{count} skyrius} few{{count} skyriai} many{{count} skyriaus} other{{count} skyrių}}",
     "@chapterCount": {
         "description": "Label showing number of chapters in an audiobook",
         "placeholders": {
@@ -2490,7 +2461,7 @@
             }
         }
     },
-    "episodeCount": "{count, plural, =1{1 serija} one{{count} serija} few{{count} serijos} many{{count} serijos} other{{count} serijų}}",
+    "episodeCount": "{count, plural, one{{count} serija} few{{count} serijos} many{{count} serijos} other{{count} serijų}}",
     "@episodeCount": {
         "description": "Number of episodes with pluralization",
         "placeholders": {
@@ -3500,14 +3471,6 @@
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
     },
-    "enableFolderView": "Įgalinti aplanko rodinį",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Rodyti aplanko naršymo parinktį",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
-    },
     "libraryVisibility": "Bibliotekos matomumas",
     "@libraryVisibility": {
         "description": "Section title for library visibility"
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Teminis turinys, išvaizda",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Plakato dydis, vaizdo tipas, aplanko vaizdas",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB ir reitingų šaltiniai",
     "@mdbListTmdbRatingSources": {
@@ -7192,7 +7151,7 @@
     "analyticsTopArtists": "Geriausi atlikėjai",
     "analyticsTopAuthors": "Geriausi autoriai",
     "analyticsTopContributors": "Geriausi bendradarbiai",
-    "analyticsLibrariesCount": "{count, plural, =1{1 biblioteka} one{{count} biblioteka} few{{count} bibliotekos} many{{count} bibliotekos} other{{count} bibliotekų}}",
+    "analyticsLibrariesCount": "{count, plural, one{{count} biblioteka} few{{count} bibliotekos} many{{count} bibliotekos} other{{count} bibliotekų}}",
     "@analyticsLibrariesCount": {
         "placeholders": {
             "count": {
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Nepavyko išskleisti .cbr archyvo.",
     "cb7ExtractionUnavailable": "CB7 ištraukimas šioje platformoje negalimas.",
     "cb7ExtractionPluginUnavailable": "CB7 ištraukimo įskiepis nepasiekiamas šioje platformoje.",
-    "closeGenrePanel": "Uždaryti žanro skydelį",
     "loadingShuffle": "Įkeliamas maišymas...",
     "libraryShuffleLabel": "BIBLIOTEKOS MAIŠYMAS",
     "randomShuffleLabel": "ATSITIKTINIS MAIŠYMAS",
@@ -7494,7 +7452,7 @@
     "@latestAudiobooks": {
         "description": "Row title for recently added audiobooks in the book library"
     },
-    "bookSeriesItemCount": "{count, plural, =1{1 knyga} one{{count} knyga} few{{count} knygos} many{{count} knygos} other{{count} knygų}}",
+    "bookSeriesItemCount": "{count, plural, one{{count} knyga} few{{count} knygos} many{{count} knygos} other{{count} knygų}}",
     "@bookSeriesItemCount": {
         "description": "Subtitle for a book series shelf entry showing how many books it contains",
         "placeholders": {
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Pageidaujama rodymo kalba",
     "offlineBannerTitle": "Esate neprisijungę",
     "offlineBannerSubtitle": "Rodomi jūsų atsisiuntimai",
-    "offlineBannerAction": "Atsisiuntimai",
     "serverUnreachableBannerTitle": "Nepavyksta pasiekti serverio",
     "serverUnreachableBannerSubtitle": "Kol serveris neveikia, leidžiama iš atsisiuntimų",
     "contextMenuHideFromContinueWatching": "Slėpti iš „Tęsti žiūrėjimą“",

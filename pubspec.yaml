@@ -1,11 +1,11 @@
 name: moonfin
 description: "Moonfin - Jellyfin & Emby media client for mobile, tablet, and desktop"
 publish_to: 'none'
-version: 2.6.0+30000153
+version: 3.1.0+30000163
 
 moonfin:
-  android_tv_version: 2.6.0
-  android_tv_build_number: 2000019
+  android_tv_version: 3.1.0
+  android_tv_build_number: 2000024
   beta: false
   beta_number: 1
 
@@ -34,6 +34,8 @@ dependencies:
   background_downloader: ^9.6.0
   ffi: ^2.1.0
   web_socket_channel: ^3.0.3
+  # Decodes imported .p12/.pfx client certificates
+  pointycastle: ^4.0.0
 
   # Local Storage
   shared_preferences: ^2.5.5
@@ -46,6 +48,8 @@ dependencies:
   sqlite3: ^2.7.0
 
   # Media Playback (Android, desktop and web. Apple runs on AetherEngine)
+  # mpv_frame_sampler_native.dart imports media_kit's NativeLibrary and libmpv
+  # bindings from src/, so check that file when moving this pin.
   media_kit: 1.2.6
   media_kit_video: 2.0.1
   # media_kit_libs_video would pull in the Apple libs packages, and
@@ -72,6 +76,8 @@ dependencies:
   # client of its own. Keep in step with what flutter_cache_manager resolves.
   http: ^1.6.0
   flutter_svg: ^2.2.1
+  # Parses the seasonal effects' artwork into paths for the sprite atlas.
+  path_parsing: ^1.1.0
 
   # Crypto
   crypto: ^3.0.6
@@ -124,12 +130,20 @@ dependencies:
     path: packages/server_jellyfin
   server_emby:
     path: packages/server_emby
+  server_plex:
+    path: packages/server_plex
+  server_silo:
+    path: packages/server_silo
   playback_core:
     path: packages/playback_core
   playback_jellyfin:
     path: packages/playback_jellyfin
   playback_emby:
     path: packages/playback_emby
+  playback_plex:
+    path: packages/playback_plex
+  playback_silo:
+    path: packages/playback_silo
   moonfin_design:
     path: packages/design
   jellyfin_preference:
@@ -186,11 +200,15 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # Live admin checks against a test server (integration_test/admin).
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   build_runner: ^2.5.4
   json_serializable: ^6.9.5
   drift_dev: ^2.28.0
   mocktail: ^1.0.5
+  fake_async: ^1.3.3
   # flutter_cache_manager hands widgets package:file handles, so a test that
   # stands in for a disk hit has to build one. Keep in step with what the
   # cache manager resolves.
@@ -217,7 +235,7 @@ dependency_overrides:
     git:
       url: https://github.com/RadicalMuffinMan/media-kit.git
       path: libs/windows/media_kit_libs_windows_video
-      ref: 43368ec394dcce7795707358b751a748c1fdc610
+      ref: 50013aee7429633ae2df656982167ca6d21237ce
   # Vendored 0.6.0 with a Windows texture_bridge.cc fix for scroll/resize and
   # tab-switch crashes (null-visual guard + WGC Recreate moved off the
   # capture-thread mutex). Both changed sites carry their reasoning inline in
@@ -257,7 +275,7 @@ dependency_overrides:
     git:
       url: https://github.com/RadicalMuffinMan/media-kit.git
       path: media_kit_video
-      ref: 43368ec394dcce7795707358b751a748c1fdc610
+      ref: 50013aee7429633ae2df656982167ca6d21237ce
   synchronized: 3.3.1
   wakelock_plus: 1.3.3
   screen_brightness_android: 2.1.3
@@ -279,9 +297,14 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/icons/ratings/
+    # Country flags for poster labels, from flag-icons (MIT, see the LICENSE beside them).
+    - assets/icons/flags/
+    - assets/icons/social/
     - assets/fonts/
     - assets/subtitle_fonts/
     - assets/licenses/cores/
+    - assets/reader/
+    - assets/after_hours/
 
   fonts:
     # The web engine fetches Roboto from fonts.gstatic.com unless it finds a
@@ -310,12 +333,24 @@ flutter:
     - family: EightBitHero
       fonts:
         - asset: assets/fonts/PressStart2P-Regular.ttf
+    - family: Literata
+      fonts:
+        - asset: assets/fonts/Literata-Regular.ttf
+        - asset: assets/fonts/Literata-SemiBold.ttf
+          weight: 600
+    # The After Hours arcade's display face.
+    - family: Jersey10
+      fonts:
+        - asset: assets/fonts/Jersey10-Regular.ttf
 
+# The identity has to match Partner Center's Product identity page or the Store
+# rejects the upload.
 msix_config:
   display_name: Moonfin
   publisher_display_name: Moonfin
-  identity_name: com.moonfin.app
-  msix_version: 2.6.0.0
+  identity_name: Moonfin.Moonfin
+  publisher: CN=4E670673-D47F-4792-94F7-65B4918F6E4C
   logo_path: assets/icons/app_icon.png
-  capabilities: internetClient, internetClientServer
+  capabilities: internetClient, internetClientServer, privateNetworkClientServer
   languages: en-us
+  protocol_activation: moonfin

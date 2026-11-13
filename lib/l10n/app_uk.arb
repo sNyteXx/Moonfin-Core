@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Виберіть тематичні канали для показу в Discover.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Застосувати",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Жанри аудіокниг",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Виберіть, які жанри показувати в Discover аудіокниг.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Відкрийте для себе аудіокниги",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Популярні назви публічного домену від LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count} назв",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Прокрутіть вліво",
     "@scrollLeft": {
@@ -745,10 +720,6 @@
     "@discover": {
         "description": "Section title for book discovery"
     },
-    "trendingTitlesOpenLibrary": "Популярні назви за темами з Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
-    },
     "noBookmarkedItems": "Ще немає закладок",
     "@noBookmarkedItems": {
         "description": "Empty state for bookmarks grid"
@@ -914,7 +885,7 @@
             }
         }
     },
-    "audiobookCountLabel": "{count, plural, =1{1 аудіокнига} one{{count} аудіокнига} few{{count} аудіокниги} many{{count} аудіокниг} other{{count} аудіокниги}}",
+    "audiobookCountLabel": "{count, plural, one{{count} аудіокнига} few{{count} аудіокниги} many{{count} аудіокниг} other{{count} аудіокниги}}",
     "@audiobookCountLabel": {
         "description": "Subtitle showing number of audiobooks by an author",
         "placeholders": {
@@ -1036,7 +1007,7 @@
     "@publicationDateUnknown": {
         "description": "Placeholder when publication date is unknown"
     },
-    "seasonCount": "{count, plural, =1{1 сезон} one{{count} сезон} few{{count} сезони} many{{count} сезонів} other{{count} сезону}}",
+    "seasonCount": "{count, plural, one{{count} сезон} few{{count} сезони} many{{count} сезонів} other{{count} сезону}}",
     "@seasonCount": {
         "description": "Number of seasons for a series",
         "placeholders": {
@@ -1447,7 +1418,7 @@
             }
         }
     },
-    "trackCount": "{count, plural, =1{1 трек} one{{count} трек} few{{count} треки} many{{count} треків} other{{count} треку}}",
+    "trackCount": "{count, plural, one{{count} трек} few{{count} треки} many{{count} треків} other{{count} треку}}",
     "@trackCount": {
         "description": "Label showing number of tracks in an album",
         "placeholders": {
@@ -1456,7 +1427,7 @@
             }
         }
     },
-    "chapterCount": "{count, plural, =1{1 розділ} one{{count} розділ} few{{count} розділи} many{{count} розділів} other{{count} розділу}}",
+    "chapterCount": "{count, plural, one{{count} розділ} few{{count} розділи} many{{count} розділів} other{{count} розділу}}",
     "@chapterCount": {
         "description": "Label showing number of chapters in an audiobook",
         "placeholders": {
@@ -2490,7 +2461,7 @@
             }
         }
     },
-    "episodeCount": "{count, plural, =1{1 епізод} one{{count} епізод} few{{count} епізоди} many{{count} епізодів} other{{count} епізоду}}",
+    "episodeCount": "{count, plural, one{{count} епізод} few{{count} епізоди} many{{count} епізодів} other{{count} епізоду}}",
     "@episodeCount": {
         "description": "Number of episodes with pluralization",
         "placeholders": {
@@ -3500,14 +3471,6 @@
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
     },
-    "enableFolderView": "Увімкнути перегляд папок",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Показати опцію перегляду папок",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
-    },
     "libraryVisibility": "Видимість бібліотеки",
     "@libraryVisibility": {
         "description": "Section title for library visibility"
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Рекомендований вміст, зовнішній вигляд",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Розмір плаката, тип зображення, вид папки",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB і джерела оцінок",
     "@mdbListTmdbRatingSources": {
@@ -7192,7 +7151,7 @@
     "analyticsTopArtists": "Найкращі виконавці",
     "analyticsTopAuthors": "Найкращі автори",
     "analyticsTopContributors": "Найкращі учасники",
-    "analyticsLibrariesCount": "{count, plural, =1{1 бібліотека} one{{count} бібліотека} few{{count} бібліотеки} many{{count} бібліотек} other{{count} бібліотеки}}",
+    "analyticsLibrariesCount": "{count, plural, one{{count} бібліотека} few{{count} бібліотеки} many{{count} бібліотек} other{{count} бібліотеки}}",
     "@analyticsLibrariesCount": {
         "placeholders": {
             "count": {
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Не вдалося розпакувати архів .cbr.",
     "cb7ExtractionUnavailable": "Видобуток CB7 недоступний на цій платформі.",
     "cb7ExtractionPluginUnavailable": "Плагін вилучення CB7 недоступний на цій платформі.",
-    "closeGenrePanel": "Закрити панель жанрів",
     "loadingShuffle": "Завантаження перемішування...",
     "libraryShuffleLabel": "ПЕРЕМІШУВАННЯ БІБЛІОТЕКИ",
     "randomShuffleLabel": "ВИПАДКОВЕ ПЕРЕМІШУВАННЯ",
@@ -7494,7 +7452,7 @@
     "@latestAudiobooks": {
         "description": "Row title for recently added audiobooks in the book library"
     },
-    "bookSeriesItemCount": "{count, plural, =1{1 книга} one{{count} книга} few{{count} книги} many{{count} книг} other{{count} книги}}",
+    "bookSeriesItemCount": "{count, plural, one{{count} книга} few{{count} книги} many{{count} книг} other{{count} книги}}",
     "@bookSeriesItemCount": {
         "description": "Subtitle for a book series shelf entry showing how many books it contains",
         "placeholders": {
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Бажана мова відображення",
     "offlineBannerTitle": "Ви офлайн",
     "offlineBannerSubtitle": "Показуємо ваші завантаження",
-    "offlineBannerAction": "Завантаження",
     "serverUnreachableBannerTitle": "Не вдається зв'язатися з вашим сервером",
     "serverUnreachableBannerSubtitle": "Відтворюємо із завантажень, доки він не повернеться",
     "contextMenuHideFromContinueWatching": "Приховати з «Продовжити перегляд»",

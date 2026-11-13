@@ -1,5 +1,5 @@
 <h1 align="center">Moonfin</h1>
-<h3 align="center">Premium Jellyfin & Emby client for mobile, tablet, desktop, TV, and web</h3>
+<h3 align="center">Premium Jellyfin, Emby, Plex & Silo client for mobile, tablet, desktop, TV, and web</h3>
 
 ---
 <p align="center">
@@ -16,7 +16,7 @@
 
 > **[← Back to main Moonfin project](https://github.com/Moonfin-Client)**
 
-Moonfin is a media client for Jellyfin and Emby servers, built with Flutter. One shared codebase powers phones and tablets, Windows, macOS, and Linux, Android TV, Fire TV, and Apple TV, and the browser. It's made for people who want a modern, customizable experience on every screen they own.
+Moonfin is a media client for Jellyfin, Emby, Plex and Silo servers, built with Flutter. One shared codebase powers phones and tablets, Windows, macOS, and Linux, Android TV, Fire TV, and Apple TV, and the browser. It's made for people who want a modern, customizable experience on every screen they own.
 
 ## Where to get it
 
@@ -35,7 +35,21 @@ Moonfin is a media client for Jellyfin and Emby servers, built with Flutter. One
 | Server | Minimum Version | Status |
 |--------|------------------|--------|
 | Jellyfin | 10.8.0+ | Full support |
-| Emby | 4.8.0.0+ | Full support |
+| Emby | 4.8.0.0+ | Full support (the admin panel needs 4.9+) |
+| Plex | Plex Media Server 1.43+ | Supported, without the features that need the Moonbase plugin |
+| [Silo](https://github.com/Silo-Server/silo-server) | API v2 (`api_major` 2) | Supported through Silo's native API, see below |
+
+### Silo
+
+Moonfin talks to Silo through its native API (`/api/v2`), not its Jellyfin-compatible service. Add the server by its native address, which is usually port 8090 with Silo's Docker setup. If you enter the Jellyfin-compatible address on port 8096, Moonfin offers to switch to the native one. Silo servers on your local network also show up under Discovered Servers.
+
+Sign-in with a password or a code, Home, libraries, search, favorites, watched state, ratings, collections, playback, skip intro and credits, trickplay, household profiles with their PINs, and downloads with offline progress sync all work.
+
+Requests use Silo's own requests feature in place of Seerr, and Watch Together uses Silo's Watch Party in place of SyncPlay. Settings sync, admin defaults, server messages, custom themes and MDBList and TMDB ratings need the [Moonbase plugin](https://github.com/Moonfin-Client/Plugin) installed in Silo.
+
+Live TV and DVR, music, playlists, remote control of other devices, the server admin panel (Silo's is in its web app) and retro games aren't available on Silo, so Moonfin hides them while a Silo server is active. Books, audiobooks, 4K requests and Silo's server-side download subscriptions aren't supported yet.
+
+If a Silo server has a newer API than your version of Moonfin, Moonfin won't connect to it and asks you to update Moonfin.
 
 ## Platform Support
 
@@ -44,11 +58,11 @@ Moonfin is a media client for Jellyfin and Emby servers, built with Flutter. One
 | **Android** | 7.0 (API 24) | Full support |
 | **Android TV / Google TV** | Android 7.0 (API 24) | Full support |
 | **Fire TV** | Fire OS 6 | Full support |
-| **iOS** | 16.0 | Full support |
-| **Apple TV (tvOS)** | 17.0 | Full support |
-| **macOS** | 14.0 (Sonoma) | Full support |
+| **iOS** | 18.0 | Full support |
+| **Apple TV (tvOS)** | 18.0 | Full support |
+| **macOS** | 15.0 (Sequoia) | Full support |
 | **Windows** | 10 (x64 and ARM64) | Full support |
-| **Linux** | GTK 3+, CMake 3.13+ | Full support (Wayland only) |
+| **Linux** | GTK 3+, CMake 3.13+ | Full support (Wayland and X11) |
 | **Web** | Modern browsers (installable PWA) | Full support |
 
 > Android TV, Fire TV, and Apple TV ship from this same codebase with a TV-tuned interface and D-pad navigation. Fire TV runs the same native backend as Android TV. Web runs as an installable PWA through the Moonbase server plugin.
@@ -56,38 +70,71 @@ Moonfin is a media client for Jellyfin and Emby servers, built with Flutter. One
 ## Features
 
 - **One codebase, every screen.** Phones, tablets, desktop, Android TV, Apple TV, and web, with navigation tuned for touch, pointer, and remote.
-- **Playback that just works.** Wide codec support including AV1, HEVC, Dolby Vision, Dolby Atmos, HDR10+, and audio passthrough. Dolby Vision Profile 7 direct plays on Apple and Android TV, converted in real time instead of transcoded, and Windows can send HDR to the display untouched. See [Playback and Codecs](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Playback-and-Codecs).
-- **Offline downloads** in original or smaller server-transcoded quality, with automatic folder organization, offline subtitles, and automatic downloads of new episodes for the series you follow. See [Downloads](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Downloads).
-- **Ebooks and audiobooks.** Read EPUB, MOBI, AZW/AZW3, PDF, and comic archives. Play M4B audiobooks with chapter navigation.
-- **Retro games** browsed and played in-app from a server game library, with gamepad support, save states that sync between devices, and hardware rendering on Android. See [Retro Games](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Retro-Games).
+- **Playback that just works.** Wide codec support including AV1, HEVC, Dolby Vision, Dolby Atmos, HDR10+, and audio passthrough. Dolby Vision Profile 7 direct plays on Apple and Android TV, converted in real time instead of transcoded, with most of a FEL file's enhancement layer kept on Apple devices, and Windows can send HDR to the display untouched. Two subtitle tracks can show at once on every player. See [Playback and Codecs](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Playback-and-Codecs).
+- **A mini player on desktop** that keeps the video playing in a bar along the bottom while you browse.
+- **Offline downloads** in original or smaller server-transcoded quality, with automatic folder organization, offline subtitles, automatic downloads of new episodes for the series you follow, and Smart downloads on phones and tablets that keep the next episodes of a show downloaded and clear them once watched. See [Downloads](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Downloads).
+- **Ebooks and audiobooks.** Read EPUB, MOBI, AZW/AZW3, PDF, and comic archives, with your reading progress synced to the server. Play M4B audiobooks with chapter navigation.
+- **Retro games** browsed and played in-app from a server game library, with gamepad support, save states and battery saves that sync between devices, hardware rendering on Android, and RomM-backed libraries you browse with your own RomM account. See [Retro Games](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Retro-Games).
 - **Multi-server unified library** that merges several Jellyfin and Emby servers into one browsable, searchable UI.
+- **Library styles** for video, music, and book libraries, from the classic grid to a docked side panel, an immersive music hero, or a bookstore shelf.
 - **A setup wizard on first run** that asks how you want the app to look, with live previews built from your own artwork.
 - **Five detail screen styles** to pick from: Classic, Modern, Spotlight, Nouveau, and Minimalist.
 - **Featured media bar** with six layouts, plus optional in-bar trailer previews.
 - **Themes and a Theme Store** with a built-in editor, server-side sync, and an OLED mode for true blacks, plus custom loading animations and a screensaver on TV.
-- **An integrated admin panel** for settings, users, libraries, logs, devices, and analytics, plus a messages window for notes from your server admin.
+- **An integrated admin panel** for Jellyfin and Emby, covering settings, users, libraries, Live TV, logs, devices, and analytics, plus a messages window for notes from your server admin.
 - **Discovery with Seerr** built into the details screen, with trending, popular, and upcoming rows and request status overlays.
-- **Live TV and DVR** with a program guide, a quick channel changer on TV, and recording management.
+- **Live TV and DVR** with a program guide, rewind on channels that keep a rewind window, a quick channel changer on TV, automatic recovery when a channel stalls, and recording management.
+- **Client certificates (mTLS)** for servers that require one, with a page you open on your phone to send the certificate to a TV.
 - **Trickplay scrubbing** as a single thumbnail, a filmstrip, or full screen, on both Jellyfin and Emby.
 - **Cinema Mode and segment skipping** for pre-rolls, intros, credits, and SponsorBlock.
-- **Casting and remote control** over Google Cast, DLNA, and AirPlay, plus control of other Jellyfin devices on your network. Other Jellyfin apps can steer Moonfin too.
+- **Casting and remote control** over Google Cast, DLNA, and AirPlay, plus control of other Jellyfin devices on your network with a D-pad and search typed from your phone. Other Jellyfin apps can steer Moonfin too.
 - **SyncPlay** for synchronized group watching.
 - **Personal ratings** as a like, five stars, or a score out of ten, usable to sort or filter a library.
 - **Kids Mode** that strips the app back to what a child needs and locks the way out with a PIN, plus blocked ratings that apply everywhere in the app.
-- **Achievement Badges** drawn natively when your Jellyfin server runs the Achievement Badges plugin.
+- **Achievement Badges** drawn natively when your Jellyfin server runs the Achievement Badges plugin, including its friends list and chat.
 - **Anime markers** for filler, recap, canon, and subbed or dubbed episodes, served by the Moonbase plugin.
-- **Ratings from MDBList and TMDB**, home row customization, and in-app update checks.
+- **Ratings from MDBList and TMDB**, home row customization with a seasonal holiday row, and in-app update checks.
 
 The full list is on the [Features](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Features) wiki page.
 
 ## Screenshots
 
-<img width="48%" height="1200" alt="Tablet and desktop screenshot 1" src="https://github.com/user-attachments/assets/3ff05968-655f-42c7-a9ff-55b08529356c" />
-<img width="48%" height="1200" alt="Tablet and desktop screenshot 2" src="https://github.com/user-attachments/assets/70263c7b-24de-410d-a24f-d8bd1b08f1c6" />
-<img width="23%" height="2244" alt="Phone screenshot 1" src="https://github.com/user-attachments/assets/8bcc0483-a650-43e3-91fb-b9d3b4c57440" />
-<img width="23%" height="2244" alt="Phone screenshot 2" src="https://github.com/user-attachments/assets/1813ac6b-546e-4796-b4a8-15fe006d4c9e" />
+### TV and desktop
 
-More in the [Screenshots](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Screenshots) gallery.
+<p align="center">
+  <img src="assets/images/tv/1-home.png" width="100%" alt="Home screen with the featured media bar" />
+</p>
+<p align="center">
+  <img src="assets/images/tv/2-playback.png" width="49%" alt="Player with trickplay thumbnails and the subtitle menu" />
+  <img src="assets/images/tv/5-livetv.png" width="49%" alt="Live TV guide, channel changer and player" />
+</p>
+<p align="center">
+  <img src="assets/images/tv/3-details.png" width="49%" alt="The five detail screen styles" />
+  <img src="assets/images/tv/4-mediabars.png" width="49%" alt="The six media bar styles" />
+</p>
+<p align="center">
+  <img src="assets/images/tv/8-home-rows.png" width="49%" alt="Modern and Classic home rows" />
+  <img src="assets/images/tv/6-navigation.png" width="49%" alt="Top and Sidebar navigation" />
+</p>
+<p align="center">
+  <img src="assets/images/tv/7-books-games.png" width="49%" alt="Books library and retro game library" />
+  <img src="assets/images/tv/9-music.png" width="49%" alt="Music player with synced lyrics" />
+</p>
+
+### Mobile
+
+<p align="center">
+  <img src="assets/images/phone/1-home.png" width="24%" alt="Phone home screen with the featured media bar" />
+  <img src="assets/images/phone/2-playback.png" width="24%" alt="Phone player with trickplay and the subtitle menu" />
+  <img src="assets/images/phone/3-details.png" width="24%" alt="The five detail screen styles on a phone" />
+  <img src="assets/images/phone/4-mediabars.png" width="24%" alt="The six media bar styles on a phone" />
+</p>
+<p align="center">
+  <img src="assets/images/phone/7-navigation.png" width="24%" alt="Top, Sidebar and Bottom navigation on a phone" />
+  <img src="assets/images/phone/5-livetv.png" width="24%" alt="Phone Live TV guide and player" />
+  <img src="assets/images/phone/6-books-games.png" width="24%" alt="Phone books and retro game libraries" />
+  <img src="assets/images/phone/8-music.png" width="24%" alt="Phone music player with synced lyrics" />
+</p>
 
 ## Installation
 
@@ -145,13 +192,13 @@ The deeper reference material lives in the [Wiki](https://github.com/Moonfin-Cli
 
 Contributions are welcome. Check the existing issues first, discuss major feature changes before implementing them, match the existing code style, run `flutter analyze`, and test on at least one target platform. Keep pull requests focused and include context, screenshots or logs where useful.
 
-See [Development](https://github.com/Moonfin-Client/Moonfin-Core/wiki/Development) for the full guidelines and the pull request process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guidelines and the pull request process.
 
-## Help translate Moonfin [here](https://translate.moonfin.io/engage/moonfin-core/)
+## Help translate Moonfin [here](https://translate.moonfin.io/projects/moonfin/moonfin-core/)
 
-<a href="https://translate.moonfin.io/engage/moonfin/">
+<a href="https://translate.moonfin.io/projects/moonfin/moonfin-core/">
   <img
-    src="https://translate.moonfin.io/widgets/moonfin/moonfin-core/multi-auto.svg"
+    src="https://translate.moonfin.io/widget/moonfin/moonfin-core/multi-auto.svg"
     alt="Moonfin Core translation status by language"
   />
 </a>

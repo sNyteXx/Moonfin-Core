@@ -51,6 +51,20 @@ void main() {
       expect(isSpecialSubtitleStream({'Title': 'English (SDH)'}), isFalse);
     });
   });
+  group('isTextSubtitleStream', () {
+    test('returns true for IsTextSubtitleStream flag or text codecs', () {
+      expect(isTextSubtitleStream({'IsTextSubtitleStream': true}), isTrue);
+      expect(isTextSubtitleStream({'Codec': 'subrip'}), isTrue);
+      expect(isTextSubtitleStream({'Codec': 'srt'}), isTrue);
+      expect(isTextSubtitleStream({'Codec': 'vtt'}), isTrue);
+      expect(isTextSubtitleStream({'Codec': 'ass'}), isTrue);
+    });
+
+    test('returns false for bitmap codecs even if flag is not set', () {
+      expect(isTextSubtitleStream({'Codec': 'pgs'}), isFalse);
+      expect(isTextSubtitleStream({'Codec': 'vobsub'}), isFalse);
+    });
+  });
   group('sortedSubtitleStream', () {
     test('places internal streams before external streams', () {
       final sorted = sortedSubtitleStreams(streams);
@@ -208,6 +222,202 @@ void main() {
           preferredLanguage: 'eng',
           fallbackLanguage: '',
           preferSdh: true,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        1,
+      );
+    });
+    test('prefers text (SRT) SDH track over bitmap (PGS) SDH track when preferTextSubtitles is true even with pgsDirectPlay', () {
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: streams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: true,
+          preferTextSubtitles: true,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        4, // Index 4 is SRT SDH, beating Index 5 PGS SDH
+      );
+    });
+    test('prefers external subtitle over internal subtitle when preferExternalSubtitles is true', () {
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: streams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          preferExternalSubtitles: true,
+          pgsDirectPlay: false,
+          assDirectPlay: false,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        6, // Index 6 is External SRT, beating Index 3 Internal SRT
+      );
+    });
+    test('prefers external text over internal PGS when both preferTextSubtitles and preferExternalSubtitles are true', () {
+      final customStreams = [
+        {
+          "Codec": "pgs",
+          "Language": "eng",
+          "DisplayTitle": "English - Internal PGS",
+          "IsDefault": true,
+          "IsForced": false,
+          "IsExternal": false,
+          "Index": 1,
+        },
+        {
+          "Codec": "subrip",
+          "Language": "eng",
+          "DisplayTitle": "English - External SRT",
+          "IsDefault": false,
+          "IsForced": false,
+          "IsExternal": true,
+          "Index": 2,
+        },
+      ];
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: customStreams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          preferTextSubtitles: true,
+          preferExternalSubtitles: true,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        2, // External SRT beats Internal PGS
+      );
+    });
+    test('prefers internal text over external bitmap when preferTextSubtitles is true even with preferExternalSubtitles true', () {
+      final customStreams = [
+        {
+          "Codec": "subrip",
+          "Language": "eng",
+          "DisplayTitle": "English - Internal SRT",
+          "IsDefault": false,
+          "IsForced": false,
+          "IsExternal": false,
+          "Index": 1,
+        },
+        {
+          "Codec": "pgs",
+          "Language": "eng",
+          "DisplayTitle": "English - External PGS",
+          "IsDefault": false,
+          "IsForced": false,
+          "IsExternal": true,
+          "Index": 2,
+        },
+      ];
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: customStreams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          preferTextSubtitles: true,
+          preferExternalSubtitles: true,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        1, // Internal Text beats External Bitmap
+      );
+    });
+    test('a forced external sidecar does not beat the full internal track when preferExternalSubtitles is true', () {
+      final customStreams = [
+        {
+          "Codec": "subrip",
+          "Language": "eng",
+          "DisplayTitle": "English - Internal SRT",
+          "IsDefault": false,
+          "IsForced": false,
+          "IsExternal": false,
+          "Index": 1,
+        },
+        {
+          "Codec": "subrip",
+          "Language": "eng",
+          "DisplayTitle": "English Forced - External SRT",
+          "IsDefault": false,
+          "IsForced": true,
+          "IsExternal": true,
+          "Index": 2,
+        },
+      ];
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: customStreams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          preferExternalSubtitles: true,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        1,
+      );
+    });
+    test('a forced text track does not beat the full default PGS track when preferTextSubtitles is true', () {
+      final customStreams = [
+        {
+          "Codec": "pgssub",
+          "Language": "eng",
+          "DisplayTitle": "English - PGS",
+          "IsDefault": true,
+          "IsForced": false,
+          "IsExternal": false,
+          "Index": 1,
+        },
+        {
+          "Codec": "subrip",
+          "Language": "eng",
+          "DisplayTitle": "English Forced - SRT",
+          "IsDefault": false,
+          "IsForced": true,
+          "IsExternal": false,
+          "Index": 2,
+        },
+      ];
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: customStreams,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.flagged,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          preferTextSubtitles: true,
           pgsDirectPlay: true,
           assDirectPlay: true,
           preferredAudioLanguage: '',
@@ -543,6 +753,131 @@ void main() {
         ),
         9, // Index 9 is ces (Czech)
       );
+    });
+  });
+  group('forced only by title', () {
+    // The track layout of a real episode: the forced English track carries
+    // no IsForced flag and is listed ahead of the full one.
+    final episode = <Map<String, dynamic>>[
+      {
+        'Index': 4,
+        'Language': 'rus',
+        'Title': 'Forced',
+        'DisplayTitle': 'Forced - Russian - Default - SUBRIP',
+        'IsDefault': true,
+      },
+      {
+        'Index': 10,
+        'Language': 'eng',
+        'Title': 'English (Forced)',
+        'DisplayTitle': 'English (Forced) - SUBRIP',
+      },
+      {'Index': 11, 'Language': 'eng', 'DisplayTitle': 'English - SUBRIP'},
+    ];
+
+    test('isForcedSubtitleStream reads the title', () {
+      expect(isForcedSubtitleStream(episode[1]), isTrue);
+      expect(isForcedSubtitleStream(episode[2]), isFalse);
+      expect(isForcedSubtitleStream({'Title': 'English (Non-Forced)'}), isFalse);
+    });
+
+    test('language preference picks the full track', () {
+      expect(
+        computeEffectiveSubtitleIndex(
+          subtitleStreams: episode,
+          selectedSubtitleIndex: null,
+          activePlaybackSubtitleIndex: null,
+          subtitleMode: SubtitleMode.always,
+          preferredLanguage: 'eng',
+          fallbackLanguage: '',
+          preferSdh: false,
+          pgsDirectPlay: true,
+          assDirectPlay: true,
+          preferredAudioLanguage: '',
+          activeAudioLanguage: null,
+        ),
+        11,
+      );
+    });
+
+    test('a full track remembered from another episode stays full', () {
+      final earlier = <Map<String, dynamic>>[
+        {'Index': 10, 'Language': 'eng', 'Title': 'English'},
+      ];
+      final pref = createSeriesTrackPreferenceFromStream(
+        streams: earlier,
+        selectedIndex: 10,
+      );
+      expect(matchSeriesTrackIndex(streams: episode, pref: pref), 11);
+    });
+
+    test('a forced track remembered here is still found', () {
+      final pref = createSeriesTrackPreferenceFromStream(
+        streams: episode,
+        selectedIndex: 10,
+      );
+      expect(matchSeriesTrackIndex(streams: episode, pref: pref), 10);
+    });
+  });
+  group('forced tracks in a language nobody reads', () {
+    final foreignForced = <Map<String, dynamic>>[
+      {'Index': 1, 'Language': 'ces', 'Title': 'Forced', 'IsForced': true},
+      {'Index': 2, 'Language': 'spa', 'Title': 'Latin American (Forced)', 'IsForced': true},
+      {'Index': 3, 'Language': 'fra', 'Title': 'European (Forced)', 'IsForced': true},
+    ];
+
+    int? pick(
+      List<Map<String, dynamic>> streams,
+      SubtitleMode mode, {
+      String audio = 'deu',
+    }) => computeEffectiveSubtitleIndex(
+      subtitleStreams: streams,
+      selectedSubtitleIndex: null,
+      activePlaybackSubtitleIndex: null,
+      subtitleMode: mode,
+      preferredLanguage: 'deu',
+      fallbackLanguage: '',
+      preferSdh: false,
+      pgsDirectPlay: true,
+      assDirectPlay: true,
+      preferredAudioLanguage: 'deu',
+      activeAudioLanguage: audio,
+    );
+
+    test('forced mode turns subtitles off', () {
+      expect(pick(foreignForced, SubtitleMode.forced), -1);
+    });
+
+    test('flagged mode turns subtitles off', () {
+      expect(pick(foreignForced, SubtitleMode.flagged), -1);
+    });
+
+    test('a forced track in the subtitle language is picked', () {
+      final streams = [
+        ...foreignForced,
+        {'Index': 4, 'Language': 'deu', 'Title': 'Forced', 'IsForced': true},
+      ];
+      expect(pick(streams, SubtitleMode.forced), 4);
+    });
+
+    test('a forced track in the audio language is picked', () {
+      expect(pick(foreignForced, SubtitleMode.forced, audio: 'spa'), 2);
+    });
+
+    test('a track tagged with the older ger code still counts as German', () {
+      final streams = [
+        ...foreignForced,
+        {'Index': 5, 'Language': 'ger', 'Title': 'Forced', 'IsForced': true},
+      ];
+      expect(pick(streams, SubtitleMode.forced), 5);
+    });
+
+    test('an untagged forced track is kept', () {
+      final streams = [
+        ...foreignForced,
+        {'Index': 6, 'Title': 'Forced', 'IsForced': true},
+      ];
+      expect(pick(streams, SubtitleMode.forced), 6);
     });
   });
   group('mapSubtitleResultToStreamIndex', () {

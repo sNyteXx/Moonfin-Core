@@ -29,6 +29,7 @@ import '../../../../util/detail_track_highlight.dart';
 import '../../../../util/direct_play_reasons_formatter.dart';
 import '../../../../util/episode_playability.dart';
 import '../../../../util/item_watch_state.dart';
+import '../../../../util/media_source_summary.dart';
 import '../../../../util/overview_text.dart';
 import '../../../../util/playback_time_label.dart';
 import '../../../../util/platform_detection.dart';
@@ -37,6 +38,7 @@ import '../../../../util/focus/focus_scroll.dart';
 import '../../../navigation/destinations.dart';
 import '../../../navigation/playback_launcher.dart';
 import '../../../widgets/horizontal_scroll_section.dart';
+import '../../../widgets/live_tv/incomplete_recording.dart';
 import '../../../widgets/logo_view.dart';
 import '../../../widgets/marquee_text.dart';
 import '../../../widgets/media_card.dart';
@@ -54,7 +56,10 @@ import '../../../../data/repositories/seerr_repository.dart';
 import '../../../../data/repositories/tmdb_repository.dart';
 import '../../../../data/services/seerr/seerr_api_models.dart';
 import '../../../../data/services/plugin_sync_service.dart';
+import '../../../../data/services/book_reader_service.dart';
+import '../collection_sort_dialog.dart';
 import '../detail_layout_metrics.dart';
+import '../playlist_sort_filter_bar.dart';
 import '../item_detail_screen.dart'
     show
         DetailActionButtons,
@@ -85,6 +90,8 @@ import '../../../widgets/seerr/seerr_request_dialog.dart';
 import '../../../widgets/seerr/seerr_item_status.dart';
 import '../../../widgets/seerr/seerr_status_pill.dart';
 import '../../../widgets/seerr/seerr_stats_card.dart';
+import '../../../widgets/seerr/seerr_streaming_row.dart';
+import '../../../widgets/detail_reviews.dart';
 import '../../../widgets/seerr_icons.dart';
 
 double _desktopUiScale({UserPreferences? prefs}) {
@@ -229,15 +236,43 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
   final FocusNode _studiosFirstFocusNode = FocusNode(debugLabel: 'studiosFirst');
   final FocusNode _chaptersFirstFocusNode = FocusNode(debugLabel: 'chaptersFirst');
   final FocusNode _similarFirstFocusNode = FocusNode(debugLabel: 'similarFirst');
+  final FocusNode _reviewsFirstFocusNode = FocusNode(debugLabel: 'reviewsFirst');
   final FocusNode _gridFirstFocusNode = FocusNode(debugLabel: 'gridFirst');
   final FocusNode _collectionSortFocusNode = FocusNode(debugLabel: 'collectionSort');
+  LibrarySortBy _playlistSortBy = LibrarySortBy.playlistOrder;
+  SortDirection _playlistSortDirection = SortDirection.ascending;
+  PlayedStatusFilter _playlistPlayedFilter = PlayedStatusFilter.all;
+  bool _playlistFavoriteFilter = false;
+  String? _playlistMediaTypeFilter;
+  int? _playlistRandomSeed;
+  final FocusNode _playlistSortFocusNode =
+      FocusNode(debugLabel: 'modernPlaylistSort');
+  final FocusNode _playlistFilterFocusNode =
+      FocusNode(debugLabel: 'modernPlaylistFilter');
+  final FocusNode _playlistClearFiltersFocusNode =
+      FocusNode(debugLabel: 'modernPlaylistClearFilters');
+
+  List<AggregatedItem> get _displayedPlaylistTracks {
+    if (_vm.item?.type != 'Playlist') return _vm.tracks;
+    return sortAndFilterPlaylistTracks(
+      tracks: _vm.tracks,
+      sortBy: _playlistSortBy,
+      sortDirection: _playlistSortDirection,
+      playedFilter: _playlistPlayedFilter,
+      favoriteOnly: _playlistFavoriteFilter,
+      mediaTypeFilter: _playlistMediaTypeFilter,
+      randomSeed: _playlistRandomSeed,
+    );
+  }
   final FocusNode _moviesFirstFocusNode = FocusNode(debugLabel: 'moviesFirst');
   final FocusNode _seriesFirstFocusNode = FocusNode(debugLabel: 'seriesFirst');
   final FocusNode _otherFirstFocusNode = FocusNode(debugLabel: 'otherFirst');
   final FocusNode _collectionFirstFocusNode = FocusNode(debugLabel: 'collectionFirst');
   final FocusNode _seasonsFirstFocusNode = FocusNode(debugLabel: 'seasonsFirst');
   final FocusNode _episodesFirstFocusNode = FocusNode(debugLabel: 'episodesFirst');
+  final FocusNode _episodesCurrentFocusNode = FocusNode(debugLabel: 'episodesCurrent');
   final FocusNode _overviewFocusNode = FocusNode(debugLabel: 'overview');
+  final FocusNode _booksFirstFocusNode = FocusNode(debugLabel: 'booksFirst');
   final FocusNode _personMoviesFirstFocusNode = FocusNode(debugLabel: 'personMoviesFirst');
   final FocusNode _personSeriesFirstFocusNode = FocusNode(debugLabel: 'personSeriesFirst');
   final FocusNode _personSeerrAppearancesFirstFocusNode = FocusNode(debugLabel: 'personSeerrAppearancesFirst');
@@ -350,6 +385,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         mediaSourceId: mediaSource?['Id']?.toString(),
         audioStreamIndex: _vm.selectedAudioIndex ?? effectiveAudio,
         subtitleStreamIndex: _vm.selectedSubtitleIndex ?? effectiveSubtitle,
+        hasOtherVersions: item.mediaSources.length > 1,
       );
       if (mounted) {
         // Drop the result if the track selection changed mid-request.
@@ -432,27 +468,11 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     }
   }
 
-  List<AggregatedItem> _sortJellyfinItems(List<AggregatedItem> list) {
-    final sortOpt = widget.prefs.get(UserPreferences.personPageSortOption);
-    final sorted = List<AggregatedItem>.from(list);
-    if (sortOpt == 'alphabetical') {
-      sorted.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    } else {
-      final asc = sortOpt == 'releaseDateAsc';
-      sorted.sort((a, b) {
-        final dateA = a.premiereDate ?? (a.productionYear != null ? DateTime(a.productionYear!) : null);
-        final dateB = b.premiereDate ?? (b.productionYear != null ? DateTime(b.productionYear!) : null);
-        if (dateA == null && dateB == null) {
-          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        }
-        if (dateA == null) return 1;
-        if (dateB == null) return -1;
-        final comp = dateA.compareTo(dateB);
-        return asc ? comp : -comp;
-      });
-    }
-    return sorted;
-  }
+  List<AggregatedItem> _sortJellyfinItems(List<AggregatedItem> list) =>
+      sortJellyfinFilmography(
+        list,
+        widget.prefs.get(UserPreferences.personPageSortOption),
+      );
 
   List<SeerrDiscoverItem> _groupSeerrItems(List<SeerrDiscoverItem> list, bool isCrew) {
     if (!widget.prefs.get(UserPreferences.personPageGroupItems)) return list;
@@ -490,8 +510,10 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     _studiosFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _chaptersFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _similarFirstFocusNode.onKeyEvent = leftToSidebarHandler;
+    _reviewsFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _seasonsFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _episodesFirstFocusNode.onKeyEvent = leftToSidebarHandler;
+    _booksFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _personMoviesFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _personSeriesFirstFocusNode.onKeyEvent = leftToSidebarHandler;
     _personSeerrAppearancesFirstFocusNode.onKeyEvent = leftToSidebarHandler;
@@ -526,6 +548,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     attachAutoScroll(_similarFirstFocusNode);
     attachAutoScroll(_seasonsFirstFocusNode);
     attachAutoScroll(_episodesFirstFocusNode);
+    attachAutoScroll(_episodesCurrentFocusNode);
+    attachAutoScroll(_booksFirstFocusNode);
 
     for (final cat in extraCategoriesOrder) {
       final node = FocusNode(debugLabel: 'modernFeatureFirst_$cat');
@@ -535,13 +559,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     _collectionSortFocusNode.onKeyEvent = (node, event) {
       if (event is KeyDownEvent) {
         if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          if (_vm.playlistItems.isNotEmpty) {
-            final firstTrackId = _vm.playlistItems.first.id;
-            final firstNode = _trackFocusNodes.putIfAbsent(firstTrackId, () => FocusNode());
-            if (firstNode.canRequestFocus) {
-              firstNode.requestFocus();
-              return KeyEventResult.handled;
-            }
+          if (_focusFirstTrack(_vm.collectionPlaylistItems)) {
+            return KeyEventResult.handled;
           }
         } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
           _focusSelectedTab();
@@ -580,6 +599,14 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
   @override
   void didUpdateWidget(ModernDetailContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.viewModel.item?.id != oldWidget.viewModel.item?.id) {
+      _playlistSortBy = LibrarySortBy.playlistOrder;
+      _playlistSortDirection = SortDirection.ascending;
+      _playlistPlayedFilter = PlayedStatusFilter.all;
+      _playlistFavoriteFilter = false;
+      _playlistMediaTypeFilter = null;
+      _playlistRandomSeed = null;
+    }
     if (widget.initialFocusNode != oldWidget.initialFocusNode && PlatformDetection.isTV) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !canClaimInitialFocus(context)) return;
@@ -670,15 +697,21 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     _studiosFirstFocusNode.dispose();
     _chaptersFirstFocusNode.dispose();
     _similarFirstFocusNode.dispose();
+    _reviewsFirstFocusNode.dispose();
     _gridFirstFocusNode.dispose();
     _collectionSortFocusNode.dispose();
+    _playlistSortFocusNode.dispose();
+    _playlistFilterFocusNode.dispose();
+    _playlistClearFiltersFocusNode.dispose();
     _moviesFirstFocusNode.dispose();
     _seriesFirstFocusNode.dispose();
     _otherFirstFocusNode.dispose();
     _collectionFirstFocusNode.dispose();
     _seasonsFirstFocusNode.dispose();
     _episodesFirstFocusNode.dispose();
+    _episodesCurrentFocusNode.dispose();
     _overviewFocusNode.dispose();
+    _booksFirstFocusNode.dispose();
     _personMoviesFirstFocusNode.dispose();
     _personSeriesFirstFocusNode.dispose();
     _personSeerrAppearancesFirstFocusNode.dispose();
@@ -788,11 +821,19 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       tabs.isEmpty ? null : _tabNode(_selectedTab >= 0 ? _selectedTab : 0);
 
   // Moves D-pad focus into the first track of the track list, using the same
-  // focus node the DetailTrackList attaches to that row.
-  void _focusFirstTrack() {
-    if (_vm.tracks.isEmpty) return;
-    final id = _vm.tracks.first.id;
-    _trackFocusNodes.putIfAbsent(id, () => FocusNode()).requestFocus();
+  // focus node the DetailTrackList attaches to that row. Returns false when
+  // that row isn't on screen.
+  bool _focusFirstTrack([List<AggregatedItem>? tracksOverride]) {
+    final list = tracksOverride ?? _vm.tracks;
+    if (list.isEmpty) return false;
+    final firstTrack = list.first;
+    final rawId = firstTrack.rawData['PlaylistItemId']?.toString();
+    final firstTrackId =
+        (rawId != null && rawId.isNotEmpty) ? rawId : firstTrack.id;
+    final node = _trackFocusNodes.putIfAbsent(firstTrackId, () => FocusNode());
+    if (node.context?.mounted != true) return false;
+    node.requestFocus();
+    return true;
   }
 
   void _onTabBarNavigateDown(int tabIndex) {
@@ -830,6 +871,9 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
             case 'similar':
               _similarFirstFocusNode.requestFocus();
               break;
+            case 'reviews':
+              _reviewsFirstFocusNode.requestFocus();
+              break;
             case 'collections':
               if (_vm.parentCollections.length == 1) {
                 _collectionFirstFocusNode.requestFocus();
@@ -841,7 +885,11 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               _seasonsFirstFocusNode.requestFocus();
               break;
             case 'episodes':
-              _episodesFirstFocusNode.requestFocus();
+              // Opens on the episode being viewed when it isn't the first one.
+              (_episodesCurrentFocusNode.context != null
+                      ? _episodesCurrentFocusNode
+                      : _episodesFirstFocusNode)
+                  .requestFocus();
               break;
             case 'movies':
               if (_vm.item?.type == 'BoxSet') {
@@ -857,6 +905,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                 _personSeriesFirstFocusNode.requestFocus();
               }
               break;
+            case 'books':
+              _booksFirstFocusNode.requestFocus();
             case 'other':
               _otherFirstFocusNode.requestFocus();
               break;
@@ -882,10 +932,10 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               _focusFirstTrack();
               break;
             case 'playlist':
-              if (_vm.item?.type == 'BoxSet' && _vm.playlistItems.isNotEmpty) {
+              if (_collectionSortFocusNode.context?.mounted == true) {
                 _collectionSortFocusNode.requestFocus();
               } else {
-                _focusFirstTrack();
+                _focusFirstTrack(_vm.collectionPlaylistItems);
               }
               break;
           }
@@ -950,10 +1000,14 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
             (context, item) => _seerrTab(context, seerrState, seerrPieces),
           );
 
+    final hasReviews =
+        sections.shows(DetailSection.reviews) && _vm.reviews.isNotEmpty;
+    final reviews = _ModernTab('reviews', l10n.reviews, (_, _) => _reviewsTab());
+
     // A title that isn't in the library has no episodes to list, no chapters,
     // no extras and no file to describe, so the rest would all be empty.
     if (_vm.isSeerrOnly) {
-      return [if (hasCast) cast, ?seerrTab];
+      return [if (hasCast) cast, if (hasReviews) reviews, ?seerrTab];
     }
 
     final hasCrew = sections.shows(DetailSection.crew) &&
@@ -1011,6 +1065,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               (context, item) => _collectionsTab(context, item),
             ),
           if (hasSimilar) similar,
+          if (hasReviews) reviews,
           ?seerrTab,
         ];
       case 'Season':
@@ -1035,6 +1090,11 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           if (showDetails) details,
           ...extraTabs,
           if (hasSimilar) similar,
+        ];
+      case 'BookSeries':
+        final booksList = _vm.seriesBooks;
+        return [
+          _ModernTab('books', l10n.books, (context, item) => _mediaGrid(context, booksList, firstFocusNode: _booksFirstFocusNode)),
         ];
       case 'MusicAlbum':
       case 'Playlist':
@@ -1065,9 +1125,9 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           if (series.isNotEmpty)
             _ModernTab('series', l10n.series, (context, item) => _seriesTab(context, series)),
           if (sortedSeerrAppearances.isNotEmpty)
-            _ModernTab('seerrAppearances', l10n.appearancesSeerr, (context, item) => _seerrAppearancesTab(context, sortedSeerrAppearances)),
+            _ModernTab('seerrAppearances', seerrBrand(l10n.appearancesSeerr), (context, item) => _seerrAppearancesTab(context, sortedSeerrAppearances)),
           if (sortedSeerrCrewCredits.isNotEmpty)
-            _ModernTab('seerrCrewContributions', l10n.crewContributionsSeerr, (context, item) => _seerrCrewCreditsTab(context, sortedSeerrCrewCredits)),
+            _ModernTab('seerrCrewContributions', seerrBrand(l10n.crewContributionsSeerr), (context, item) => _seerrCrewCreditsTab(context, sortedSeerrCrewCredits)),
           if (movies.isEmpty && series.isEmpty && sortedSeerrAppearances.isEmpty && sortedSeerrCrewCredits.isEmpty && _vm.filmography.isNotEmpty)
             _ModernTab('appearances', l10n.appearances, (_, _) => _itemGrid(_sortJellyfinItems(_vm.filmography))),
         ];
@@ -1117,37 +1177,41 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           if (hasCast) _ModernTab('cast', l10n.castMembers, _boxSetCastTab),
           if (hasCrew) _ModernTab('crew', l10n.crewSection, _boxSetCrewTab),
           if (hasStudios) studios,
-          // Show the Playlist tab while the index is building (spinner) OR
-          // once items are available (the list). Placed last so simple
-          // movie-only collections land on Movies by default.
-          if (sections.shows(DetailSection.playlistOrder) &&
-              (_vm.playlistItems.isNotEmpty || _vm.playlistIndexBuilding))
+          // Placed last so movie-only collections still open on Movies.
+          if (sections.shows(DetailSection.playlistOrder))
             _ModernTab(
               'playlist',
               l10n.playlist,
               (context, item) {
-                // Phase 1: flat ID index still building — show full spinner.
-                if (_vm.playlistIndexBuilding) {
+                final hasPlaylistItems = _vm.playlistItems.isNotEmpty;
+                if (_vm.playlistSortRefreshing ||
+                    (_vm.playlistIndexBuilding && !hasPlaylistItems)) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 final listWidget = DetailTrackList(
-                  tracks: _vm.playlistItems,
+                  tracks: _vm.collectionPlaylistItems,
                   imageApi: _vm.imageApi,
                   isPlaylist: true,
                   getFocusNode: (id) =>
                       _trackFocusNodes.putIfAbsent(id, () => FocusNode()),
                   onPlayTrack: (index) => _playPlaylistTrack(context, index),
-                  reorderable: _vm.collectionSort == CollectionSortOption.custom,
-                  onReorder: (oldIndex, newIndex) {
-                    var target = newIndex;
-                    if (target > oldIndex) {
-                      target -= 1;
-                    }
-                    _vm.reorderCollectionPlaylistItem(oldIndex, target);
-                  },
-                  onMoveUp: (index) => _vm.reorderCollectionPlaylistItem(index, index - 1),
-                  onMoveDown: (index) => _vm.reorderCollectionPlaylistItem(index, index + 1),
+                  reorderable: hasPlaylistItems && _vm.collectionSort == CollectionSortOption.custom,
+                  onReorder: hasPlaylistItems
+                      ? (oldIndex, newIndex) {
+                          var target = newIndex;
+                          if (target > oldIndex) {
+                            target -= 1;
+                          }
+                          _vm.reorderCollectionPlaylistItem(oldIndex, target);
+                        }
+                      : null,
+                  onMoveUp: hasPlaylistItems
+                      ? (index) => _vm.reorderCollectionPlaylistItem(index, index - 1)
+                      : null,
+                  onMoveDown: hasPlaylistItems
+                      ? (index) => _vm.reorderCollectionPlaylistItem(index, index + 1)
+                      : null,
                   onFirstTrackUp: () => _collectionSortFocusNode.requestFocus(),
                   onTrackFocused: widget.onBackdropItemFocused,
                 );
@@ -1178,12 +1242,12 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                                 FocusableToolbarButton(
                                   icon: Icons.sort_rounded,
                                   focusNode: _collectionSortFocusNode,
-                                  tooltip: l10n.resetSort,
-                                  onTap: () => _showCollectionSortDialog(context),
+                                  tooltip: l10n.playlistSortOptions,
+                                  onTap: () => showCollectionSortDialog(context, vm: _vm),
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  'Sort: ${_getCollectionSortLabel(_vm.collectionSort, l10n)}',
+                                  l10n.sortCurrent(getCollectionSortLabel(_vm.collectionSort, l10n)),
                                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                         color: Colors.white70,
                                         fontWeight: FontWeight.bold,
@@ -1223,6 +1287,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               (context, item) => _collectionsTab(context, item),
             ),
           if (hasSimilar) similar,
+          if (hasReviews) reviews,
           ?seerrTab,
         ];
     }
@@ -1293,8 +1358,6 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     // unplayed episode's seasonId so the cyan border always renders correctly.
     final nextUpSeasonId = _vm.nextUp?.seasonId ??
         _vm.seriesEpisodes.firstWhereOrNull((e) => !e.isPlayed)?.seasonId;
-    final showAvailabilityBadges =
-        widget.prefs.get(UserPreferences.showSeerrAvailabilityBadges);
     final seerrSeasonStatus = seerrItemSeasonStatus(_vm);
     // Set only for a series with no season to open, where the card offers to
     // request that season instead.
@@ -1330,9 +1393,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       );
 
       return SeasonCard(
-        seerrStatus: showAvailabilityBadges
-            ? seerrSeasonStatus[season.indexNumber]
-            : null,
+        seerrStatus: seerrSeasonStatus[season.indexNumber],
         badge: AnimeSeasonAudioBadge(
           seriesId: season.seriesId,
           seasonId: season.id,
@@ -1453,11 +1514,12 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         heightRatio: 9 / 16,
       );
     }
-    // For Season pages _vm.nextUp is null (the API call uses seriesId which
-    // on a Season item resolves to nothing). Fall back to the first unplayed
-    // episode so the cyan "next up" border still renders correctly.
-    final nextUpId = _vm.nextUp?.id ??
-        _vm.episodes.firstWhereOrNull((e) => !e.isPlayed)?.id;
+    // An episode marks itself. A season page has no next up loaded, so it
+    // marks its first unplayed episode.
+    final activeId = item.type == 'Episode'
+        ? item.id
+        : _vm.nextUp?.id ??
+            _vm.episodes.firstWhereOrNull((e) => !e.isPlayed)?.id;
 
     return Focus(
       canRequestFocus: false,
@@ -1478,9 +1540,15 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                 episode: _vm.episodes[i],
                 imageApi: _vm.imageApi,
                 onChanged: () => _vm.load(),
-                isActive: _vm.episodes[i].id == nextUpId,
+                isActive: _vm.episodes[i].id == activeId,
+                isOnScreen: _vm.episodes[i].id == item.id,
                 contextSeasonId: _vm.effectiveSeasonId,
-                focusNode: i == 0 ? _episodesFirstFocusNode : null,
+                replacePage: item.type == 'Episode',
+                focusNode: i == 0
+                    ? _episodesFirstFocusNode
+                    : _vm.episodes[i].id == item.id
+                        ? _episodesCurrentFocusNode
+                        : null,
                 onKeyEvent: i == 0
                     ? (node, event) {
                         if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -1523,12 +1591,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         heightRatio: 9 / 16,
       );
     }
-    final sorted = [...episodes]..sort((a, b) {
-        final sa = a.parentIndexNumber ?? 0;
-        final sb = b.parentIndexNumber ?? 0;
-        if (sa != sb) return sa.compareTo(sb);
-        return (a.indexNumber ?? 0).compareTo(b.indexNumber ?? 0);
-      });
+    final sorted = [...episodes]..sort(ItemDetailViewModel.compareEpisodes);
 
     // Group by season
     final Map<int, List<AggregatedItem>> seasonGroups = {};
@@ -1679,12 +1742,15 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
 
   Widget _crewTab(BuildContext context, AggregatedItem item) {
     final l10n = AppLocalizations.of(context);
+    final isEpisode = item.type == 'Episode';
+    final fallbackDirector = isEpisode ? l10n.episodeDirector : l10n.director;
+    final fallbackWriter = isEpisode ? l10n.episodeWriter : l10n.writer;
     final Map<String, Map<String, dynamic>> merged = {};
     for (final d in _vm.directors) {
       final id = d['Id']?.toString() ?? d['Name']?.toString() ?? '';
       if (id.isEmpty) continue;
       final roleStr = d['Role']?.toString().trim();
-      final role = (roleStr != null && roleStr.isNotEmpty) ? roleStr : l10n.director;
+      final role = (roleStr != null && roleStr.isNotEmpty) ? roleStr : fallbackDirector;
       merged[id] = {
         ...d,
         'Roles': <String>{role},
@@ -1694,7 +1760,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       final id = w['Id']?.toString() ?? w['Name']?.toString() ?? '';
       if (id.isEmpty) continue;
       final roleStr = w['Role']?.toString().trim();
-      final role = (roleStr != null && roleStr.isNotEmpty) ? roleStr : l10n.writer;
+      final role = (roleStr != null && roleStr.isNotEmpty) ? roleStr : fallbackWriter;
       if (merged.containsKey(id)) {
         final roles = merged[id]!['Roles'] as Set<String>;
         roles.add(role);
@@ -2317,7 +2383,9 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                 return FocusableWrapper(
                   focusNode: index == 0 ? _studiosFirstFocusNode : null,
                   onSelect: name.isNotEmpty
-                      ? () => context.push(Destinations.studio(name))
+                      ? () => context.push(
+                          Destinations.studio(name, serverId: item.serverId),
+                        )
                       : null,
                   borderRadius: 12,
                   suppressFocusGlow: true,
@@ -2507,6 +2575,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           onNavigateDown: below(_seerrChipsFocusNode),
         ),
       if (pieces.stats) SeerrStatsCard(state: state),
+      if (pieces.streaming)
+        SeerrStreamingRow(providers: state.streamingProviders),
       if (pieces.recommendations)
         _seerrTabRow(
           l10n.recommendations,
@@ -2670,17 +2740,12 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           child: HorizontalScrollSection(
             title: '',
             contentSpacing: 0,
-            // The row asks for 280 but its cards only paint 139, so hold it
-            // at 200 rather than reserve space nothing fills.
-            builder: (context, controller) => SizedBox(
-              height: 200,
-              child: DetailFeaturesRow(
-                items: items,
-                imageApi: _vm.imageApi,
-                prefs: widget.prefs,
-                scrollController: controller,
-                firstItemFocusNode: firstItemFocusNode,
-              ),
+            builder: (context, controller) => DetailFeaturesRow(
+              items: items,
+              imageApi: _vm.imageApi,
+              prefs: widget.prefs,
+              scrollController: controller,
+              firstItemFocusNode: firstItemFocusNode,
             ),
           ),
         );
@@ -2691,8 +2756,17 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       return const SizedBox.shrink();
     }
 
+    final showMissing = widget.prefs.get(
+      UserPreferences.seerrShowMissingCollectionItems,
+    );
+
     if (collections.length == 1) {
-      return _mediaGrid(context, collections.first.items,
+      final col = collections.first;
+      final items = [
+        col.boxSetItem,
+        ...(showMissing ? col.itemsWithMissing : col.items),
+      ];
+      return _mediaGrid(context, items,
           firstFocusNode: _collectionFirstFocusNode);
     }
 
@@ -2724,6 +2798,10 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         itemBuilder: (context, index) {
           final col = collections[index];
           final rowFocusNode = _collectionRowFocusNodeFor(col.id);
+          final items = [
+            col.boxSetItem,
+            ...(showMissing ? col.itemsWithMissing : col.items),
+          ];
 
           return Builder(
             builder: (rowContext) {
@@ -2750,7 +2828,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                     ),
                     const SizedBox(height: 12),
                     DetailSimilarRow(
-                      items: col.items,
+                      items: items,
                       imageApi: _vm.imageApi,
                       prefs: widget.prefs,
                       customCardWidth: isMobile ? 96.0 : 120.0 * desktopScale,
@@ -2773,7 +2851,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                             }
                           }
                           if (event.logicalKey == LogicalKeyboardKey.arrowRight &&
-                              itemIndex == col.items.length - 1) {
+                              itemIndex == items.length - 1) {
                             return KeyEventResult.handled;
                           }
                           if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -2831,8 +2909,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     final mediaSource = selectedMediaSourceForItem(targetItem, widget.selectedMediaSourceId);
     final isPlayable = targetItem.type != 'Series' && targetItem.type != 'Season' && targetItem.type != 'Person';
 
-    if (isPlayable && mediaSource != null) {
-      final List<Map<String, dynamic>> rawStreams = (mediaSource['MediaStreams'] as List?)
+    if (isPlayable && (mediaSource != null || targetItem.type == 'Book')) {
+      final List<Map<String, dynamic>> rawStreams = (mediaSource?['MediaStreams'] as List?)
               ?.whereType<Map>()
               .map((e) => e.cast<String, dynamic>())
               .toList() ??
@@ -2868,11 +2946,89 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                   }
                 }
               : null,
-          child: _buildFileInformation(context, targetItem, mediaSource),
+          child: mediaSource == null
+              ? _buildBookFileInformation(context, targetItem)
+              : _buildFileInformation(context, targetItem, mediaSource),
         ),
       );
     }
     return const SizedBox.shrink();
+  }
+
+  Widget _buildBookFileInformation(BuildContext context, AggregatedItem item) {
+    final l10n = AppLocalizations.of(context);
+    final extension = BookReaderService.detectExtension(item);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _fileSummary(
+        context,
+        item,
+        BookReaderService.fileName(item),
+        extension == null ? null : l10n.formatExtension(extension),
+      ),
+    );
+  }
+
+  /// The section heading and the card with the file name, [detail] under it
+  /// when there is one, and the date the item was added.
+  List<Widget> _fileSummary(
+    BuildContext context,
+    AggregatedItem item,
+    String fileName,
+    String? detail,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    // Sent as UTC, so an evening west of UTC would otherwise read as tomorrow.
+    final DateTime? addedOn = item.dateCreated?.toLocal();
+    final String? addedLabel = addedOn == null
+        ? null
+        : DateFormat.yMMMd(
+            Localizations.localeOf(context).toString(),
+          ).format(addedOn);
+
+    return [
+      Text(
+        l10n.fileInformation,
+        style: textTheme.titleMedium?.copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      const SizedBox(height: 12),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: AppRadius.circular(8),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              fileName,
+              style: textTheme.bodyLarge?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+            if (detail != null)
+              Text(
+                detail,
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+            if (addedLabel != null)
+              Text(
+                l10n.dateCreatedFormat(addedLabel),
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+          ],
+        ),
+      ),
+    ];
   }
 
   Widget _buildFileInformation(
@@ -2885,86 +3041,27 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     final textTheme = theme.textTheme;
 
     // File name and Size
-    final sizeBytes = mediaSource['Size'] as int? ?? 0;
-    final String formattedSize;
-    if (sizeBytes > 0) {
-      final double mb = sizeBytes / (1024 * 1024);
-      if (mb > 999) {
-        formattedSize = '${(mb / 1024).toStringAsFixed(2)} GB';
-      } else {
-        formattedSize = '${mb.toStringAsFixed(0)} MB';
-      }
-    } else {
-      formattedSize = 'Unknown Size';
-    }
+    final formattedSize =
+        formatMediaSourceSize(mediaSource['Size'] as int? ?? 0) ??
+        'Unknown Size';
 
     final String path = mediaSource['Path'] as String? ?? '';
     final String fileName = path.split('/').last.split('\\').last;
     final String container = mediaSource['Container']?.toString().toUpperCase() ?? 'Unknown';
-    // Sent as UTC, so an evening west of UTC would otherwise read as tomorrow.
-    final DateTime? addedOn = item.dateCreated?.toLocal();
-    final String? addedLabel = addedOn == null
-        ? null
-        : DateFormat.yMMMd(
-            Localizations.localeOf(context).toString(),
-          ).format(addedOn);
 
     // Parse streams
-    final List<Map<String, dynamic>> rawStreams = (mediaSource['MediaStreams'] as List?)
-            ?.whereType<Map>()
-            .map((e) => e.cast<String, dynamic>())
-            .toList() ??
-        [];
+    final rawStreams = mediaSourceStreams(mediaSource);
 
     final videoStreams = rawStreams.where((s) => s['Type'] == 'Video').toList();
     final audioStreams = rawStreams.where((s) => s['Type'] == 'Audio').toList();
     final subtitleStreams = rawStreams.where((s) => s['Type'] == 'Subtitle').toList();
 
-    // Video "Greatest Hits"
-    final List<String> videoDetails = [];
-    if (videoStreams.isNotEmpty) {
-      final v = videoStreams.first;
-      final codec = v['Codec']?.toString().toUpperCase() ?? 'Unknown Codec';
-      final profile = v['Profile']?.toString();
-      final width = v['Width']?.toString();
-      final height = v['Height']?.toString();
-      final frameRate = v['RealFrameRate'] ?? v['AverageFrameRate'];
-      final bitDepth = v['BitDepth'] as int?;
-      final videoRange = v['VideoRange']?.toString();
-      final videoRangeType = v['VideoRangeType']?.toString();
+    final videoDetails = videoStreams.isEmpty
+        ? const <String>[]
+        : videoStreamSummary(videoStreams.first, unknownCodec: 'Unknown Codec');
 
-      var videoStr = codec;
-      if (profile != null && profile.isNotEmpty) videoStr += ' ($profile)';
-      videoDetails.add(videoStr);
-
-      if (width != null && height != null) {
-        videoDetails.add('$width x $height');
-      }
-
-      if (frameRate != null) {
-        final fr = double.tryParse(frameRate.toString());
-        if (fr != null) {
-          videoDetails.add('${fr.toStringAsFixed(3)} fps');
-        }
-      }
-
-      if (bitDepth != null) {
-        videoDetails.add('$bitDepth-bit');
-      }
-
-      if (videoRange != null && videoRange.isNotEmpty) {
-        var rangeStr = videoRange;
-        if (videoRangeType != null && videoRangeType.isNotEmpty) {
-          rangeStr += ' ($videoRangeType)';
-        }
-        videoDetails.add(rangeStr);
-      }
-    }
-
-    String formatLang(String? code) {
-      if (code == null || code.isEmpty) return 'Unknown';
-      return code.toUpperCase();
-    }
+    String formatLang(String? code) =>
+        streamLanguageLabel(code, unknown: 'Unknown');
 
     final manager = GetIt.instance<PlaybackManager>();
     // The queue holds bare id strings during offline playback, so this checks
@@ -2993,46 +3090,11 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          l10n.fileInformation,
-          style: textTheme.titleMedium?.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // File name details card
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.04),
-            borderRadius: AppRadius.circular(8),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                fileName,
-                style: textTheme.bodyLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                l10n.fileSizeFormat(formattedSize, container),
-                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
-              ),
-              if (addedLabel != null)
-                Text(
-                  l10n.dateCreatedFormat(addedLabel),
-                  style: textTheme.bodySmall?.copyWith(color: Colors.white70),
-                ),
-            ],
-          ),
+        ..._fileSummary(
+          context,
+          item,
+          fileName,
+          l10n.fileSizeFormat(formattedSize, container),
         ),
         const SizedBox(height: 24),
         if (videoDetails.isNotEmpty) ...[
@@ -3466,6 +3528,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
             itemBuilder: (context, i) {
               final entry = items[i];
               return MediaCard(
+                posterBadgeItemId: entry.id,
                 title: entry.name,
                 titleColor: titleColor,
                 focusNode: i == 0 ? (focusNode ?? _gridFirstFocusNode) : null,
@@ -3503,6 +3566,12 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
   Widget _similarTab(BuildContext context, List<AggregatedItem> items) =>
       _mediaGrid(context, items, firstFocusNode: _similarFirstFocusNode);
 
+  Widget _reviewsTab() => DetailReviewsGrid(
+    reviews: _vm.reviews,
+    firstFocusNode: _reviewsFirstFocusNode,
+    onTopRowUp: _focusSelectedTab,
+  );
+
   /// The shared menu for a card in a collection's own grid, plus the entry
   /// that pulls the card out of this collection.
   void _showCollectionItemMenu(AggregatedItem entry) {
@@ -3510,10 +3579,12 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       showContextMenu(
         context,
         entry,
-        collectionRemoval: CollectionRemovalContext(
-          collectionName: _vm.item?.name ?? '',
-          remove: _vm.removeFromCollection,
-        ),
+        collectionRemoval: _vm.canRemoveFromCollection
+            ? CollectionRemovalContext(
+                collectionName: _vm.item?.name ?? '',
+                remove: _vm.removeFromCollection,
+              )
+            : null,
         onChanged: () {
           if (mounted) setState(() {});
         },
@@ -3576,6 +3647,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                         entry.id.startsWith('tmdb:') || entry.serverId == 'seerr';
                     final topRow = i < columns;
                     return MediaCard(
+                      posterBadgeItemId: isSeerrItem ? null : entry.id,
                       title: entry.name,
                       titleColor: titleColor,
                       imageUrl: _imageUrl(entry),
@@ -3674,17 +3746,37 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
   }
 
   Widget _tracksTab(BuildContext context, AggregatedItem item) {
-    final canManagePlaylistTracks = item.type == 'Playlist' && _vm.canManagePlaylistTracks;
+    final l10n = AppLocalizations.of(context);
+    final isPlaylist = item.type == 'Playlist';
+    final availableMediaTypes = isPlaylist
+        ? _vm.tracks
+            .map((t) => t.type)
+            .whereType<String>()
+            .toSet()
+            .toList()
+        : const <String>[];
+
+    final displayedTracks = _displayedPlaylistTracks;
+
+    final isDefaultPlaylistOrder =
+        _playlistSortBy == LibrarySortBy.playlistOrder &&
+        _playlistSortDirection == SortDirection.ascending &&
+        _playlistPlayedFilter == PlayedStatusFilter.all &&
+        !_playlistFavoriteFilter &&
+        (_playlistMediaTypeFilter == null || _playlistMediaTypeFilter == 'all');
+
+    final canManagePlaylistTracks =
+        isPlaylist && _vm.canManagePlaylistTracks && isDefaultPlaylistOrder;
 
     final listWidget = DetailTrackList(
-      tracks: _vm.tracks,
+      tracks: displayedTracks,
       imageApi: _vm.imageApi,
       isAudiobook: _isAudiobook(item),
-      isPlaylist: item.type == 'Playlist',
+      isPlaylist: isPlaylist,
       groupByDisc: item.type == 'MusicAlbum',
       getFocusNode: (id) =>
           _trackFocusNodes.putIfAbsent(id, () => FocusNode()),
-      onPlayTrack: (index) => _playTrack(context, index),
+      onPlayTrack: (index) => _playTrack(context, index, displayedTracks),
       reorderable: canManagePlaylistTracks,
       onReorder: canManagePlaylistTracks
           ? (oldIndex, newIndex) {
@@ -3695,7 +3787,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               _vm.reorderPlaylistTrack(oldIndex, target);
             }
           : null,
-      onRemoveFromPlaylist: canManagePlaylistTracks
+      onRemoveFromPlaylist: (isPlaylist && _vm.canManagePlaylistTracks)
           ? (track) => _vm.removeTrackFromPlaylist(track)
           : null,
       onMoveUp: canManagePlaylistTracks
@@ -3704,9 +3796,98 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       onMoveDown: canManagePlaylistTracks
           ? (index) => _vm.reorderPlaylistTrack(index, index + 1)
           : null,
-      onFirstTrackUp: () => widget.initialFocusNode?.requestFocus(),
+      onFirstTrackUp: () {
+        if (isPlaylist) {
+          if (_playlistSortFocusNode.context?.mounted == true) {
+            _playlistSortFocusNode.requestFocus();
+            return;
+          }
+        }
+        widget.initialFocusNode?.requestFocus();
+      },
       onTrackFocused: widget.onBackdropItemFocused,
     );
+
+    Widget contentWidget;
+    if (isPlaylist && displayedTracks.isEmpty) {
+      contentWidget = Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.filter_list_off_rounded,
+                size: 40,
+                color: Colors.white38,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                l10n.playlistNoMatchingTracks,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white54,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent) {
+                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      if (_playlistSortFocusNode.context?.mounted == true) {
+                        _playlistSortFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                    }
+                    if (isActivateKey(event)) {
+                      setState(() {
+                        _playlistPlayedFilter = PlayedStatusFilter.all;
+                        _playlistFavoriteFilter = false;
+                        _playlistMediaTypeFilter = null;
+                      });
+                      if (_playlistSortFocusNode.context?.mounted == true) {
+                        _playlistSortFocusNode.requestFocus();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: AnimatedBuilder(
+                  animation: _playlistClearFiltersFocusNode,
+                  builder: (context, _) {
+                    final isFocused = _playlistClearFiltersFocusNode.hasFocus;
+                    return TextButton(
+                      focusNode: _playlistClearFiltersFocusNode,
+                      style: TextButton.styleFrom(
+                        side: isFocused
+                            ? BorderSide(color: AppColorScheme.accent, width: 2)
+                            : null,
+                        backgroundColor: isFocused
+                            ? AppColorScheme.accent.withValues(alpha: 0.15)
+                            : null,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _playlistPlayedFilter = PlayedStatusFilter.all;
+                          _playlistFavoriteFilter = false;
+                          _playlistMediaTypeFilter = null;
+                        });
+                        if (_playlistSortFocusNode.context?.mounted == true) {
+                          _playlistSortFocusNode.requestFocus();
+                        }
+                      },
+                      child: Text(l10n.clearFilters),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      contentWidget = listWidget;
+    }
 
     return Focus(
       canRequestFocus: false,
@@ -3732,16 +3913,105 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               alignment: Alignment.topLeft,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
-                child: listWidget,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isPlaylist) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: PlaylistSortFilterBar(
+                          sortBy: _playlistSortBy,
+                          sortDirection: _playlistSortDirection,
+                          onSortChanged: (pair) {
+                            setState(() {
+                              _playlistSortBy = pair.$1;
+                              _playlistSortDirection = pair.$2;
+                              if (pair.$1 == LibrarySortBy.random) {
+                                _playlistRandomSeed =
+                                    DateTime.now().millisecondsSinceEpoch;
+                              }
+                            });
+                          },
+                          playedFilter: _playlistPlayedFilter,
+                          favoriteOnly: _playlistFavoriteFilter,
+                          mediaTypeFilter: _playlistMediaTypeFilter,
+                          availableMediaTypes: availableMediaTypes,
+                          onFilterChanged: (played, fav, mediaType) {
+                            setState(() {
+                              _playlistPlayedFilter = played;
+                              _playlistFavoriteFilter = fav;
+                              _playlistMediaTypeFilter = mediaType;
+                            });
+                          },
+                          onReset: () {
+                            setState(() {
+                              _playlistSortBy = LibrarySortBy.playlistOrder;
+                              _playlistSortDirection = SortDirection.ascending;
+                              _playlistPlayedFilter = PlayedStatusFilter.all;
+                              _playlistFavoriteFilter = false;
+                              _playlistMediaTypeFilter = null;
+                              _playlistRandomSeed = null;
+                            });
+                          },
+                          totalCount: _vm.tracks.length,
+                          filteredCount: displayedTracks.length,
+                          sortFocusNode: _playlistSortFocusNode,
+                          filterFocusNode: _playlistFilterFocusNode,
+                          onSortArrowUp: () =>
+                              widget.initialFocusNode?.requestFocus(),
+                          onSortArrowDown: () {
+                            if (displayedTracks.isNotEmpty) {
+                              final first = displayedTracks.first;
+                              final rawId =
+                                  first.rawData['PlaylistItemId']?.toString();
+                              final firstId = (rawId != null && rawId.isNotEmpty)
+                                  ? rawId
+                                  : first.id;
+                              final node = _trackFocusNodes[firstId];
+                              if (node != null && node.context?.mounted == true) {
+                                node.requestFocus();
+                              }
+                            } else if (_playlistClearFiltersFocusNode.context?.mounted == true) {
+                              _playlistClearFiltersFocusNode.requestFocus();
+                            }
+                          },
+                          onSortArrowLeft: () {
+                            NavigationLayout.focusNavbarNotifier.value?.call();
+                          },
+                          onFilterArrowUp: () =>
+                              widget.initialFocusNode?.requestFocus(),
+                          onFilterArrowDown: () {
+                            if (displayedTracks.isNotEmpty) {
+                              final first = displayedTracks.first;
+                              final rawId =
+                                  first.rawData['PlaylistItemId']?.toString();
+                              final firstId = (rawId != null && rawId.isNotEmpty)
+                                  ? rawId
+                                  : first.id;
+                              final node = _trackFocusNodes[firstId];
+                              if (node != null && node.context?.mounted == true) {
+                                node.requestFocus();
+                              }
+                            } else if (_playlistClearFiltersFocusNode.context?.mounted == true) {
+                              _playlistClearFiltersFocusNode.requestFocus();
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                    contentWidget,
+                  ],
+                ),
               ),
             )
           : listWidget,
     );
   }
 
-  Future<void> _playTrack(BuildContext context, int index) async {
+  Future<void> _playTrack(BuildContext context, int index, [List<AggregatedItem>? tracksOverride]) async {
     final manager = GetIt.instance<PlaybackManager>();
-    final isAudio = _vm.tracks.every(_isAudioItem);
+    final tracks = tracksOverride ?? _vm.tracks;
+    final isAudio = tracks.every(_isAudioItem);
     await launchPlayerWhilePreparing(
       context,
       manager: manager,
@@ -3751,7 +4021,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       startPlayback: (launchSession) async {
         await runPlaybackStart(
           launchSession,
-          () => manager.playItems(_vm.tracks, startIndex: index),
+          () => manager.playItems(tracks, startIndex: index),
         );
         return true;
       },
@@ -3759,8 +4029,10 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
   }
 
   Future<void> _playPlaylistTrack(BuildContext context, int index) async {
+    if (_vm.playlistSortRefreshing) return;
     final manager = GetIt.instance<PlaybackManager>();
-    final isAudio = _vm.playlistItems.every(_isAudioItem);
+    final tracks = _vm.collectionPlaylistItems;
+    final isAudio = tracks.every(_isAudioItem);
     await launchPlayerWhilePreparing(
       context,
       manager: manager,
@@ -3770,103 +4042,9 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       startPlayback: (launchSession) async {
         await runPlaybackStart(
           launchSession,
-          () => manager.playItems(_vm.playlistItems, startIndex: index),
+          () => manager.playItems(tracks, startIndex: index),
         );
         return true;
-      },
-    );
-  }
-
-  String _getCollectionSortLabel(CollectionSortOption option, AppLocalizations l10n) {
-    return switch (option) {
-      CollectionSortOption.alphabetical => l10n.sortAlphabetical,
-      CollectionSortOption.releaseAscending => l10n.sortReleaseAscending,
-      CollectionSortOption.releaseDescending => l10n.sortReleaseDescending,
-      CollectionSortOption.custom => l10n.sortCustomDragDrop,
-    };
-  }
-
-  void _showCollectionSortDialog(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E24),
-          title: Text(
-            l10n.playlistSortOptions,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: CollectionSortOption.values.map((option) {
-              final active = _vm.collectionSort == option;
-              return Focus(
-                onKeyEvent: (_, event) {
-                  if (isActivateKey(event)) {
-                    _vm.setCollectionSort(option);
-                    Navigator.of(context).pop();
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: Builder(
-                  builder: (context) {
-                    final focused = Focus.of(context).hasFocus;
-                    return InkWell(
-                      onTap: () {
-                        _vm.setCollectionSort(option);
-                        Navigator.of(context).pop();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12.0,
-                          horizontal: 16.0,
-                        ),
-                        decoration: BoxDecoration(
-                          color: focused
-                              ? Colors.white12
-                              : Colors.transparent,
-                          borderRadius: AppRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              active
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_off,
-                              color: active
-                                  ? AppColorScheme.accent
-                                  : Colors.white54,
-                            ),
-                            const SizedBox(width: 16),
-                            Text(
-                              _getCollectionSortLabel(option, l10n),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyLarge
-                                  ?.copyWith(
-                                    color: active
-                                        ? AppColorScheme.accent
-                                        : Colors.white,
-                                    fontWeight: active
-                                        ? FontWeight.bold
-                                        : FontWeight.normal,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              );
-            }).toList(),
-          ),
-        );
       },
     );
   }
@@ -3962,6 +4140,9 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
     AggregatedItem item,
     List<_ModernTab> tabs,
   ) {
+    final series = item.type == 'BookSeries' ? item : null;
+    item = _vm.seriesFeaturedBook ?? item;
+
     final textTheme = Theme.of(context).textTheme;
     final isEpisode = item.type == 'Episode';
     final isSeason = item.type == 'Season';
@@ -4133,9 +4314,13 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
         ),
       );
 
-      final authorOrArtistName = isBookLayout
-          ? (_getAuthorName(item) ?? item.albumArtist)
-          : item.albumArtist;
+      final authorOrArtistName = series == null
+          ? isBookLayout
+              ? (_getAuthorName(item) ?? item.albumArtist)
+              : item.albumArtist
+          : item.name;
+
+      final itemName = series?.name ?? item.name;
 
       final playlistInfo = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4146,7 +4331,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
               maxWidth: _landscape ? 600 : (MediaQuery.sizeOf(context).width - 40),
             ),
             child: MarqueeText(
-              text: item.name,
+              text: itemName,
               style: textTheme.displaySmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: _titleColor,
@@ -4274,12 +4459,16 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
             child: DetailActionButtons(
               viewModel: _vm,
               itemId: item.id,
+              playlistTracksOverride:
+                  item.type == 'Playlist' ? _displayedPlaylistTracks : null,
               selectedMediaSourceId: widget.selectedMediaSourceId,
               onSelectedMediaSourceChanged: widget.onSelectedMediaSourceChanged,
               tvPlayFocusNode: widget.initialFocusNode,
-              downTarget: _vm.tracks.isNotEmpty
-                  ? _trackFocusNodes.putIfAbsent(_vm.tracks.first.id, () => FocusNode())
-                  : null,
+              downTarget: (item.type == 'Playlist' && _vm.tracks.isNotEmpty)
+                  ? _playlistSortFocusNode
+                  : (_vm.tracks.isNotEmpty
+                      ? _trackFocusNodes.putIfAbsent(_vm.tracks.first.id, () => FocusNode())
+                      : null),
               upTarget:
                   authorOrArtistName != null && authorOrArtistName.trim().isNotEmpty
                       ? _artistFocusNode
@@ -4434,6 +4623,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           ],
           const SizedBox(height: 6),
           _metadataRow(context, item, selectedSource),
+          IncompleteRecordingDetailLine(itemId: item.id),
           if (techRow != null) ...[
             const SizedBox(height: 6),
             techRow,
@@ -4503,6 +4693,8 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
           child: DetailActionButtons(
             viewModel: _vm,
             itemId: item.id,
+            playlistTracksOverride:
+                item.type == 'Playlist' ? _displayedPlaylistTracks : null,
             selectedMediaSourceId: widget.selectedMediaSourceId,
             onSelectedMediaSourceChanged: widget.onSelectedMediaSourceChanged,
             tvPlayFocusNode: widget.initialFocusNode,
@@ -4921,15 +5113,18 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
       children: [
         ColoredBox(color: base),
         if (url != null && url.isNotEmpty) ...[
-          OfflineAwareImage(
-            imageUrl: url,
-            fit: BoxFit.cover,
-            alignment: landscape ? Alignment.centerRight : Alignment.topCenter,
-            fadeInDuration: Duration.zero,
-            sourceAspectRatio: 16 / 9,
-            maxDecodeWidth: ArtworkDecode.maxSourceWidth,
-            priority: ImageFetchPriority.high,
-            errorWidget: (context, url, error) => const SizedBox.shrink(),
+          DetailBackdropFit(
+            prefs: widget.prefs,
+            child: OfflineAwareImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              alignment: landscape ? Alignment.centerRight : Alignment.topCenter,
+              fadeInDuration: Duration.zero,
+              sourceAspectRatio: 16 / 9,
+              maxDecodeWidth: ArtworkDecode.maxSourceWidth,
+              priority: ImageFetchPriority.high,
+              errorWidget: (context, url, error) => const SizedBox.shrink(),
+            ),
           ),
           if (item?.type == 'Person' && _randomBackdropUrl == null)
             Positioned.fill(
@@ -5262,6 +5457,7 @@ class _ModernDetailContentState extends State<ModernDetailContent> {
                 const SizedBox(height: 6),
               ],
               _metadataRow(context, item, selectedSource),
+              IncompleteRecordingDetailLine(itemId: item.id),
               if (showRatings) ...[
                 const SizedBox(height: 6),
                 RatingsRow(
@@ -5555,6 +5751,7 @@ String? _endsAt(
 }
 
 const extraCategoriesOrder = [
+  'additionalParts',
   'extras',
   'behindTheScenes',
   'deletedScenes',
@@ -5566,6 +5763,7 @@ const extraCategoriesOrder = [
 ];
 
 String getExtraCategory(AggregatedItem item) {
+  if (item.rawData['__moonfinAdditionalPart'] == true) return 'additionalParts';
   final extraType = item.rawData['ExtraType'] as String?;
   if (extraType == null) return 'extras';
   switch (extraType) {
@@ -5590,6 +5788,8 @@ String getExtraCategory(AggregatedItem item) {
 
 String getExtraCategoryLabel(String key, AppLocalizations l10n) {
   switch (key) {
+    case 'additionalParts':
+      return l10n.additionalParts;
     case 'behindTheScenes':
       return l10n.behindTheScenes;
     case 'deletedScenes':

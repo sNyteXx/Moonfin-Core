@@ -41,7 +41,10 @@ void main() {
     required bool systemIme,
     VoidCallback? onNavigateBack,
   }) async {
-    await preferences.set(UserPreferences.preferSystemImeKeyboard, systemIme);
+    await preferences.set(
+      UserPreferences.keyboardStyle,
+      systemIme ? KeyboardStyle.native : KeyboardStyle.docked,
+    );
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

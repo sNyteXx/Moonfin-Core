@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Изберете која тема ќе се прикаже во Discover.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Примени",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Жанрови на аудио книги",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Изберете кои жанрови да се прикажуваат во Audiobook Discover.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Откријте аудио книги",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Популарни наслови од јавен домен од LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count} наслови",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Скролувајте лево",
     "@scrollLeft": {
@@ -745,10 +720,6 @@
     "@discover": {
         "description": "Section title for book discovery"
     },
-    "trendingTitlesOpenLibrary": "Наслови во тренд по тема од Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
-    },
     "noBookmarkedItems": "Сè уште нема обележани ставки",
     "@noBookmarkedItems": {
         "description": "Empty state for bookmarks grid"
@@ -914,7 +885,7 @@
             }
         }
     },
-    "audiobookCountLabel": "{count, plural, =1{1 аудиокнига} one{{count} аудиокнига} other{{count} аудиокниги}}",
+    "audiobookCountLabel": "{count, plural, one{{count} аудиокнига} other{{count} аудиокниги}}",
     "@audiobookCountLabel": {
         "description": "Subtitle showing number of audiobooks by an author",
         "placeholders": {
@@ -1036,7 +1007,7 @@
     "@publicationDateUnknown": {
         "description": "Placeholder when publication date is unknown"
     },
-    "seasonCount": "{count, plural, =1{1 Сезона} one{{count} Сезона} other{{count} Сезони}}",
+    "seasonCount": "{count, plural, one{{count} Сезона} other{{count} Сезони}}",
     "@seasonCount": {
         "description": "Number of seasons for a series",
         "placeholders": {
@@ -1447,7 +1418,7 @@
             }
         }
     },
-    "trackCount": "{count, plural, =1{1 песна} one{{count} песна} other{{count} песни}}",
+    "trackCount": "{count, plural, one{{count} песна} other{{count} песни}}",
     "@trackCount": {
         "description": "Label showing number of tracks in an album",
         "placeholders": {
@@ -1456,7 +1427,7 @@
             }
         }
     },
-    "chapterCount": "{count, plural, =1{1 поглавје} one{{count} поглавје} other{{count} поглавја}}",
+    "chapterCount": "{count, plural, one{{count} поглавје} other{{count} поглавја}}",
     "@chapterCount": {
         "description": "Label showing number of chapters in an audiobook",
         "placeholders": {
@@ -2490,7 +2461,7 @@
             }
         }
     },
-    "episodeCount": "{count, plural, =1{1 епизода} one{{count} епизода} other{{count} епизоди}}",
+    "episodeCount": "{count, plural, one{{count} епизода} other{{count} епизоди}}",
     "@episodeCount": {
         "description": "Number of episodes with pluralization",
         "placeholders": {
@@ -3500,14 +3471,6 @@
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
     },
-    "enableFolderView": "Овозможи Преглед на папка",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Прикажи ја опцијата за прелистување папки",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
-    },
     "libraryVisibility": "Видливост на библиотеката",
     "@libraryVisibility": {
         "description": "Section title for library visibility"
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Избрана содржина, изглед",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Големина на постер, тип на слика, приказ на папка",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB и извори на оцени",
     "@mdbListTmdbRatingSources": {
@@ -7192,7 +7151,7 @@
     "analyticsTopArtists": "Топ изведувачи",
     "analyticsTopAuthors": "Топ автори",
     "analyticsTopContributors": "Топ придонесувачи",
-    "analyticsLibrariesCount": "{count, plural, =1{1 Библиотека} one{{count} Библиотека} other{{count} Библиотеки}}",
+    "analyticsLibrariesCount": "{count, plural, one{{count} Библиотека} other{{count} Библиотеки}}",
     "@analyticsLibrariesCount": {
         "placeholders": {
             "count": {
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Неуспешно извлекување на .cbr архивата.",
     "cb7ExtractionUnavailable": "Извлекувањето на CB7 не е достапно на оваа платформа.",
     "cb7ExtractionPluginUnavailable": "Приклучокот за извлекување CB7 не е достапен на оваа платформа.",
-    "closeGenrePanel": "Затвори го панелот со жанрови",
     "loadingShuffle": "Се вчитува мешањето...",
     "libraryShuffleLabel": "МЕШАЊЕ НА БИБЛИОТЕКАТА",
     "randomShuffleLabel": "СЛУЧАЈНО МЕШАЊЕ",
@@ -7494,7 +7452,7 @@
     "@latestAudiobooks": {
         "description": "Row title for recently added audiobooks in the book library"
     },
-    "bookSeriesItemCount": "{count, plural, =1{1 книга} one{{count} книга} other{{count} книги}}",
+    "bookSeriesItemCount": "{count, plural, one{{count} книга} other{{count} книги}}",
     "@bookSeriesItemCount": {
         "description": "Subtitle for a book series shelf entry showing how many books it contains",
         "placeholders": {
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Претпочитан јазик за приказ",
     "offlineBannerTitle": "Не сте поврзани",
     "offlineBannerSubtitle": "Се прикажуваат вашите преземања",
-    "offlineBannerAction": "Преземања",
     "serverUnreachableBannerTitle": "Не може да се пристапи до вашиот сервер",
     "serverUnreachableBannerSubtitle": "Се пушта од преземањата додека не се врати",
     "contextMenuHideFromContinueWatching": "Скриј од „Продолжи со гледање“",

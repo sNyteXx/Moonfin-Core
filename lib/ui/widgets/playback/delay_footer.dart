@@ -55,19 +55,19 @@ class _DelayFooterState extends State<DelayFooter> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 1, color: Colors.white.withValues(alpha: 0.08)),
-          const SizedBox(height: 10),
           Row(
             children: [
-              Text(
-                widget.label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: AppTypography.fontSizeSm,
-                  fontWeight: FontWeight.w600,
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: AppTypography.fontSizeSm,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
                 widget.formatDelay(_delay),
                 style: TextStyle(
@@ -100,6 +100,7 @@ class _DelayFooterState extends State<DelayFooter> {
               ),
               const Spacer(),
               OutlinedButton(
+                autofocus: true,
                 onPressed: () {
                   setState(() => _delay = 0.0);
                   widget.onDelayChanged(0.0);

@@ -144,6 +144,15 @@ void main() {
       expect(isArcadeFamilyCore('nes'), isFalse);
     });
 
+    test('isPlayStationDiscFile takes disc images and refuses a PSN .pkg', () {
+      expect(isPlayStationDiscFile('Crash Bandicoot (USA).CUE'), isTrue);
+      expect(isPlayStationDiscFile('Crash Bandicoot (Track 1).bin'), isTrue);
+      expect(isPlayStationDiscFile('Final Fantasy VII (Disc 1).chd'), isTrue);
+      expect(isPlayStationDiscFile('EBOOT.PBP'), isTrue);
+      expect(isPlayStationDiscFile('GZnkJzlCwmDBOkwvDBGq.pkg'), isFalse);
+      expect(isPlayStationDiscFile('readme'), isFalse);
+    });
+
     // FBNeo's license asks that frontends not redistribute the core, and the
     // Apple builds can only run what ships inside the bundle, so they leave it
     // out. Android and desktop are unaffected because the user downloads the
@@ -471,10 +480,47 @@ void _coreOptionDefaultsTests() {
       expect(withCoreOptionDefaults('snes9x', null), isNull);
     });
 
+    test('melonDS reads the touch pad unless the user chose otherwise', () {
+      expect(
+        withCoreOptionDefaults('melonds', null)!['melonds_touch_mode'],
+        'Touch',
+      );
+      expect(
+        withCoreOptionDefaults('melonds', {
+          'melonds_touch_mode': 'Mouse',
+        })!['melonds_touch_mode'],
+        'Mouse',
+      );
+    });
+
+    for (final platform in [TargetPlatform.windows, TargetPlatform.linux]) {
+      test('${platform.name} defaults N64 to the software renderer', () {
+        debugDefaultTargetPlatformOverride = platform;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final merged = withCoreOptionDefaults(n64, {
+          'mupen64plus-rsp-plugin': 'hle',
+        })!;
+        expect(merged['mupen64plus-rdp-plugin'], 'angrylion');
+        expect(merged['mupen64plus-rsp-plugin'], 'hle');
+        expect(merged[cacheKey], '1500');
+      });
+    }
+
+    test('other platforms keep the core renderer defaults', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final merged = withCoreOptionDefaults(n64, null)!;
+      expect(merged.containsKey('mupen64plus-rdp-plugin'), isFalse);
+      expect(merged.containsKey('mupen64plus-rsp-plugin'), isFalse);
+    });
+
     test('every defaulted core is actually in the catalog', () {
       // A typo in a core id would silently never apply.
       final ids = gameCoreCatalog.map((c) => c.coreId).toSet();
-      for (final coreId in coreOptionDefaults.keys) {
+      for (final coreId in [
+        ...coreOptionDefaults.keys,
+        ...softwareOnlyCoreOptionDefaults.keys,
+      ]) {
         expect(ids, contains(coreId), reason: '$coreId is not a known core');
       }
     });

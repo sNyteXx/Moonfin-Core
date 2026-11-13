@@ -1,5 +1,6 @@
 import 'enums.dart';
 import 'system_models.dart';
+import '../util/server_date.dart';
 import 'user_policy.dart';
 
 class ServerUser {
@@ -11,6 +12,9 @@ class ServerUser {
   final UserPolicy? policy;
   final UserConfiguration? configuration;
 
+  /// The UserDto exactly as the server sent it, for posting it back whole.
+  final Map<String, dynamic> raw;
+
   const ServerUser({
     required this.id,
     this.name,
@@ -19,6 +23,7 @@ class ServerUser {
     this.hasPassword = false,
     this.policy,
     this.configuration,
+    this.raw = const {},
   });
 
   factory ServerUser.fromJson(Map<String, dynamic> json) => ServerUser(
@@ -33,6 +38,7 @@ class ServerUser {
         configuration: json['Configuration'] is Map<String, dynamic>
             ? UserConfiguration.fromJson(json['Configuration'] as Map<String, dynamic>)
             : null,
+        raw: json,
       );
 }
 
@@ -197,9 +203,7 @@ class UserItemData {
         playCount: json['PlayCount'] as int? ?? 0,
         isFavorite: json['IsFavorite'] as bool? ?? false,
         played: json['Played'] as bool? ?? false,
-        lastPlayedDate: json['LastPlayedDate'] != null
-            ? DateTime.tryParse(json['LastPlayedDate'] as String)
-            : null,
+        lastPlayedDate: parseServerDate(json['LastPlayedDate']),
       );
 }
 
@@ -358,12 +362,8 @@ class ServerItem {
         childCount: json['ChildCount'] as int?,
         recursiveItemCount: json['RecursiveItemCount'] as int?,
         collectionType: json['CollectionType'] as String?,
-        premiereDate: json['PremiereDate'] != null
-            ? DateTime.tryParse(json['PremiereDate'] as String)
-            : null,
-        dateCreated: json['DateCreated'] != null
-            ? DateTime.tryParse(json['DateCreated'] as String)
-            : null,
+        premiereDate: parseServerDate(json['PremiereDate']),
+        dateCreated: parseServerDate(json['DateCreated']),
         isFolder: json['IsFolder'] as bool? ?? false,
         status: json['Status'] as String?,
         path: json['Path'] as String?,

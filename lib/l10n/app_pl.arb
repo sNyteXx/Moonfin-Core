@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Wybierz kanały tematyczne wyświetlane w Discover.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Zastosuj",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Gatunki audiobooków",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Wybierz gatunki wyświetlane w Audiobook Discover.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Odkryj audiobooki",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Popularne tytuły od LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count, plural, one{1 tytuł} few{{count} tytuły} many{{count} tytułów} other{{count} tytułu}}",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Przewiń w lewo",
     "@scrollLeft": {
@@ -744,10 +719,6 @@
     "discover": "Odkrywaj",
     "@discover": {
         "description": "Section title for book discovery"
-    },
-    "trendingTitlesOpenLibrary": "Popularne tytuły według kategorii w Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
     },
     "noBookmarkedItems": "Nie masz jeszcze żadnych zakładek",
     "@noBookmarkedItems": {
@@ -2795,7 +2766,7 @@
     "@playWhenBrowsingHomeScreen": {
         "description": "Description for theme music on home rows"
     },
-    "detailsBackgroundBlur": "Rozmycie tła na stronie szczegółów",
+    "detailsBackgroundBlur": "Rozmycie tła",
     "@detailsBackgroundBlur": {
         "description": "Setting for details background blur"
     },
@@ -2828,7 +2799,7 @@
     "@fit": {
         "description": "Zoom mode: fit"
     },
-    "autoCrop": "Automatyczne przycinanie",
+    "autoCrop": "Wypełnij ekran",
     "@autoCrop": {
         "description": "Zoom mode: auto crop"
     },
@@ -3499,14 +3470,6 @@
     "showLibrariesFromAllServers": "Pokaż biblioteki ze wszystkich podłączonych serwerów",
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
-    },
-    "enableFolderView": "Włącz widok folderów",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Pokaż opcję przeglądania folderów",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
     },
     "libraryVisibility": "Widoczność biblioteki",
     "@libraryVisibility": {
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Polecane treści, wygląd",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Rozmiar plakatu, typ obrazu, widok folderów",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB i źródła ocen",
     "@mdbListTmdbRatingSources": {
@@ -6593,7 +6552,7 @@
     "settingsDoNothing": "Nie rób nic",
     "settingsMaxBitrateDescription": "Ogranicz bitrate streamingu. Treści powyżej tego progu zostaną transkodowane, aby zmieścić się w limicie.",
     "settingsMaxResolutionDescription": "Ogranicz maksymalną rozdzielczość odtwarzania. Materiały w wyższej rozdzielczości zostaną przeskalowane podczas transkodowania.",
-    "settingsPlayerZoomDescription": "Jak skalować wideo, aby dopasować je do ekranu.",
+    "settingsPlayerZoomDescription": "Określa sposób skalowania wideo do rozmiaru ekranu. Opcja „Wypełnij ekran” powiększa obraz tak, aby wypełnił cały ekran, przycinając jego krawędzie. Nie wykrywa czarnych pasów.",
     "settingsPlaybackEngineAndroidTv": "Silnik odtwarzania (Android TV)",
     "settingsPlaybackEngineAndroidTvDescription": "Wybierz domyślny silnik odtwarzania na urządzeniach z Android TV. Zmiana zacznie obowiązywać przy następnym odtwarzaniu.",
     "settingsPlaybackEngineMedia3Recommended": "Media3 (zalecane)",
@@ -7072,7 +7031,7 @@
     "genresRowItems": "Treści w sekcjach gatunków",
     "genresRowItemsDescription": "Pokazuj filmy, seriale lub oba typy treści w sekcjach gatunków.",
     "appearance": "Wygląd",
-    "cardSize": "Rozmiar kart sekcji ekranu głównego",
+    "cardSize": "Rozmiar kart",
     "externalPlayerApp": "Zewnętrzny odtwarzacz",
     "externalPlayerAskEachTimeSubtitle": "Pokazuj wybór aplikacji przy rozpoczęciu odtwarzania.",
     "loadingInstalledPlayers": "Wczytywanie zainstalowanych odtwarzaczy...",
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Nie udało się wypakować archiwum .cbr.",
     "cb7ExtractionUnavailable": "Wypakowywanie CB7 jest niedostępne na tej platformie.",
     "cb7ExtractionPluginUnavailable": "Wtyczka do wypakowywania CB7 jest niedostępna na tej platformie.",
-    "closeGenrePanel": "Zamknij panel gatunków",
     "loadingShuffle": "Wczytywanie...",
     "libraryShuffleLabel": "LOSUJ Z BIBLIOTEKI",
     "randomShuffleLabel": "LOSOWO",
@@ -7366,7 +7324,7 @@
     "@recommendationSystemTmdb": {
         "description": "Recommendation system option: TMDb Similarity"
     },
-    "recommendationsApplyParentalRatingCap": "Zastosować limit klasyfikacji wiekowej?",
+    "recommendationsApplyParentalRatingCap": "Zastosuj limit klasyfikacji wiekowej",
     "@recommendationsApplyParentalRatingCap": {
         "description": "Label for the toggle that controls whether similar suggestions are capped by target media parental rating"
     },
@@ -7829,7 +7787,7 @@
     "@subtitleModeForeignDescription": {
         "description": "Description for foreign subtitle mode"
     },
-    "showTechnicalDetails": "Pokazywać szczegóły techniczne?",
+    "showTechnicalDetails": "Pokazuj szczegóły techniczne",
     "@showTechnicalDetails": {
         "description": "Label for the detail screen setting to show stream/codec technical details"
     },
@@ -7891,7 +7849,7 @@
     "@enableTrailerAudio": {
         "description": "Description for trailer audio"
     },
-    "fullScreenRows": "Rozszerzone sekcje ekranu głównego",
+    "fullScreenRows": "Rozszerzone sekcje",
     "@fullScreenRows": {
         "description": "Setting for full screen home rows"
     },
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Preferowany język wyświetlania",
     "offlineBannerTitle": "Jesteś offline",
     "offlineBannerSubtitle": "Wyświetlane są pobrane materiały",
-    "offlineBannerAction": "Pobrane",
     "serverUnreachableBannerTitle": "Nie można połączyć się z serwerem",
     "serverUnreachableBannerSubtitle": "Do czasu powrotu serwera odtwarzane będą pobrane materiały",
     "contextMenuHideFromContinueWatching": "Ukryj z „Oglądaj dalej”",
@@ -8577,7 +8534,7 @@
     "@showMediaDetailsOnLibraryPageDescription": {
         "description": "Setting description to show/hide focused media details at the top of the library page"
     },
-    "hideBackdropsInLibraries": "Ukrywać tła podczas przeglądania?",
+    "hideBackdropsInLibraries": "Ukryj tła podczas przeglądania",
     "@hideBackdropsInLibraries": {
         "description": "Setting title to show/hide backdrops when browsing library pages"
     },
@@ -9070,7 +9027,7 @@
     "@settingsSearchHint": {
         "description": "Hint text in the settings search field"
     },
-    "detailsBackgroundOpacity": "Przezroczystość tła szczegółów",
+    "detailsBackgroundOpacity": "Przezroczystość tła",
     "@detailsBackgroundOpacity": {
         "description": "Setting for details background opacity on modern screens"
     },
@@ -9235,7 +9192,7 @@
             }
         }
     },
-    "homeRowsPadding": "Odstępy między sekcjami ekranu głównego",
+    "homeRowsPadding": "Odstępy między sekcjami",
     "@homeRowsPadding": {
         "description": "Title for home rows padding setting"
     },
@@ -9843,7 +9800,7 @@
     "@mediaDetailsAndSpoilers": {
         "description": "Section header for media details and spoiler settings"
     },
-    "hideDetailsMediaDescription": "Ukryj opis na ekranie szczegółów",
+    "hideDetailsMediaDescription": "Ukryj opis",
     "@hideDetailsMediaDescription": {
         "description": "Setting title to hide media description on details screen"
     },
@@ -9851,7 +9808,7 @@
     "@hideDetailsMediaDescriptionSubtitle": {
         "description": "Description for setting to hide media description on details page"
     },
-    "detailUseSeriesThumbnails": "Używaj miniatur serialu na ekranie szczegółów",
+    "detailUseSeriesThumbnails": "Używaj miniatur serialu",
     "@detailUseSeriesThumbnails": {
         "description": "Setting title to replace thumbnails on Classic details page with series thumbnail"
     },
@@ -9859,7 +9816,7 @@
     "@detailUseSeriesThumbnailsSubtitle": {
         "description": "Description for setting to use series thumbnails on Classic details page"
     },
-    "hideHomeMediaDescription": "Ukryj opis na ekranie głównym",
+    "hideHomeMediaDescription": "Ukryj opis",
     "@hideHomeMediaDescription": {
         "description": "Setting title to hide media description on home screen"
     },
@@ -10887,7 +10844,7 @@
     "@loadingAnimationSpeedUltra": {
         "description": "Loading animation speed option: Ultra"
     },
-    "showLoadingAnimationText": "Pokaż tekst?",
+    "showLoadingAnimationText": "Pokaż tekst",
     "@showLoadingAnimationText": {
         "description": "Setting toggle for showing loading animation text"
     },
@@ -10899,7 +10856,7 @@
     "@cropBlackBars": {
         "description": "Setting to detect and crop encoded letterbox/pillarbox bars"
     },
-    "settingsCropBlackBarsDescription": "Wykrywaj zakodowane czarne pasy, przycinaj je i wypełniaj ekran.",
+    "settingsCropBlackBarsDescription": "Wykrywaj i przycinaj czarne pasy zapisane w obrazie po rozpoczęciu odtwarzania, aby wypełnić ekran. Możesz ponownie wykryć pasy za pomocą przycisku powiększenia w odtwarzaczu.",
     "@settingsCropBlackBarsDescription": {
         "description": "Description for the crop black bars playback setting"
     },
@@ -11265,10 +11222,6 @@
     "autoDownloadDelete": "Usuwaj pobrane odcinki",
     "@autoDownloadDelete": {
         "description": "Setting that picks how soon an auto-downloaded episode is removed after it was watched"
-    },
-    "autoDownloadDeleteSubtitle": "Określ, kiedy usuwać automatycznie pobrane odcinki po ich obejrzeniu",
-    "@autoDownloadDeleteSubtitle": {
-        "description": "Explains the delete-after-watching setting"
     },
     "autoDownloadDeleteNever": "Nigdy",
     "@autoDownloadDeleteNever": {
@@ -12565,7 +12518,7 @@
     "@bottomNavbarTabs": {
         "description": "Settings title for choosing which tabs sit on the mobile bottom navigation bar"
     },
-    "bottomNavbarTabsDescription": "Przypnij maksymalnie 3 karty między „Stroną główną” a „Ty”. Pozostałe znajdziesz w menu „Ty”.",
+    "bottomNavbarTabsDescription": "Przypnij do 3 kart między sekcjami „Główna” i „Ty”. Pozostałe znajdują się w dolnym menu nawigacji.",
     "@bottomNavbarTabsDescription": {
         "description": "Explains the bottom bar tabs screen"
     },
@@ -12597,12 +12550,1235 @@
     "@bottomNavbarSplitSearchNote": {
         "description": "Note on the bottom bar tabs screen about the Split style"
     },
-    "bottomNavbarButtonsNote": "Te ustawienia określają, które karty możesz przypiąć do dolnego paska oraz co pojawia się w menu „Ty”.",
+    "bottomNavbarButtonsNote": "Te opcje decydują o tym co pojawia się w centrum dolnego paska nawigacji oraz które karty można przypiąć do paska. Karty znajdujące się już na pasku nie są tutaj wyświetlane.",
     "@bottomNavbarButtonsNote": {
         "description": "Note under the navigation buttons section while the bottom bar is in use"
     },
     "navYou": "Ty",
     "@navYou": {
         "description": "Bottom bar tab that opens the user's own menu with their profile, extra destinations and settings"
+    },
+    "detailSections": "Sekcje",
+    "@detailSections": {
+        "description": "Settings tile title for switching Details screen sections on and off"
+    },
+    "detailSectionsDescription": "Wybierz które elementy z Ekranu szczegółów pokazać",
+    "@detailSectionsDescription": {
+        "description": "Settings tile subtitle for the Details screen sections list"
+    },
+    "detailSectionsScreenDescription": "Na liście znajdują się tylko te sekcje, które mogą być wyświetlane w bieżącym stylu Ekranu Szczegółów. Ukrycie sekcji ukrywa ją we wszystkich stylach, które ją zawierają.",
+    "@detailSectionsScreenDescription": {
+        "description": "Explanatory text at the top of the Details screen sections list"
+    },
+    "detailSectionGroupHeader": "Nagłówek",
+    "@detailSectionGroupHeader": {
+        "description": "Group heading for the title area of the Details screen"
+    },
+    "detailSectionGroupSections": "Sekcje",
+    "@detailSectionGroupSections": {
+        "description": "Group heading for the rows, tabs and cards of the Details screen"
+    },
+    "detailSectionGroupPerson": "Strony osób",
+    "@detailSectionGroupPerson": {
+        "description": "Group heading for sections only shown on a person's Details screen"
+    },
+    "detailSectionGroupCollection": "Strony kolekcji",
+    "@detailSectionGroupCollection": {
+        "description": "Group heading for sections only shown on a collection's Details screen"
+    },
+    "detailSectionGroupOther": "Inne",
+    "@detailSectionGroupOther": {
+        "description": "Group heading for Details screen sections that fit no other group"
+    },
+    "detailSectionLogo": "Logo",
+    "@detailSectionLogo": {
+        "description": "Details screen section: the title logo artwork"
+    },
+    "detailSectionLogoSubtitle": "Wyświetla tytuł jako tekst po wyłączeniu",
+    "@detailSectionLogoSubtitle": {
+        "description": "Subtitle for the logo section switch"
+    },
+    "detailSectionTagline": "Slogan",
+    "@detailSectionTagline": {
+        "description": "Details screen section: the short tagline under the title"
+    },
+    "detailSectionPoster": "Plakat",
+    "@detailSectionPoster": {
+        "description": "Details screen section: the poster image beside the title"
+    },
+    "detailSectionVersionBadge": "Znaczek wersji",
+    "@detailSectionVersionBadge": {
+        "description": "Details screen section: the badge shown when an item has more than one version"
+    },
+    "detailSectionUpNext": "Następnie",
+    "@detailSectionUpNext": {
+        "description": "Details screen section: the next up or next episode card"
+    },
+    "detailSectionLyrics": "Słowa",
+    "@detailSectionLyrics": {
+        "description": "Details screen section: the lyrics panel for songs"
+    },
+    "detailSectionCast": "Obsada",
+    "@detailSectionCast": {
+        "description": "Details screen section: the cast row, tab or card"
+    },
+    "detailSectionCastSubtitle": "Również na stronach kolekcji",
+    "@detailSectionCastSubtitle": {
+        "description": "Subtitle for the cast section switch"
+    },
+    "detailSectionCrew": "Reżyseria i scenariusz",
+    "@detailSectionCrew": {
+        "description": "Details screen section: directors and writers"
+    },
+    "detailSectionStudios": "Studia",
+    "@detailSectionStudios": {
+        "description": "Details screen section: studios and networks"
+    },
+    "detailSectionChapters": "Rozdziały",
+    "@detailSectionChapters": {
+        "description": "Details screen section: chapters"
+    },
+    "detailSectionExtras": "Dodatki",
+    "@detailSectionExtras": {
+        "description": "Details screen section: trailers, featurettes and other extras"
+    },
+    "detailSectionCollections": "Kolekcje",
+    "@detailSectionCollections": {
+        "description": "Details screen section: the collections an item belongs to"
+    },
+    "detailSectionMoreLikeThis": "Podobne tytuły",
+    "@detailSectionMoreLikeThis": {
+        "description": "Details screen section: similar items from the library"
+    },
+    "detailSectionMoreLikeThisSubtitle": "Także podobne albumy i wykonawcy",
+    "@detailSectionMoreLikeThisSubtitle": {
+        "description": "Subtitle for the More Like This section switch"
+    },
+    "detailSectionMoreEpisodes": "Więcej odcinków",
+    "@detailSectionMoreEpisodes": {
+        "description": "Details screen section: the other episodes of a show on an episode's page"
+    },
+    "detailSectionMoreEpisodesSubtitle": "Na stronach odcinków",
+    "@detailSectionMoreEpisodesSubtitle": {
+        "description": "Subtitle for the More episodes section switch"
+    },
+    "detailSectionMediaInfo": "Informacje",
+    "@detailSectionMediaInfo": {
+        "description": "Details screen section: file, stream and Direct Play details"
+    },
+    "detailSectionMediaInfoSubtitle": "Plik, strumienie i weryfikacja Direct Play",
+    "@detailSectionMediaInfoSubtitle": {
+        "description": "Subtitle for the media info section switch"
+    },
+    "detailSectionSeerrGenresTags": "Gatunki i tagi",
+    "@detailSectionSeerrGenresTags": {
+        "description": "Details screen Seerr section: genre and keyword chips"
+    },
+    "detailSectionSeerrStats": "Statystyki",
+    "@detailSectionSeerrStats": {
+        "description": "Details screen Seerr section: TMDB score, status, budget and revenue"
+    },
+    "detailSectionSeerrRecommendations": "Rekomendacje",
+    "@detailSectionSeerrRecommendations": {
+        "description": "Details screen Seerr section: recommended titles"
+    },
+    "detailSectionSeerrSimilar": "Podobne tytuły",
+    "@detailSectionSeerrSimilar": {
+        "description": "Details screen Seerr section: similar titles"
+    },
+    "detailSectionSeerrCollection": "Baner kolekcji",
+    "@detailSectionSeerrCollection": {
+        "description": "Details screen Seerr section: the banner for the collection a movie is part of"
+    },
+    "detailSectionSeerrPersonAppearances": "Występy",
+    "@detailSectionSeerrPersonAppearances": {
+        "description": "Details screen Seerr section: a person's appearances"
+    },
+    "detailSectionSeerrPersonCrew": "Twórcy",
+    "@detailSectionSeerrPersonCrew": {
+        "description": "Details screen Seerr section: a person's crew credits"
+    },
+    "detailSectionPersonPagesSubtitle": "Na stronach osób",
+    "@detailSectionPersonPagesSubtitle": {
+        "description": "Subtitle for Seerr sections only shown on a person's Details screen"
+    },
+    "detailSectionBiography": "Biografia",
+    "@detailSectionBiography": {
+        "description": "Details screen section: a person's biography"
+    },
+    "detailSectionBirthplace": "Miejsce urodzenia",
+    "@detailSectionBirthplace": {
+        "description": "Details screen section: a person's place of birth"
+    },
+    "detailSectionGuestAppearances": "Występy gościnne",
+    "@detailSectionGuestAppearances": {
+        "description": "Details screen section: a person's guest appearances"
+    },
+    "detailSectionMusicVideos": "Teledyski",
+    "@detailSectionMusicVideos": {
+        "description": "Details screen section: a person's music videos"
+    },
+    "detailSectionPlaylistOrder": "Kolejność odtwarzania",
+    "@detailSectionPlaylistOrder": {
+        "description": "Details screen section: a collection's playlist order"
+    },
+    "detailSectionBookGenres": "Gatunki książek",
+    "@detailSectionBookGenres": {
+        "description": "Details screen section: the genre chips on a book's page"
+    },
+    "detailSectionPhotoExif": "Szczegóły zdjęcia",
+    "@detailSectionPhotoExif": {
+        "description": "Details screen section: camera and image details on a photo's page"
+    },
+    "libraryOrder": "Kolejność biblioteki",
+    "@libraryOrder": {
+        "description": "Title of the settings screen that reorders the user's libraries"
+    },
+    "libraryOrderSubtitle": "Wybierz kolejność swoich bibliotek",
+    "@libraryOrderSubtitle": {
+        "description": "Subtitle of the Library Order entry in the libraries settings"
+    },
+    "libraryOrderDescription": "Biblioteki będą wyświetlane w tej kolejności w sekcji Moje media, wierszach „Ostatnio dodane” oraz na pasku nawigacji. Kolejność jest zapisywana na koncie serwera, dzięki czemu inne aplikacje, do których się zalogujesz, również z niej skorzystają.",
+    "@libraryOrderDescription": {
+        "description": "Explanation shown at the top of the Library Order settings screen"
+    },
+    "libraryOrderTvHint": "Naciśnij w lewo lub w prawo, aby przesunąć zaznaczoną bibliotekę.",
+    "@libraryOrderTvHint": {
+        "description": "Remote control hint on the Library Order settings screen"
+    },
+    "libraryOrderSaveFailed": "Nie udało się zapisać kolejności bibliotek",
+    "@libraryOrderSaveFailed": {
+        "description": "Error shown when saving the library order to the server fails"
+    },
+    "trackActionViewDetails": "Zobacz szczegóły",
+    "untrustedServerCertificate": "Certyfikat tego serwera nie jest zaufany. Jeśli to Twój własny serwer i korzysta z certyfikatu samopodpisanego lub prywatnego, możesz na niego zezwolić w tym miejscu.",
+    "@untrustedServerCertificate": {
+        "description": "Shown on the sign-in screens when a server's TLS certificate is rejected, above a button that turns on Allow self-signed certificates"
+    },
+    "achievementsUnlockToasts": "Odblokuj powiadomienia",
+    "@achievementsUnlockToasts": {
+        "description": "Switch that shows a notification when the user unlocks a badge"
+    },
+    "achievementsUnlockToastsSubtitle": "Pokaż powiadomienie po odblokowaniu odznaki",
+    "@achievementsUnlockToastsSubtitle": {
+        "description": "Subtitle of the unlock notifications switch"
+    },
+    "achievementsUnlockedNotification": "Osiągnięcie odblokowane",
+    "@achievementsUnlockedNotification": {
+        "description": "Title of the notification for one newly unlocked badge"
+    },
+    "achievementsUnlockedCount": "{count, plural, one {Odblokowano {count} osiągnięcie} few {Odblokowano {count} osiągnięcia} many {Odblokowano {count} osiągnięć} other {Odblokowano {count} osiągnięć}}",
+    "@achievementsUnlockedCount": {
+        "description": "Title of the notification for several badges unlocked at once",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "achievementsUnlockedMore": "+{count} więcej",
+    "@achievementsUnlockedMore": {
+        "description": "Follows the first few badge names when more were unlocked at once",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "friends": "Znajomi",
+    "@friends": {
+        "description": "Title of the friends panel from the Achievement Badges plugin"
+    },
+    "friendsSubtitle": "Zobacz kto jest dostępny i rozmawiaj z osobami na tym serwerze",
+    "@friendsSubtitle": {
+        "description": "Subtitle of the Friends entry"
+    },
+    "friendsShowButton": "Pokaż przycisk „Znajomi”",
+    "@friendsShowButton": {
+        "description": "Navigation setting that adds a Friends button"
+    },
+    "friendsShowButtonSubtitle": "Znajomi i czat z wtyczki Odznaki osiągnięć",
+    "@friendsShowButtonSubtitle": {
+        "description": "Subtitle of the setting that adds a Friends button"
+    },
+    "friendsMessages": "Wiadomości",
+    "@friendsMessages": {
+        "description": "Entry that opens the list of chats"
+    },
+    "friendsUnreadCount": "{count, plural, =0 {Brak nieprzeczytanych wiadomości} one {{count} nieprzeczytana wiadomość} few {{count} nieprzeczytane wiadomości} many {{count} nieprzeczytanych wiadomości} other {{count} nieprzeczytanych wiadomości}}",
+    "@friendsUnreadCount": {
+        "description": "How many chat messages are unread",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "friendsRequests": "Zaproszenia do znajomych",
+    "@friendsRequests": {
+        "description": "Entry that opens pending friend requests"
+    },
+    "friendsRequestCount": "{count, plural, =0 {Brak oczekujących} one {{count} czeka na Ciebie} few {{count} czekają na Ciebie} many {{count} czeka na Ciebie} other {{count} czeka na Ciebie}}",
+    "@friendsRequestCount": {
+        "description": "How many friend requests wait for an answer",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "friendsAdd": "Dodaj znajomych",
+    "@friendsAdd": {
+        "description": "Entry that opens the people search"
+    },
+    "friendsAddSubtitle": "Znajdź osoby na tym serwerze",
+    "@friendsAddSubtitle": {
+        "description": "Subtitle of the Add friends entry"
+    },
+    "friendsPrivacy": "Prywatność",
+    "@friendsPrivacy": {
+        "description": "Entry that opens the friends privacy settings"
+    },
+    "friendsPrivacySubtitle": "Co mogą zobaczyć znajomi",
+    "@friendsPrivacySubtitle": {
+        "description": "Subtitle of the friends Privacy entry"
+    },
+    "friendsOnline": "Dostępny",
+    "@friendsOnline": {
+        "description": "Section header and status for friends who are online"
+    },
+    "friendsOffline": "Niedostępny",
+    "@friendsOffline": {
+        "description": "Section header and status for friends who are offline"
+    },
+    "friendsNone": "Nie masz jeszcze znajomych. Dodaj osoby z tego serwera, aby zobaczyć je w tym miejscu.",
+    "@friendsNone": {
+        "description": "Shown when the friends list is empty"
+    },
+    "friendsWatching": "Ogląda: {title}",
+    "@friendsWatching": {
+        "description": "Status line of a friend who is playing something",
+        "placeholders": {
+            "title": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsLastWatched": "Ostatnio obejrzano {title}",
+    "@friendsLastWatched": {
+        "description": "Status line of an offline friend with the last thing they played",
+        "placeholders": {
+            "title": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsLastSeen": "Ostatnio widziano {time}",
+    "@friendsLastSeen": {
+        "description": "Status line of an offline friend, with a relative time such as 5m ago",
+        "placeholders": {
+            "time": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsLoadFailed": "Nie udało się załadować zawartości. Sprawdź połączenie z siecią i spróbuj ponownie.",
+    "@friendsLoadFailed": {
+        "description": "Shown when a friends or chat screen fails to load"
+    },
+    "friendsActionFailed": "Wystąpił błąd. Spróbuj ponownie za chwilę.",
+    "@friendsActionFailed": {
+        "description": "Shown when a friends or chat action fails without a reason from the server"
+    },
+    "friendsIncoming": "Czeka na Ciebie",
+    "@friendsIncoming": {
+        "description": "Section header for friend requests others sent"
+    },
+    "friendsOutgoing": "Wysłane przez Ciebie",
+    "@friendsOutgoing": {
+        "description": "Section header for friend requests the user sent"
+    },
+    "friendsNoRequests": "Brak zaproszeń do znajomych.",
+    "@friendsNoRequests": {
+        "description": "Shown when there are no pending friend requests"
+    },
+    "friendsAccept": "Akceptuj",
+    "@friendsAccept": {
+        "description": "Accept a friend request"
+    },
+    "friendsDecline": "Odrzuć",
+    "@friendsDecline": {
+        "description": "Decline a friend request"
+    },
+    "friendsCancelRequest": "Anuluj prośbę",
+    "@friendsCancelRequest": {
+        "description": "Take back a friend request the user sent"
+    },
+    "friendsRequestFrom": "{name} chce dodać Cię do znajomych",
+    "@friendsRequestFrom": {
+        "description": "Title of the dialog answering a friend request",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsCancelRequestBody": "Cofnąć zaproszenie wysłane do {name}?",
+    "@friendsCancelRequestBody": {
+        "description": "Body of the dialog cancelling a sent friend request",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsSearchHint": "Szukaj osób",
+    "@friendsSearchHint": {
+        "description": "Hint of the people search field"
+    },
+    "friendsNoMatches": "Nie znaleziono nikogo o tej nazwie.",
+    "@friendsNoMatches": {
+        "description": "Shown when the people search finds nobody"
+    },
+    "friendsRequestSent": "Wysłano zaproszenie do {name}",
+    "@friendsRequestSent": {
+        "description": "Shown after sending a friend request",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsSendRequest": "Dodaj do znajomych",
+    "@friendsSendRequest": {
+        "description": "Action that sends a friend request to someone"
+    },
+    "friendsSendMessage": "Wyślij wiadomość",
+    "@friendsSendMessage": {
+        "description": "Action that opens a chat with a friend"
+    },
+    "friendsOpenItem": "Otwórz {title}",
+    "@friendsOpenItem": {
+        "description": "Action that opens what a friend is watching",
+        "placeholders": {
+            "title": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsRemove": "Usuń znajomego",
+    "@friendsRemove": {
+        "description": "Action that removes a friend"
+    },
+    "friendsRemoveBody": "Usunąć {name} ze znajomych? Możesz dodać tę osobę ponownie później.",
+    "@friendsRemoveBody": {
+        "description": "Body of the dialog removing a friend",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsBlock": "Zablokuj",
+    "@friendsBlock": {
+        "description": "Action that blocks a user from messaging"
+    },
+    "friendsUnblock": "Odblokuj",
+    "@friendsUnblock": {
+        "description": "Action that unblocks a user"
+    },
+    "friendsBlockBody": "Zablokować {name}? Żadne z was nie będzie mogło wysyłać do siebie bezpośrednich wiadomości. Wspólne czaty grupowe pozostaną otwarte.",
+    "@friendsBlockBody": {
+        "description": "Body of the dialog blocking a user",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsUnblockBody": "Odblokować {name}?",
+    "@friendsUnblockBody": {
+        "description": "Body of the dialog unblocking a user",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsBlocked": "Zablokowani użytkownicy",
+    "@friendsBlocked": {
+        "description": "Section header listing blocked users"
+    },
+    "friendsProfileHidden": "Profil użytkownika {name} jest prywatny.",
+    "@friendsProfileHidden": {
+        "description": "Shown when another user hides their profile",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "friendsAppearOffline": "Niewidoczny",
+    "@friendsAppearOffline": {
+        "description": "Privacy setting that always shows the user as offline"
+    },
+    "friendsAppearOfflineSubtitle": "Znajomi zawsze widzą Twój status jako niedostępny",
+    "@friendsAppearOfflineSubtitle": {
+        "description": "Subtitle of the Appear offline setting"
+    },
+    "friendsHideNowPlaying": "Ukryj to co oglądam",
+    "@friendsHideNowPlaying": {
+        "description": "Privacy setting that hides what is playing"
+    },
+    "friendsHideNowPlayingSubtitle": "Znajomi nadal widzą Twój status jako dostępny, ale nie widzą odtwarzanych treści",
+    "@friendsHideNowPlayingSubtitle": {
+        "description": "Subtitle of the Hide what I am watching setting"
+    },
+    "friendsHideLastWatched": "Ukryj ostatnio oglądane",
+    "@friendsHideLastWatched": {
+        "description": "Privacy setting that hides the last played item while offline"
+    },
+    "friendsHideLastWatchedSubtitle": "Znajomi nie zobaczą ostatnio oglądanych treści gdy jesteś niedostępny",
+    "@friendsHideLastWatchedSubtitle": {
+        "description": "Subtitle of the Hide my last watched setting"
+    },
+    "friendsMessageNotifications": "Powiadomienia wiadomości",
+    "@friendsMessageNotifications": {
+        "description": "Setting that shows a banner for new chat messages"
+    },
+    "friendsMessageNotificationsSubtitle": "Wyświetlaj baner gdy znajomy napisze wiadomość",
+    "@friendsMessageNotificationsSubtitle": {
+        "description": "Subtitle of the Message notifications setting"
+    },
+    "friendsMuteDuringPlayback": "Wycisz podczas odtwarzania",
+    "@friendsMuteDuringPlayback": {
+        "description": "Setting that hides new message banners while a video or game plays"
+    },
+    "friendsMuteDuringPlaybackSubtitle": "Brak banerów z wiadomościami podczas odtwarzania wideo lub gry",
+    "@friendsMuteDuringPlaybackSubtitle": {
+        "description": "Subtitle of the Mute during playback setting"
+    },
+    "friendsSaveFailed": "Nie udało się zapisać ustawień.",
+    "@friendsSaveFailed": {
+        "description": "Shown when the friends privacy settings fail to save"
+    },
+    "chatNew": "Nowa wiadomość",
+    "@chatNew": {
+        "description": "Entry that starts a chat with one friend"
+    },
+    "chatNewSubtitle": "Rozpocznij czat ze znajomym",
+    "@chatNewSubtitle": {
+        "description": "Subtitle of the New message entry"
+    },
+    "chatNewGroup": "Nowa grupa",
+    "@chatNewGroup": {
+        "description": "Entry that creates a group chat"
+    },
+    "chatNewGroupSubtitle": "Czatuj z kilkoma znajomymi jednocześnie",
+    "@chatNewGroupSubtitle": {
+        "description": "Subtitle of the New group entry"
+    },
+    "chatNone": "Brak wiadomości.",
+    "@chatNone": {
+        "description": "Shown when there are no chats or no messages in a chat"
+    },
+    "chatYou": "Ty",
+    "@chatYou": {
+        "description": "Stands for the signed-in user in chats and member lists"
+    },
+    "chatYouSaid": "Ty: {text}",
+    "@chatYouSaid": {
+        "description": "Preview of the last chat message when the user sent it",
+        "placeholders": {
+            "text": {
+                "type": "String"
+            }
+        }
+    },
+    "chatPhoto": "Zdjęcie",
+    "@chatPhoto": {
+        "description": "Preview of a chat message that is an image"
+    },
+    "chatEmoji": "Emoji",
+    "@chatEmoji": {
+        "description": "Button that opens the emoji picker in a chat"
+    },
+    "chatEmojiSearch": "Szukaj emoji",
+    "@chatEmojiSearch": {
+        "description": "Hint of the search field in the emoji picker"
+    },
+    "chatNoRecentEmoji": "Brak ostatnich emoji",
+    "@chatNoRecentEmoji": {
+        "description": "Shown in the emoji picker's recent tab before any emoji was used"
+    },
+    "chatViewPhoto": "Wyświetl zdjęcie",
+    "@chatViewPhoto": {
+        "description": "Action that opens a photo sent in a chat at full size"
+    },
+    "chatHint": "Napisz wiadomość",
+    "@chatHint": {
+        "description": "Hint of the chat message field"
+    },
+    "chatAttach": "Wyślij zdjęcie",
+    "@chatAttach": {
+        "description": "Button that picks an image to send in a chat"
+    },
+    "chatEdited": "edytowano",
+    "@chatEdited": {
+        "description": "Marks a chat message that was changed after sending"
+    },
+    "chatSeen": "Wyświetlono",
+    "@chatSeen": {
+        "description": "Read receipt on a sent chat message"
+    },
+    "chatSent": "Wysłano",
+    "@chatSent": {
+        "description": "Delivery mark on a sent chat message nobody has read yet"
+    },
+    "chatEditing": "Edycja wiadomości",
+    "@chatEditing": {
+        "description": "Banner above the chat field while changing a sent message"
+    },
+    "chatMessageOptions": "Opcje wiadomości",
+    "@chatMessageOptions": {
+        "description": "Title of the dialog with actions for a chat message"
+    },
+    "chatDeleteBody": "Usunąć tę wiadomość dla wszystkich?",
+    "@chatDeleteBody": {
+        "description": "Body of the dialog deleting a chat message"
+    },
+    "chatClear": "Wyczyść czat",
+    "@chatClear": {
+        "description": "Action that deletes every message in a chat"
+    },
+    "chatClearBody": "Usunąć wszystkie wiadomości z tego czatu dla wszystkich?",
+    "@chatClearBody": {
+        "description": "Body of the dialog clearing a chat"
+    },
+    "chatGroupInfo": "Informacje o grupie",
+    "@chatGroupInfo": {
+        "description": "Screen and action with a group chat name and members"
+    },
+    "chatGroupName": "Nazwa grupy",
+    "@chatGroupName": {
+        "description": "Label of the group chat name field"
+    },
+    "chatMemberCount": "{count, plural, one {1 członek} few {{count} członków} many {{count} członków} other {{count} członków}}",
+    "@chatMemberCount": {
+        "description": "How many people are in a group chat",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "chatOwner": "Właściciel",
+    "@chatOwner": {
+        "description": "Marks the person who created a group chat"
+    },
+    "chatAdmin": "Admin",
+    "@chatAdmin": {
+        "description": "Marks a group chat admin"
+    },
+    "chatMakeAdmin": "Zrób adminem",
+    "@chatMakeAdmin": {
+        "description": "Action that makes a group member an admin"
+    },
+    "chatRemoveAdmin": "Usuń admina",
+    "@chatRemoveAdmin": {
+        "description": "Action that takes admin away from a group member"
+    },
+    "chatRemoveMember": "Usuń z grupy",
+    "@chatRemoveMember": {
+        "description": "Action that removes someone from a group chat"
+    },
+    "chatAddMember": "Dodaj osoby",
+    "@chatAddMember": {
+        "description": "Action that adds friends to a group chat"
+    },
+    "chatNobodyToAdd": "Brak osób do dodania.",
+    "@chatNobodyToAdd": {
+        "description": "Shown when every friend is already in the group"
+    },
+    "chatLeave": "Wyjdź z grupy",
+    "@chatLeave": {
+        "description": "Action that leaves a group chat"
+    },
+    "chatLeaveBody": "Opuścić tę grupę? Aby wrócić, ktoś musi dodać Cię ponownie.",
+    "@chatLeaveBody": {
+        "description": "Body of the dialog leaving a group chat"
+    },
+    "chatCreate": "Stwórz grupę",
+    "@chatCreate": {
+        "description": "Button that creates a group chat"
+    },
+    "chatPickMembers": "Wybierz co najmniej dwóch znajomych",
+    "@chatPickMembers": {
+        "description": "Hint on the new group screen"
+    },
+    "chatNewMessageFrom": "Nowa wiadomość od {name}",
+    "@chatNewMessageFrom": {
+        "description": "Title of the banner for a new chat message",
+        "placeholders": {
+            "name": {
+                "type": "String"
+            }
+        }
+    },
+    "chatImageTooLarge": "Ten obraz ma ponad 8 MB.",
+    "@chatImageTooLarge": {
+        "description": "Shown when a picked chat image is too big"
+    },
+    "chatImageUnsupported": "Można wysyłać obrazy tylko w formatach PNG, JPEG, GIF i WebP.",
+    "@chatImageUnsupported": {
+        "description": "Shown when a picked chat image has an unsupported type"
+    },
+    "spotlightFileDetails": "Szczegóły pliku",
+    "@spotlightFileDetails": {
+        "description": "Title of the spotlight summary card that opens the file details modal"
+    },
+    "fetchingSubtitles": "Pobieranie napisów",
+    "@fetchingSubtitles": {
+        "description": "Playback status shown while the selected subtitle file is loading"
+    },
+    "shortcutRecropBlackBars": "Ponownie wykryj czarne pasy",
+    "@shortcutRecropBlackBars": {
+        "description": "Player shortcut to run letterbox crop detection now"
+    },
+    "nextSeriesRecording": "Następne nagranie serialu: {dateTime}",
+    "@nextSeriesRecording": {
+        "description": "Next scheduled recording for the current series, shown in the Live TV recording dialog",
+        "placeholders": {
+            "dateTime": {
+                "type": "String",
+                "example": "Oct 5, 2026 · 8:00 PM"
+            }
+        }
+    },
+    "noUpcomingSeriesRecording": "Zaplanowano nagrywanie serialu, ale w programie nie ma nadchodzących odcinków",
+    "@noUpcomingSeriesRecording": {
+        "description": "A series recording rule exists but no future episode timer is available"
+    },
+    "recordCurrentEpisode": "Nagraj ten odcinek",
+    "@recordCurrentEpisode": {
+        "description": "Live TV player action to record only the current episode"
+    },
+    "recordCurrentProgram": "Nagraj ten program",
+    "@recordCurrentProgram": {
+        "description": "Live TV player action to record only the current program"
+    },
+    "cancelCurrentRecording": "Anuluj to nagranie",
+    "@cancelCurrentRecording": {
+        "description": "Live TV player action to cancel only the current recording, leaving any series rule intact"
+    },
+    "seasonalChristmas": "Boże Narodzenie",
+    "@seasonalChristmas": {
+        "description": "Seasonal effect: snow with falling baubles and stars"
+    },
+    "seasonalPetals": "Wiosenne płatki",
+    "@seasonalPetals": {
+        "description": "Seasonal effect: falling cherry blossoms and petals with bees flying by"
+    },
+    "seasonalFireflies": "Świetliki",
+    "@seasonalFireflies": {
+        "description": "Seasonal effect: glowing fireflies for summer"
+    },
+    "seasonalHalloween": "Halloween",
+    "@seasonalHalloween": {
+        "description": "Seasonal effect: bats, ghosts, candy and orange and purple leaves"
+    },
+    "seasonalDensity": "Intensywność",
+    "@seasonalDensity": {
+        "description": "Setting for how many seasonal effect particles are on screen at once"
+    },
+    "seasonalDensityLight": "Niska",
+    "@seasonalDensityLight": {
+        "description": "Seasonal effect density: fewest particles"
+    },
+    "seasonalDensityNormal": "Normalna",
+    "@seasonalDensityNormal": {
+        "description": "Seasonal effect density: the default amount"
+    },
+    "seasonalDensityHeavy": "Wysoka",
+    "@seasonalDensityHeavy": {
+        "description": "Seasonal effect density: most particles"
+    },
+    "seasonalRow": "Wiersz sezonowy",
+    "@seasonalRow": {
+        "description": "Name of the Home row that shows holiday movies"
+    },
+    "seasonalRowDescription": "Wyświetlaj wiersz filmów świątecznych z biblioteki oraz propozycje z Seerr, jeśli są dostępne.",
+    "@seasonalRowDescription": {
+        "description": "Explains the seasonal Home row setting"
+    },
+    "seasonalRowSubtitle": "Sezonowe",
+    "@seasonalRowSubtitle": {
+        "description": "Source label shown under the seasonal row's title"
+    },
+    "seasonalRowCountry": "Kraj",
+    "@seasonalRowCountry": {
+        "description": "Setting for which country's holidays the seasonal row follows"
+    },
+    "seasonalRowCountryAuto": "Automatycznie",
+    "@seasonalRowCountryAuto": {
+        "description": "Country option that reads the country from the device"
+    },
+    "countryUnitedStates": "Stany Zjednoczone",
+    "@countryUnitedStates": {
+        "description": "Country name"
+    },
+    "countryCanada": "Kanada",
+    "@countryCanada": {
+        "description": "Country name"
+    },
+    "seasonalRowCountryOther": "Inny",
+    "@seasonalRowCountryOther": {
+        "description": "Country option for a country the seasonal row does not list"
+    },
+    "seasonalRowHolidays": "Święta",
+    "@seasonalRowHolidays": {
+        "description": "Heading for the list of holidays the seasonal row can show"
+    },
+    "seasonalRowHolidaysHint": "Odznacz święto, aby ukryć jego wiersz.",
+    "@seasonalRowHolidaysHint": {
+        "description": "Hint under the holiday checklist"
+    },
+    "holidayNewYear": "Nowy Rok",
+    "@holidayNewYear": {
+        "description": "Seasonal row title for New Year's"
+    },
+    "holidayValentines": "Walentynki",
+    "@holidayValentines": {
+        "description": "Seasonal row title for Valentine's Day"
+    },
+    "holidayEaster": "Wielkanoc",
+    "@holidayEaster": {
+        "description": "Seasonal row title for Easter"
+    },
+    "holidayPride": "Miesiąc Dumy",
+    "@holidayPride": {
+        "description": "Seasonal row title for Pride month"
+    },
+    "holidayHalloween": "Halloween",
+    "@holidayHalloween": {
+        "description": "Seasonal row title for Halloween"
+    },
+    "holidayThanksgiving": "Święto Dziękczynienia",
+    "@holidayThanksgiving": {
+        "description": "Seasonal row title for Thanksgiving"
+    },
+    "holidayChristmas": "Filmy bożonarodzeniowe",
+    "@holidayChristmas": {
+        "description": "Seasonal row title for Christmas"
+    },
+    "holidayLunarNewYear": "Księżycowy Nowy Rok",
+    "@holidayLunarNewYear": {
+        "description": "Seasonal row title for Lunar New Year"
+    },
+    "holidayDiwali": "Diwali",
+    "@holidayDiwali": {
+        "description": "Seasonal row title for Diwali"
+    },
+    "cropBlackBarsRecropInterval": "Częstotliwość ponownego wykrywania",
+    "@cropBlackBarsRecropInterval": {
+        "description": "Setting for how often to re-detect encoded letterbox bars"
+    },
+    "cropBlackBarsOnce": "Raz na początku",
+    "@cropBlackBarsOnce": {
+        "description": "Letterbox recrop interval: detect once after playback starts"
+    },
+    "cropBlackBarsEverySecond": "Co sekundę",
+    "@cropBlackBarsEverySecond": {
+        "description": "Letterbox recrop interval: scan about once a second"
+    },
+    "settingsCropBlackBarsIntervalDescription": "Dostosowuj obraz do zmian proporcji podczas odtwarzania.",
+    "@settingsCropBlackBarsIntervalDescription": {
+        "description": "Description for the letterbox recrop-interval setting"
+    },
+    "playerRecroppingBlackBars": "Ponowne wykrywanie czarnych pasów",
+    "@playerRecroppingBlackBars": {
+        "description": "Toast when the player re-runs letterbox crop detection"
+    },
+    "pluginConnected": "Połączono",
+    "@pluginConnected": {
+        "description": "Status line on the Settings Sync screen when the server plugin answers"
+    },
+    "pluginConnectedVersion": "Połączono, wersja {version}",
+    "@pluginConnectedVersion": {
+        "description": "Status line on the Settings Sync screen with the server plugin's version",
+        "placeholders": {
+            "version": {
+                "type": "String"
+            }
+        }
+    },
+    "pluginSyncOn": "Synchronizacja włączona",
+    "@pluginSyncOn": {
+        "description": "Caption under the settings sync switch while sync is on"
+    },
+    "pluginSyncOff": "Synchronizacja wyłączona",
+    "@pluginSyncOff": {
+        "description": "Caption under the settings sync switch while sync is off"
+    },
+    "syncProfileDescription": "To urządzenie synchronizuje ustawienia z wybranym profilem, dopóki nie wybierzesz innego.",
+    "@syncProfileDescription": {
+        "description": "Caption above the settings profile cards on the Settings Sync screen"
+    },
+    "profileAppliesEverywhere": "Obowiązuje wszędzie",
+    "@profileAppliesEverywhere": {
+        "description": "Subtitle of the Global settings profile card"
+    },
+    "profileOverridesGlobal": "Zastępuje ustawienia globalne",
+    "@profileOverridesGlobal": {
+        "description": "Subtitle of the Desktop, Mobile and TV settings profile cards"
+    },
+    "profileThisDevice": "To urządzenie",
+    "@profileThisDevice": {
+        "description": "Marks the settings profile card that matches the current device"
+    },
+    "profileLoad": "Wczytaj",
+    "@profileLoad": {
+        "description": "Button that replaces this device's settings with the chosen profile from the server"
+    },
+    "profileLoadSubtitle": "Z serwera na to urządzenie",
+    "@profileLoadSubtitle": {
+        "description": "Line under the Load button saying which way the settings go"
+    },
+    "profileSaveSubtitle": "Z tego urządzenia na serwer",
+    "@profileSaveSubtitle": {
+        "description": "Line under the Save button saying which way the settings go"
+    },
+    "resetNamedProfile": "Zresetuj profil {profile}",
+    "@resetNamedProfile": {
+        "description": "Button that resets the chosen settings profile, for example Reset TV Profile",
+        "placeholders": {
+            "profile": {
+                "type": "String"
+            }
+        }
+    },
+    "seerrDiscoverSliders": "Karuzele odkrywania Seerr",
+    "@seerrDiscoverSliders": {
+        "description": "Seerr Lists heading for the sliders an admin set up on Seerr's discover page"
+    },
+    "preferTextSubtitles": "Preferuj napisy tekstowe",
+    "preferTextSubtitlesSubtitle": "Daj pierwszeństwo napisom tekstowym (SRT, VTT) przed formatami graficznymi (PGS, VobSub).",
+    "preferExternalSubtitles": "Preferuj napisy zewnętrzne",
+    "preferExternalSubtitlesSubtitle": "Daj pierwszeństwo zewnętrznym plikom napisów przed napisami osadzonymi w pliku.",
+    "smartDownloadsSection": "Inteligentne pobieranie",
+    "@smartDownloadsSection": {
+        "description": "Settings section header for downloading the next episodes of a series after one is watched"
+    },
+    "smartDownloadsEnable": "Pobieraj kolejne odcinki",
+    "@smartDownloadsEnable": {
+        "description": "Switch that swaps a watched downloaded episode for the next episodes of the series"
+    },
+    "smartDownloadsKeepReady": "Liczba pobranych odcinków",
+    "@smartDownloadsKeepReady": {
+        "description": "Setting for how many unwatched episodes of a series stay downloaded after one is watched"
+    },
+    "smartDownloadsKeepReadySubtitle": "{count, plural, =1{Zachowuje pobrany następny odcinek} few{Zachowuje pobrane kolejne {count} odcinki} many{Zachowuje pobrane kolejne {count} odcinków} other{Zachowuje pobrane kolejne {count} odcinka}}",
+    "@smartDownloadsKeepReadySubtitle": {
+        "description": "Subtitle under the episodes to keep ready setting",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "smartDownloadsKeepReadyLowered": "Już pobrane odcinki pozostaną na urządzeniu. Nowa liczba będzie obowiązywać przy kolejnych pobraniach.",
+    "@smartDownloadsKeepReadyLowered": {
+        "description": "Shown after lowering the episodes to keep downloaded, explaining nothing is deleted"
+    },
+    "appleTvHomeScreen": "Ekran główny Apple TV",
+    "@appleTvHomeScreen": {
+        "description": "Section header in Home Screen settings for options that affect the tvOS home screen outside the app"
+    },
+    "topShelf": "Top Shelf",
+    "@topShelf": {
+        "description": "Apple TV settings label for what the tvOS home screen shows above the Moonfin icon. Top Shelf is Apple's name for that area"
+    },
+    "topShelfDescription": "Określa, co pojawia się nad ikoną Moonfin na ekranie głównym Apple TV po jej zaznaczeniu. To ustawienie dotyczy tylko tego urządzenia.",
+    "@topShelfDescription": {
+        "description": "Apple TV settings subtitle for the Top Shelf option"
+    },
+    "topShelfLatestMedia": "Najnowsze multimedia",
+    "@topShelfLatestMedia": {
+        "description": "Top Shelf option that shows a carousel of the newest items from the home screen's Latest rows"
+    },
+    "topShelfAppBanner": "Baner Moonfin",
+    "@topShelfAppBanner": {
+        "description": "Top Shelf option that shows only the static Moonfin logo banner, nothing from the library"
+    },
+    "detailsPage": "Strona szczegółów",
+    "@detailsPage": {
+        "description": "Settings entry and screen for options that shape the details page"
+    },
+    "storageAndDownloads": "Pamięć i pobieranie",
+    "@storageAndDownloads": {
+        "description": "Settings root entry and screen for downloads, storage location and the image cache"
+    },
+    "settingsSync": "Synchronizacja ustawień",
+    "@settingsSync": {
+        "description": "Settings screen for syncing settings through the Moonbase plugin"
+    },
+    "settingsSyncSubtitle": "Synchronizacja przez wtyczkę Moonbase i profile ustawień",
+    "@settingsSyncSubtitle": {
+        "description": "Subtitle for the Settings Sync entry"
+    },
+    "navigationBar": "Pasek nawigacji",
+    "@navigationBar": {
+        "description": "Settings screen for the navigation bar style and buttons"
+    },
+    "homeRows": "Wiersze",
+    "@homeRows": {
+        "description": "Settings entry and screen for turning Home rows on or off and ordering them"
+    },
+    "homeRowsSubtitle": "Włączaj i wyłączaj wiersze oraz zmieniaj ich kolejność",
+    "@homeRowsSubtitle": {
+        "description": "Subtitle for the Home rows entry"
+    },
+    "rowOptions": "Opcje wierszy",
+    "@rowOptions": {
+        "description": "Settings screen with sorting and content options for each Home row"
+    },
+    "rowOptionsSubtitle": "Sortowanie i zawartość poszczególnych wierszy",
+    "@rowOptionsSubtitle": {
+        "description": "Subtitle for the Row Options entry"
+    },
+    "imageTypePerRow": "Typ obrazu dla każdego wiersza",
+    "@imageTypePerRow": {
+        "description": "Settings entry and screen for choosing the image type of each Home row"
+    },
+    "externalSources": "Źródła zewnętrzne",
+    "@externalSources": {
+        "description": "Section header on the Home Screen settings screen for rows that come from IMDb, TMDB, calendars, Seerr and custom lists"
+    },
+    "qualityAndDecoding": "Jakość i dekodowanie",
+    "@qualityAndDecoding": {
+        "description": "Settings screen for streaming limits, decoding, HDR and Dolby Vision"
+    },
+    "qualityAndDecodingSubtitle": "Przepływność, rozdzielczość, dekodowanie, HDR i Dolby Vision",
+    "@qualityAndDecodingSubtitle": {
+        "description": "Subtitle for the Quality & Decoding entry"
+    },
+    "skippingAndAutoplay": "Pomijanie i autoodtwarzanie",
+    "@skippingAndAutoplay": {
+        "description": "Settings screen for media segment skipping, cinema mode and autoplay"
+    },
+    "advancedPlayback": "Zaawansowane odtwarzanie",
+    "@advancedPlayback": {
+        "description": "Settings screen for advanced player routing, external players and mpv"
+    },
+    "advancedPlaybackSubtitle": "Wybór odtwarzacza, odtwarzacze zewnętrzne i mpv",
+    "@advancedPlaybackSubtitle": {
+        "description": "Subtitle for the Advanced Playback entry"
+    },
+    "settingsAccountSubtitle": "Logowanie, kod PIN, tryb dziecięcy, kontrola rodzicielska i synchronizacja ustawień",
+    "@settingsAccountSubtitle": {
+        "description": "Subtitle for the Account settings root entry"
+    },
+    "settingsGeneralSubtitle": "Język, zegar, sterowanie i wydajność",
+    "@settingsGeneralSubtitle": {
+        "description": "Subtitle for the General settings root entry"
+    },
+    "settingsAppearanceSubtitle": "Nawigacja, ekran główny, biblioteki, strona szczegółów i motywy",
+    "@settingsAppearanceSubtitle": {
+        "description": "Subtitle for the Appearance settings root entry"
+    },
+    "settingsHomeScreenSubtitle": "Rzędy, pasek multimediów, wygląd i źródła zewnętrzne",
+    "@settingsHomeScreenSubtitle": {
+        "description": "Subtitle for the Home Screen entry on the Appearance settings screen"
+    },
+    "settingsLibrariesEntrySubtitle": "Widoczność i kolejność bibliotek oraz ich strony",
+    "@settingsLibrariesEntrySubtitle": {
+        "description": "Subtitle for the Libraries entry on the Appearance settings screen"
+    },
+    "settingsDetailsPageSubtitle": "Układ, przyciski, sekcje, oceny i muzyka motywu",
+    "@settingsDetailsPageSubtitle": {
+        "description": "Subtitle for the Details Page entry on the Appearance settings screen"
+    },
+    "settingsPlaybackSubtitle": "Odtwarzacz, jakość, dźwięk, napisy, pomijanie i SyncPlay",
+    "@settingsPlaybackSubtitle": {
+        "description": "Subtitle for the Playback settings root entry"
+    },
+    "settingsStorageSubtitle": "Pobieranie, lokalizacja zapisu i pamięć podręczna obrazów",
+    "@settingsStorageSubtitle": {
+        "description": "Subtitle for the Storage & Downloads settings root entry"
+    },
+    "settingsServicesSubtitle": "Seerr i odznaki osiągnięć",
+    "@settingsServicesSubtitle": {
+        "description": "Subtitle for the Services settings root entry"
+    },
+    "settingsSignInSection": "Logowanie",
+    "@settingsSignInSection": {
+        "description": "Section header on the Account settings screen"
+    },
+    "settingsFamilySection": "Rodzina",
+    "@settingsFamilySection": {
+        "description": "Section header on the Account settings screen for Kids Mode and parental controls"
+    },
+    "settingsServersSection": "Serwery",
+    "@settingsServersSection": {
+        "description": "Section header on the Account settings screen for server list and certificate options"
+    },
+    "settingsLanguageSection": "Język",
+    "@settingsLanguageSection": {
+        "description": "Section header on the General settings screen"
+    },
+    "settingsInputSection": "Sterowanie",
+    "@settingsInputSection": {
+        "description": "Section header on the General settings screen for keyboard, remote and pointer options"
+    },
+    "settingsMotionSection": "Animacje",
+    "@settingsMotionSection": {
+        "description": "Section header on the Appearance settings screen for animation speeds"
+    },
+    "settingsContentsSection": "Zawartość",
+    "@settingsContentsSection": {
+        "description": "Section header on the Home Screen settings screen for the rows, row options and media bar"
+    },
+    "settingsLooksSection": "Wygląd",
+    "@settingsLooksSection": {
+        "description": "Section header on the Home Screen settings screen for how rows and cards look"
+    },
+    "settingsAudioAndSubtitlesSection": "Dźwięk i napisy",
+    "@settingsAudioAndSubtitlesSection": {
+        "description": "Section header on the Playback settings screen"
+    },
+    "settingsSkippingAndQueueSection": "Pomijanie i kolejka",
+    "@settingsSkippingAndQueueSection": {
+        "description": "Section header on the Playback settings screen"
+    },
+    "settingsWatchTogetherSection": "Oglądaj razem",
+    "@settingsWatchTogetherSection": {
+        "description": "Section header on the Playback settings screen for SyncPlay"
+    },
+    "settingsAdvancedSection": "Zaawansowane",
+    "@settingsAdvancedSection": {
+        "description": "Section header on the Playback settings screen"
+    },
+    "playerSettingsSubtitle": "Sterowanie, przewijanie, przyciski odtwarzacza i podgląd podczas przewijania",
+    "@playerSettingsSubtitle": {
+        "description": "Subtitle for the Player entry on the Playback settings screen"
+    },
+    "rendererMode": "Silnik renderowania",
+    "@rendererMode": {
+        "description": "Label for the TV graphics renderer setting"
+    },
+    "rendererModeSubtitle": "Tryb automatyczny używa silnika Impeller na urządzeniach, na których działa on płynnie, a na pozostałych korzysta ze Skia. Wybierz Skia, jeśli animacje lub wideo nie wyświetlają się prawidłowo. Zmiana zostanie zastosowana przy następnym uruchomieniu aplikacji.",
+    "@rendererModeSubtitle": {
+        "description": "Explanation under the TV graphics renderer setting"
+    },
+    "rendererModeAuto": "Automatycznie",
+    "@rendererModeAuto": {
+        "description": "Renderer option: let the app choose per device"
+    },
+    "rendererModeSkia": "Skia",
+    "@rendererModeSkia": {
+        "description": "Renderer option: always use the Skia renderer"
+    },
+    "additionalParts": "Dodatkowe części",
+    "@additionalParts": {
+        "description": "Heading for the other files of a movie split across several files, like DVD1 and DVD2"
+    },
+    "videoRenderer": "Renderowanie wideo",
+    "@videoRenderer": {
+        "description": "Settings label for choosing where Windows draws video, in its own window or inside the app"
+    },
+    "videoRendererDescription": "Osobne okno zapewnia najpłynniejsze odtwarzanie i przesyła obraz HDR bezpośrednio do wyświetlacza, bez modyfikacji. Jeśli występują problemy z odtwarzaniem wideo, wypróbuj inną opcję.",
+    "@videoRendererDescription": {
+        "description": "Settings description for the video renderer choice"
+    },
+    "videoRendererNativeWindow": "Osobne okno (zalecane)",
+    "@videoRendererNativeWindow": {
+        "description": "Video renderer option that plays every title in its own window"
+    },
+    "videoRendererNativeHdrOnly": "Osobne okno tylko dla HDR",
+    "@videoRendererNativeHdrOnly": {
+        "description": "Video renderer option that uses its own window for HDR titles and the in-app renderer for SDR"
+    },
+    "videoRendererInApp": "W aplikacji (tryb starszego typu)",
+    "@videoRendererInApp": {
+        "description": "Video renderer option that draws every title inside the app and converts HDR to SDR"
+    },
+    "preferredSecondarySubtitleLanguage": "Preferowany język dodatkowych napisów",
+    "@preferredSecondarySubtitleLanguage": {
+        "description": "Preferred language used to sort secondary subtitle tracks in the picker. It doesn't turn subtitles on."
+    },
+    "primarySubtitleSlot": "Główne",
+    "@primarySubtitleSlot": {
+        "description": "Label for the primary subtitle selection slot"
+    },
+    "secondarySubtitleSlot": "Dodatkowe",
+    "@secondarySubtitleSlot": {
+        "description": "Label for the secondary subtitle selection slot"
+    },
+    "secondarySubtitleTrack": "Ścieżka dodatkowych napisów",
+    "@secondarySubtitleTrack": {
+        "description": "Title of the picker for the secondary subtitle track"
+    },
+    "decreaseValue": "Zmniejsz: {setting}",
+    "@decreaseValue": {
+        "description": "Tooltip for the button that lowers a setting's value",
+        "placeholders": {
+            "setting": {
+                "type": "String"
+            }
+        }
+    },
+    "increaseValue": "Zwiększ: {setting}",
+    "@increaseValue": {
+        "description": "Tooltip for the button that raises a setting's value",
+        "placeholders": {
+            "setting": {
+                "type": "String"
+            }
+        }
+    },
+    "miniPlayerOpenPlayer": "Otwórz odtwarzacz",
+    "@miniPlayerOpenPlayer": {
+        "description": "Tooltip label for returning from the video mini player bar to the full player"
+    },
+    "playerTooltipMinimize": "Zminimalizuj odtwarzacz",
+    "@playerTooltipMinimize": {
+        "description": "Tooltip label for shrinking the video player into the mini player bar so the viewer can keep browsing"
+    },
+    "playlistSortReleaseDate": "Data premiery",
+    "@playlistSortReleaseDate": {
+        "description": "Label for sorting playlist items by release date"
+    },
+    "playlistSortCriticRating": "Ocena krytyków",
+    "@playlistSortCriticRating": {
+        "description": "Label for sorting playlist items by critic rating"
+    },
+    "playlistSortRuntime": "Czas trwania",
+    "@playlistSortRuntime": {
+        "description": "Label for sorting playlist items by runtime"
+    },
+    "playlistSortLastPlayed": "Ostatnio odtwarzane",
+    "@playlistSortLastPlayed": {
+        "description": "Label for sorting playlist items by last played date"
+    },
+    "playlistSortPlayCount": "Liczba odtworzeń",
+    "@playlistSortPlayCount": {
+        "description": "Label for sorting playlist items by play count"
+    },
+    "playlistSortRandom": "Losowo",
+    "@playlistSortRandom": {
+        "description": "Label for sorting playlist items randomly"
+    },
+    "playlistFilterActiveCount": "{count, plural, one{# aktywny} few{# aktywne} many{# aktywnych} other{# aktywnego}}",
+    "@playlistFilterActiveCount": {
+        "description": "Indicator of how many filters are currently active on a playlist",
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "playlistNoMatchingTracks": "Żaden utwór nie pasuje do aktywnych filtrów",
+    "@playlistNoMatchingTracks": {
+        "description": "Empty state message shown when playlist filters match no items"
     }
 }

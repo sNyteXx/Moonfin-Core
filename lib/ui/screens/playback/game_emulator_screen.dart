@@ -14,13 +14,16 @@ import '../../navigation/destinations.dart';
 import '../../widgets/adaptive/adaptive_glass.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../data/services/retro_artwork/retro_artwork_activity_gate.dart';
+import '../../../preference/preference_constants.dart';
 import '../../../util/game_cores.dart';
+import '../../../util/game_sram_sync.dart';
 import '../../../util/platform_detection.dart';
 import '../../../util/focus/gamepad/gamepad_suppressor.dart';
 import '../../../util/focus/gamepad/android_gamepad_channel.dart';
 import '../../../util/desktop_emulator_gamepad.dart';
 import '../../../util/emulator_host_messages.dart';
 import '../../../util/insecure_certificates.dart';
+import '../../../util/webview_client_cert.dart';
 import '../../../util/webview_environment.dart';
 import '../../../util/system_ui.dart';
 import '../../screensaver/screensaver_controller.dart';
@@ -89,6 +92,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
   bool _holdsGameplayArtworkBlock = false;
   ScreensaverController? _screensaverController;
   bool _hasSave = false;
+  GameSramSync? _sram;
 
   // EmulatorJS settings (control remaps + options) sync per user, not per game, so they use a
   // fixed sentinel id + the "settings" save kind. Restored into localStorage at document start
@@ -106,6 +110,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
   // Cached in build() so the gamepad-driven action list (built outside a build context) can
   // read localized labels.
   AppLocalizations? _l10n;
+  GamePlaybackOrientation _orientation = currentGamePlaybackOrientation();
 
   bool _overlayOpen = false;
   int _selected = 0;
@@ -261,13 +266,20 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
       return;
     }
 
-    // On TV and desktop the on-screen touch gamepad is useless, and EmulatorJS wrongly enables
-    // it on Android TV (which reports a mobile user agent). Disable it by default there.
-    if (PlatformDetection.isTV || PlatformDetection.useDesktopUi) {
+    final ejsDefaults = {
+      // On TV and desktop the on-screen touch gamepad is useless, and EmulatorJS wrongly enables
+      // it on Android TV (which reports a mobile user agent). Disable it by default there.
+      if (PlatformDetection.isTV || PlatformDetection.useDesktopUi)
+        'virtual-gamepad': 'disabled',
+      // EmulatorJS starts melonDS in mouse mode, which ignores where a tap lands.
+      if (libretroCoreId(widget.core) == 'melonds')
+        ...?coreOptionDefaults['melonds'],
+    };
+    if (ejsDefaults.isNotEmpty) {
       _userScripts.add(
         UserScript(
           source:
-              "window.EJS_defaultOptions = Object.assign({}, window.EJS_defaultOptions, {'virtual-gamepad': 'disabled'});",
+              'window.EJS_defaultOptions = Object.assign({}, window.EJS_defaultOptions, ${jsonEncode(ejsDefaults)});',
           injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
         ),
       );
@@ -300,6 +312,12 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
       }
     } catch (_) {}
 
+    // Progress the server never got goes up first, and then the page isn't
+    // handed the server's older copy.
+    final sram = await GameSramSync.open(games, widget.gameId);
+    _sram = sram;
+    final localSramWins = await sram?.prepare(download: false) ?? false;
+
     final url = games.playerUrl(
       libraryId: widget.libraryId,
       gameId: widget.gameId,
@@ -310,6 +328,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
       // Auto-load only when resuming and a save exists (avoids a 404 fetch otherwise).
       includeSaveUrl: hasSave && !widget.startFresh,
       saveId: gameStateKey(widget.gameId, widget.core, forceEmulatorJs: true),
+      includeSramUrl: !localSramWins,
     );
 
     if (!mounted) return;
@@ -364,9 +383,17 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
     GamePlaybackSystemUi.enter(
       this,
       immersive: true,
-      lockLandscape: !PlatformDetection.isTV,
+      orientations: PlatformDetection.isTV
+          ? null
+          : deviceOrientationsFor(_orientation),
     );
   }
+
+  void _cycleOrientation() =>
+      setState(() => _orientation = cycleGamePlaybackOrientation(_orientation));
+
+  bool get _portrait =>
+      MediaQuery.orientationOf(context) == Orientation.portrait;
 
   Future<void> _restoreSystemUi() =>
       GamePlaybackSystemUi.restore(this, immersive: true);
@@ -716,6 +743,13 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
         _fastForward ? 'On' : 'Off',
         _toggleFastForward,
       ),
+      if (usesOnScreenControls)
+        _OverlayItem(
+          Icons.screen_rotation_outlined,
+          l?.gameOrientation ?? 'Orientation',
+          gamePlaybackOrientationLabel(_orientation, l),
+          _cycleOrientation,
+        ),
       _OverlayItem(
         Icons.gamepad_outlined,
         'Controller settings',
@@ -1219,6 +1253,33 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
     return true;
   }
 
+  /// Reads the battery save out of the WebView and syncs it under the bare
+  /// game id. Never throws, so it can't hold up leaving the game.
+  Future<void> _saveSram() async {
+    final controller = _controller;
+    final games = _client.gamesApi;
+    if (controller == null || games == null || !_emulatorReady) return;
+    try {
+      final value = await _invokePlayer('moonfinGetSram', const [], () async {
+        final result = await controller.callAsyncJavaScript(
+          functionBody:
+              'return window.moonfinGetSram ? window.moonfinGetSram() : null;',
+        );
+        return result?.value;
+      });
+      if (value is! String || value.isEmpty) return;
+      final bytes = base64.decode(value);
+      final sram = _sram;
+      if (sram != null) {
+        await sram.finish(bytes);
+      } else {
+        await games.putSave(widget.gameId, bytes, kind: 'sram');
+      }
+    } catch (error) {
+      debugPrint('[GameEmulatorScreen] SRAM sync failed: $error');
+    }
+  }
+
   /// Reads EmulatorJS's settings out of the WebView and syncs them to the server (per user).
   Future<void> _saveSettings() async {
     final controller = _controller;
@@ -1274,13 +1335,16 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
   }
 
   Future<void> _persistOnExit({required bool saveState}) async {
-    await persistGameEmulatorExit(
-      saveState: saveState,
-      persistState: () async {
-        await _saveState();
-      },
-      persistSettings: _saveSettings,
-    );
+    await Future.wait([
+      persistGameEmulatorExit(
+        saveState: saveState,
+        persistState: () async {
+          await _saveState();
+        },
+        persistSettings: _saveSettings,
+      ),
+      _saveSram(),
+    ]);
   }
 
   @override
@@ -1346,13 +1410,14 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
               const Center(child: CircularProgressIndicator())
             else
               // Inset the game surface from the side notches so EmulatorJS's
-              // on-screen controls are not eaten by the cutout in landscape.
+              // on-screen controls aren't eaten by the cutout in landscape,
+              // and from the top and bottom bars when held upright.
               Positioned.fill(
                 child: SafeArea(
                   left: true,
                   right: true,
-                  top: false,
-                  bottom: false,
+                  top: _portrait,
+                  bottom: _portrait,
                   child: InAppWebView(
                     key: const ValueKey('game-emulator-webview'),
                     webViewEnvironment: gWebViewEnvironment,
@@ -1417,6 +1482,7 @@ class _GameEmulatorScreenState extends State<GameEmulatorScreen>
                                 action: ServerTrustAuthResponseAction.PROCEED,
                               )
                         : null,
+                    onReceivedClientCertRequest: clientCertificateResponse,
                   ),
                 ),
               ),

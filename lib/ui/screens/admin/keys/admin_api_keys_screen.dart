@@ -70,13 +70,12 @@ class _AdminApiKeysScreenState extends State<AdminApiKeysScreen> {
   }
 
   String _createdAt(Map<String, dynamic> item, AppLocalizations l10n) {
-    final raw = item['DateCreated'] ?? item['DateLastActivity'];
-    if (raw is String && raw.isNotEmpty) {
-      final dt = DateTime.tryParse(raw);
-      if (dt != null) {
-        final local = dt.toLocal();
-        return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-      }
+    final dt =
+        parseServerDate(item['DateCreated']) ??
+        parseServerDate(item['DateLastActivity']);
+    if (dt != null) {
+      final local = dt.toLocal();
+      return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     }
     return l10n.unknown;
   }
@@ -88,16 +87,18 @@ class _AdminApiKeysScreenState extends State<AdminApiKeysScreen> {
 
   Future<void> _promptCreateKey() async {
     final l10n = AppLocalizations.of(context);
-    final controller = TextEditingController();
+    // No controller: the dialog still builds while it animates out.
+    var text = '';
     final appName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog.adaptive(
         title: Text(l10n.adminCreateApiKey),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: text,
           autofocus: true,
           decoration: adminInputDecoration(label: l10n.adminAppName),
-          onSubmitted: (value) => Navigator.pop(ctx, value.trim()),
+          onChanged: (value) => text = value,
+          onFieldSubmitted: (value) => Navigator.pop(ctx, value.trim()),
         ),
         actions: [
           adaptiveDialogAction(
@@ -105,13 +106,12 @@ class _AdminApiKeysScreenState extends State<AdminApiKeysScreen> {
             child: Text(l10n.cancel),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, text.trim()),
             child: Text(l10n.create),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (appName == null || appName.isEmpty || !mounted) return;
 
     final before = _keys.map(_keyToken).where((k) => k.isNotEmpty).toSet();
@@ -243,7 +243,7 @@ class _AdminApiKeysScreenState extends State<AdminApiKeysScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
           child: Row(
             children: [
               Expanded(
@@ -265,7 +265,8 @@ class _AdminApiKeysScreenState extends State<AdminApiKeysScreen> {
           child: _keys.isEmpty
               ? Center(child: Text(l10n.adminNoApiKeys))
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  padding: EdgeInsets.fromLTRB(
+                      16, 0, 16, MediaQuery.of(context).padding.bottom + 40),
                   children: [
                     adminGlassGroup(
                       context,

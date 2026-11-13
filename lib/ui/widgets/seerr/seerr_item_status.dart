@@ -31,6 +31,7 @@ SeerrMediaDetailState? seerrItemTabState(ItemDetailViewModel viewModel) {
   final hasContent = state.genres.isNotEmpty ||
       state.keywords.isNotEmpty ||
       state.networks.isNotEmpty ||
+      state.streamingProviders.isNotEmpty ||
       state.similar.isNotEmpty ||
       state.recommendations.isNotEmpty;
   return hasContent ? state : null;
@@ -44,6 +45,7 @@ class SeerrDetailPieces {
   const SeerrDetailPieces._({
     required this.chips,
     required this.stats,
+    required this.streaming,
     required this.recommendations,
     required this.similar,
     required this.collection,
@@ -52,6 +54,7 @@ class SeerrDetailPieces {
   static const none = SeerrDetailPieces._(
     chips: false,
     stats: false,
+    streaming: false,
     recommendations: false,
     similar: false,
     collection: false,
@@ -71,6 +74,9 @@ class SeerrDetailPieces {
       stats:
           visibility.shows(DetailSection.seerrStats) &&
           SeerrStatsCard.hasContent(state, l10n),
+      streaming:
+          visibility.shows(DetailSection.seerrStreaming) &&
+          state.streamingProviders.isNotEmpty,
       recommendations:
           visibility.shows(DetailSection.seerrRecommendations) &&
           state.recommendations.isNotEmpty,
@@ -85,11 +91,13 @@ class SeerrDetailPieces {
 
   final bool chips;
   final bool stats;
+  final bool streaming;
   final bool recommendations;
   final bool similar;
   final bool collection;
 
-  bool get hasAny => chips || stats || recommendations || similar || collection;
+  bool get hasAny =>
+      chips || stats || streaming || recommendations || similar || collection;
 }
 
 /// Season number to Seerr status for a series, empty when Seerr has nothing to
@@ -99,17 +107,18 @@ Map<int, int> seerrItemSeasonStatus(ItemDetailViewModel viewModel) {
   return state?.hd.seasonStatus ?? const {};
 }
 
-/// The Seerr state of an item with something downloading, or null.
+/// The Seerr state of an item with something downloading, or with an approved
+/// request the arr hasn't found a release for yet, or null.
 SeerrMediaDetailState? seerrItemDownloads(ItemDetailViewModel viewModel) {
   final state = _resolved(viewModel);
   if (state == null) return null;
   final downloading = state.hdDownload != null || state.download4k != null;
-  return downloading ? state : null;
+  return downloading || state.hd.isNotFoundYet ? state : null;
 }
 
 /// Progress bars for whatever Radarr or Sonarr is fetching right now, one per
 /// quality track. Labelled only when both are running, so the usual single bar
-/// stays uncluttered.
+/// stays uncluttered. An HD track with nothing grabbed yet says so instead.
 class SeerrItemDownloadBars extends StatelessWidget {
   final SeerrMediaDetailState state;
 
@@ -119,7 +128,8 @@ class SeerrItemDownloadBars extends StatelessWidget {
   Widget build(BuildContext context) {
     final hd = state.hdDownload;
     final uhd = state.download4k;
-    final both = hd != null && uhd != null;
+    final notFoundYet = hd == null && state.hd.isNotFoundYet;
+    final both = (hd != null || notFoundYet) && uhd != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -128,11 +138,15 @@ class SeerrItemDownloadBars extends StatelessWidget {
           SeerrDownloadProgressBar(
             summary: hd,
             prefixLabel: both ? 'HD' : null,
-          ),
+            reasonMaxLines: 3,
+          )
+        else if (notFoundYet)
+          SeerrNotFoundYetLabel(prefixLabel: both ? 'HD' : null),
         if (uhd != null)
           SeerrDownloadProgressBar(
             summary: uhd,
             prefixLabel: AppLocalizations.of(context).uhd4k,
+            reasonMaxLines: 3,
           ),
       ],
     );

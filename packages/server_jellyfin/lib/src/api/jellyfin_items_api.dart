@@ -309,6 +309,7 @@ class JellyfinItemsApi implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
     bool recursive = false,
+    bool? hideWatched,
   }) async {
     final userId = _getUserId();
     final response = await _dio.get(
@@ -318,6 +319,7 @@ class JellyfinItemsApi implements ItemsApi {
         if (recursive) 'Recursive': true,
         if (includeItemTypes != null)
           'IncludeItemTypes': includeItemTypes.join(','),
+        if (hideWatched == true) 'Filters': 'IsUnplayed',
         'Limit': ?limit,
         'Fields': ?fields,
         'EnableImageTypes': ?enableImageTypes,
@@ -455,12 +457,14 @@ class JellyfinItemsApi implements ItemsApi {
     String playlistId, {
     int? startIndex,
     int? limit,
+    String? fields,
   }) async {
     final response = await _dio.get(
       '/Playlists/$playlistId/Items',
       queryParameters: {
         'Fields':
-            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams',
+            fields ??
+            'BasicSyncInfo,PrimaryImageAspectRatio,RunTimeTicks,Artists,AlbumArtist,IndexNumber,MediaType,PlaylistItemId,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesName,ParentIndexNumber,Genres,Chapters,Overview,UserData,MediaStreams,DateCreated,SortName',
         'EnableImageTypes': 'Primary,Backdrop,Logo,Thumb',
         'ImageTypeLimit': 1,
         'StartIndex': ?startIndex,
@@ -470,6 +474,7 @@ class JellyfinItemsApi implements ItemsApi {
     return response.data as Map<String, dynamic>;
   }
 
+  /// Jellyfin makes a new playlist public unless told otherwise.
   @override
   Future<Map<String, dynamic>> createPlaylist({
     required String name,
@@ -477,7 +482,7 @@ class JellyfinItemsApi implements ItemsApi {
   }) async {
     final response = await _dio.post(
       '/Playlists',
-      data: {'Name': name, 'Ids': ?itemIds},
+      data: {'Name': name, 'Ids': ?itemIds, 'IsPublic': false},
     );
     return response.data as Map<String, dynamic>;
   }
@@ -725,6 +730,15 @@ class JellyfinItemsApi implements ItemsApi {
       return data.cast<Map<String, dynamic>>();
     }
     return const [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async {
+    final response = await _dio.get(
+      '/Videos/$itemId/AdditionalParts',
+      queryParameters: {'UserId': _getUserId()},
+    );
+    return _parseItemListResponse(response.data);
   }
 
   @override

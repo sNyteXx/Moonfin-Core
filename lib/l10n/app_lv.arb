@@ -528,10 +528,6 @@
     "@discoverySubjects": {
         "description": "Title for the book discovery subject picker panel"
     },
-    "pickDiscoverySubjects": "Izvēlieties, kuras tēmu plūsmas rādīt programmā Discover.",
-    "@pickDiscoverySubjects": {
-        "description": "Instruction text in discovery subject picker"
-    },
     "apply": "Lietot",
     "@apply": {
         "description": "Button label to apply selected options"
@@ -547,27 +543,6 @@
     "audiobookGenres": "Audiogrāmatu žanri",
     "@audiobookGenres": {
         "description": "Title for audiobook genre picker panel"
-    },
-    "pickAudiobookGenres": "Izvēlieties, kurus žanrus rādīt programmā Audiobook Discover.",
-    "@pickAudiobookGenres": {
-        "description": "Instruction text in audiobook genre picker"
-    },
-    "discoverAudiobooks": "Atklājiet audiogrāmatas",
-    "@discoverAudiobooks": {
-        "description": "Section title for audiobook discovery"
-    },
-    "librivoxDescription": "Populāri publiskā domēna nosaukumi no LibriVox.",
-    "@librivoxDescription": {
-        "description": "Subtitle for audiobook discovery section"
-    },
-    "titlesCount": "{count} virsraksti",
-    "@titlesCount": {
-        "description": "Label showing number of titles",
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
     },
     "scrollLeft": "Ritiniet pa kreisi",
     "@scrollLeft": {
@@ -745,10 +720,6 @@
     "@discover": {
         "description": "Section title for book discovery"
     },
-    "trendingTitlesOpenLibrary": "Populārākie nosaukumi pēc tēmas no Open Library.",
-    "@trendingTitlesOpenLibrary": {
-        "description": "Subtitle for book discovery section"
-    },
     "noBookmarkedItems": "Vēl nav grāmatzīmēs pievienotu vienumu",
     "@noBookmarkedItems": {
         "description": "Empty state for bookmarks grid"
@@ -914,7 +885,7 @@
             }
         }
     },
-    "audiobookCountLabel": "{count, plural, =1{1 audiogrāmata} zero{{count} audiogrāmatu} one{{count} audiogrāmata} other{{count} audiogrāmatas}}",
+    "audiobookCountLabel": "{count, plural, zero{{count} audiogrāmatu} one{{count} audiogrāmata} other{{count} audiogrāmatas}}",
     "@audiobookCountLabel": {
         "description": "Subtitle showing number of audiobooks by an author",
         "placeholders": {
@@ -1036,7 +1007,7 @@
     "@publicationDateUnknown": {
         "description": "Placeholder when publication date is unknown"
     },
-    "seasonCount": "{count, plural, =1{1 sezona} zero{{count} sezonu} one{{count} sezona} other{{count} sezonas}}",
+    "seasonCount": "{count, plural, zero{{count} sezonu} one{{count} sezona} other{{count} sezonas}}",
     "@seasonCount": {
         "description": "Number of seasons for a series",
         "placeholders": {
@@ -1447,7 +1418,7 @@
             }
         }
     },
-    "trackCount": "{count, plural, =1{1 celiņš} zero{{count} celiņu} one{{count} celiņš} other{{count} celiņi}}",
+    "trackCount": "{count, plural, zero{{count} celiņu} one{{count} celiņš} other{{count} celiņi}}",
     "@trackCount": {
         "description": "Label showing number of tracks in an album",
         "placeholders": {
@@ -1456,7 +1427,7 @@
             }
         }
     },
-    "chapterCount": "{count, plural, =1{1 nodaļa} zero{{count} nodaļu} one{{count} nodaļa} other{{count} nodaļas}}",
+    "chapterCount": "{count, plural, zero{{count} nodaļu} one{{count} nodaļa} other{{count} nodaļas}}",
     "@chapterCount": {
         "description": "Label showing number of chapters in an audiobook",
         "placeholders": {
@@ -2490,7 +2461,7 @@
             }
         }
     },
-    "episodeCount": "{count, plural, =1{1 epizode} zero{{count} epizožu} one{{count} epizode} other{{count} epizodes}}",
+    "episodeCount": "{count, plural, zero{{count} epizožu} one{{count} epizode} other{{count} epizodes}}",
     "@episodeCount": {
         "description": "Number of episodes with pluralization",
         "placeholders": {
@@ -3500,14 +3471,6 @@
     "@showLibrariesFromAllServers": {
         "description": "Description for multi-server libraries"
     },
-    "enableFolderView": "Iespējot mapju skatu",
-    "@enableFolderView": {
-        "description": "Setting for enabling folder view"
-    },
-    "showFolderBrowsingOption": "Rādīt mapju pārlūkošanas opciju",
-    "@showFolderBrowsingOption": {
-        "description": "Description for folder view"
-    },
     "libraryVisibility": "Bibliotēkas redzamība",
     "@libraryVisibility": {
         "description": "Section title for library visibility"
@@ -4230,10 +4193,6 @@
     "featuredContentAppearance": "Piedāvātais saturs, izskats",
     "@featuredContentAppearance": {
         "description": "Media bar settings subtitle"
-    },
-    "posterSizeImageTypeFolderView": "Plakāta izmērs, attēla veids, mapes skats",
-    "@posterSizeImageTypeFolderView": {
-        "description": "Library display settings subtitle"
     },
     "mdbListTmdbRatingSources": "MDBList, TMDB un reitingu avoti",
     "@mdbListTmdbRatingSources": {
@@ -7192,7 +7151,7 @@
     "analyticsTopArtists": "Labākie mākslinieki",
     "analyticsTopAuthors": "Populārākie autori",
     "analyticsTopContributors": "Aktīvākie līdzstrādnieki",
-    "analyticsLibrariesCount": "{count, plural, =1{1 bibliotēka} zero{{count} bibliotēku} one{{count} bibliotēka} other{{count} bibliotēkas}}",
+    "analyticsLibrariesCount": "{count, plural, zero{{count} bibliotēku} one{{count} bibliotēka} other{{count} bibliotēkas}}",
     "@analyticsLibrariesCount": {
         "placeholders": {
             "count": {
@@ -7300,7 +7259,6 @@
     "failedToExtractCbrArchive": "Neizdevās izpakot .cbr arhīvu.",
     "cb7ExtractionUnavailable": "CB7 izpakošana šajā platformā nav pieejama.",
     "cb7ExtractionPluginUnavailable": "CB7 izpakošanas spraudnis šajā platformā nav pieejams.",
-    "closeGenrePanel": "Aizvērt žanru paneli",
     "loadingShuffle": "Ielādē jaukšanu...",
     "libraryShuffleLabel": "BIBLIOTĒKAS JAUKŠANA",
     "randomShuffleLabel": "NEJAUŠA JAUKŠANA",
@@ -7494,7 +7452,7 @@
     "@latestAudiobooks": {
         "description": "Row title for recently added audiobooks in the book library"
     },
-    "bookSeriesItemCount": "{count, plural, =1{1 grāmata} zero{{count} grāmatu} one{{count} grāmata} other{{count} grāmatas}}",
+    "bookSeriesItemCount": "{count, plural, zero{{count} grāmatu} one{{count} grāmata} other{{count} grāmatas}}",
     "@bookSeriesItemCount": {
         "description": "Subtitle for a book series shelf entry showing how many books it contains",
         "placeholders": {
@@ -8505,7 +8463,6 @@
     "adminGeneralDisplayLanguage": "Vēlamā attēlošanas valoda",
     "offlineBannerTitle": "Jūs esat bezsaistē",
     "offlineBannerSubtitle": "Tiek rādītas jūsu lejupielādes",
-    "offlineBannerAction": "Lejupielādes",
     "serverUnreachableBannerTitle": "Nevar sasniegt serveri",
     "serverUnreachableBannerSubtitle": "Līdz servera atjaunošanai atskaņo no lejupielādēm",
     "contextMenuHideFromContinueWatching": "Slēpt no “Turpināt skatīties”",

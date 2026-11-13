@@ -1,12 +1,13 @@
 import '../../data/models/home_row.dart';
 import '../../l10n/app_localizations.dart';
 import '../../preference/preference_constants.dart';
+import '../../preference/seerr_preferences.dart';
 
 /// The Seerr page builds its rows from the type alone, so it localizes the
 /// title here rather than carrying one around.
 String localizeSeerrRowTitle(SeerrRowType type, AppLocalizations l10n) =>
     switch (type) {
-      SeerrRowType.shortcuts => l10n.seerrShortcutsRow,
+      SeerrRowType.shortcuts => seerrBrand(l10n.seerrShortcutsRow),
       SeerrRowType.recentRequests => l10n.recentRequests,
       SeerrRowType.recentlyAdded => l10n.recentlyAdded,
       SeerrRowType.yourWatchlist => l10n.yourWatchlist,
@@ -19,6 +20,22 @@ String localizeSeerrRowTitle(SeerrRowType type, AppLocalizations l10n) =>
       SeerrRowType.seriesGenres => l10n.seriesGenres,
       SeerrRowType.upcomingSeries => l10n.upcomingSeries,
       SeerrRowType.networks => l10n.networks,
+    };
+
+/// The seasonal row is titled after the holiday Moonbase picked, which it names
+/// by id.
+String seasonalHolidayTitle(String holiday, AppLocalizations l10n) =>
+    switch (holiday) {
+      'newYear' => l10n.holidayNewYear,
+      'valentines' => l10n.holidayValentines,
+      'easter' => l10n.holidayEaster,
+      'pride' => l10n.holidayPride,
+      'halloween' => l10n.holidayHalloween,
+      'thanksgiving' => l10n.holidayThanksgiving,
+      'christmas' => l10n.holidayChristmas,
+      'lunarNewYear' => l10n.holidayLunarNewYear,
+      'diwali' => l10n.holidayDiwali,
+      _ => l10n.seasonalRow,
     };
 
 String localizeHomeRowTitle({
@@ -54,6 +71,7 @@ String localizeHomeRowTitle({
       return l10n.myMedia;
     case 'liveTv':
       return l10n.liveTv;
+    case 'onNow':
     case 'liveTvOnNow':
       return l10n.onNow;
     case 'liveTvFavorites':
@@ -61,9 +79,11 @@ String localizeHomeRowTitle({
     case 'activeRecordings':
       return l10n.activeRecordings;
     case 'radarr_calendar':
-      return 'Upcoming Movies (Radarr)';
+      return l10n.radarrCalendarRow;
     case 'sonarr_calendar':
-      return 'Upcoming TV Shows (Sonarr)';
+      return l10n.sonarrCalendarRow;
+    case 'merged_calendar':
+      return l10n.mergedCalendarRow;
     case 'seerr_recent_requests':
       return l10n.recentRequests;
     case 'seerr_recently_added':
@@ -77,7 +97,7 @@ String localizeHomeRowTitle({
     case 'seerr_upcoming_series':
       return l10n.upcomingSeries;
     case 'seerr_shortcuts':
-      return l10n.seerrShortcutsRow;
+      return seerrBrand(l10n.seerrShortcutsRow);
     case 'seerr_trending':
       return l10n.trending;
     case 'seerr_movie_genres':
@@ -90,6 +110,8 @@ String localizeHomeRowTitle({
       return l10n.networks;
     case 'rewatch':
       return 'Rewatch';
+    case 'mdblist_watching_now':
+      return l10n.mdblistWatchingNow;
   }
 
   if (row.id.startsWith('resume_')) return l10n.continueWatching;
@@ -106,10 +128,26 @@ String localizeHomeRowTitle({
     return _localizeLatestRowTitle(row.title, l10n);
   }
 
+  if (row.id.startsWith('sinceYouWatched')) {
+    return _localizeSinceYouWatchedTitle(row.title, l10n);
+  }
+
   if (row.id.startsWith('imdb_')) {
     return row.title.replaceAll('IMDb ', '').replaceAll('IMDb', '').trim();
   }
   return row.title;
+}
+
+/// The data layer has no localizations, so it titles the row in English with the
+/// watched item in quotes, and the item is read back out here.
+String _localizeSinceYouWatchedTitle(String title, AppLocalizations l10n) {
+  const itemPrefix = 'Since you watched "';
+  if (title.startsWith(itemPrefix) && title.endsWith('"')) {
+    return l10n.sinceYouWatchedItemRowTitle(
+      title.substring(itemPrefix.length, title.length - 1),
+    );
+  }
+  return l10n.sinceYouWatchedRowTitle;
 }
 
 String _localizeLatestRowTitle(String title, AppLocalizations l10n) {

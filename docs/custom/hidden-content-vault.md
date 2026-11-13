@@ -360,7 +360,7 @@ serverweit gleich.
 ## 9. Tests & Messungen
 
 ```
-flutter test test/custom/hidden_vault/     # 99 Tests
+flutter test test/custom/hidden_vault/     # 131 Tests (Moonfin 3.1.0)
 flutter test                               # gesamte Suite
 ```
 
@@ -432,18 +432,36 @@ gleiche Tags außerhalb der Library (bleiben sichtbar) und wie viele Next-Up-
 Episoden über ihre Serie gefiltert würden. Die IDs oben sind nur die
 Entwicklungsreferenz und stehen nirgends im Code.
 
-Android: Der komplette Dart-Code wurde im Release-Modus (Produkt, TFA) für
-`android-arm64` und `android-arm` AOT kompiliert (`libapp.so`), der Kotlin-Code
-von `vault_biometrics` gegen die Android-API kompiliert. Das Gradle-Packaging
-zur APK braucht das Android SDK von `dl.google.com`, das in der
-Cloud-Umgebung gesperrt war → auf ubuntudev mit `./build-android.sh` bauen.
+Android: Für Moonfin 3.1.0 wird Flutter 3.47.2 verwendet. Der Android-Build
+läuft auf UbuntuDev mit **Java 17** wie im GitHub-Release-Workflow. Java 21
+verursacht mit `file_picker` einen JVM-Target-Konflikt (Java 17 vs. Kotlin 21).
+Das reguläre `./build-android.sh tv` erstellt die TV-Artefakte.
+
+Für ein **In-Place-Update der bereits installierten Shield-Testvariante**
+`org.moonfin.androidtv.vault` muss zusätzlich die bisherige Paketkennung
+beibehalten werden:
+
+```bash
+MOONFIN_TEST_ID_SUFFIX=.vault flutter build apk --release \
+  --flavor androidTv --target-platform android-arm64 \
+  --dart-define=MOONFIN_FORCE_TV=true \
+  --dart-define=DISTRIBUTION_CHANNEL=android_tv_apk
+```
+
+Unbedingt vor `adb install -r` die `applicationId`, den Versionscode und das
+Signierzertifikat der APK mit dem vorhandenen Paket vergleichen. Derselbe
+Debug-Keystore (oder ein dauerhaft hinterlegter Release-Keystore) ist nötig;
+**nicht deinstallieren**, denn das würde die lokalen Einstellungen und
+gegebenenfalls Spielstände löschen. Die normale Moonfin-App
+`org.moonfin.androidtv` bleibt von diesem Testvarianten-Update unberührt.
+
 iOS: nach dem Pull `pod install` (neues lokales Plugin); der Swift-Teil ist
 hier nicht kompiliert.
 
 Fork-Releases: `.github/workflows/fork-android-release.yml` baut die Handy-
 und die TV-APK und veröffentlicht sie als Pre-Release. Auslöser ist ein Push,
 der `.github/fork-release` ändert (eine Zeile mit dem Tag, z. B.
-`fork-v2.6.0-vault.1`), ein gepushter Tag `fork-v*` oder ein manueller Lauf.
+`fork-v3.1.0-vault.1`), ein gepushter Tag `fork-v*` oder ein manueller Lauf.
 Das Upstream-Tag-Muster (`1.2.3`) startet dabei nicht den Build aller
 Plattformen. Auf einem Fork müssen die Actions einmal im Tab *Actions*
 aktiviert werden. Ohne die
@@ -468,9 +486,11 @@ die APK debug-signiert, mit wechselndem Schlüssel pro Build.
   Online-Prüfung. Ein erneuter Play-Aufruf prüft den ausgewählten Eintrag,
   bevor Queue oder Wiedergabe freigegeben werden.
 * Ein nach dem letzten Index-Refresh neu getaggtes Item wird über eigene Tags
-  bzw. den Serien-Batch sofort erkannt; nur Endpunkte ohne `Fields`
-  (Similar, Playlist-Items) verlassen sich bis zum nächsten Refresh
-  (≤ 10 min, plus App-Start) auf den Index.
+  bzw. den Serien-Batch sofort erkannt; Endpunkte ohne `Fields` (z. B.
+  Similar) verlassen sich bis zum nächsten Refresh (≤ 10 min, plus
+  App-Start) auf den Index. Playlist-Items unterstützen seit 3.1 `Fields`
+  und werden mit angeforderten `Tags` geprüft. Bei mehrteiligen Filmen prüft
+  der Decorator zusätzlich den Elternfilm, bevor er `AdditionalParts` lädt.
 * Collections (BoxSets) sitzen in keiner Library: sie verschwinden nur mit
   eigenem konfiguriertem Tag; ihr Inhalt wird immer gefiltert.
 * Seerr/TMDB/IMDb-Rows zeigen externe Katalogdaten (keine lokalen Items) und

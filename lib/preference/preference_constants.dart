@@ -66,6 +66,20 @@ enum PlaybackEnginePreference {
   mpv,
 }
 
+/// Which player plays video on iPhone and iPad. Native is the player the
+/// Apple TV app uses.
+enum ApplePlayerUi {
+  flutter,
+  native,
+}
+
+/// Where the play, skip and seek buttons sit on phones, tablets and desktop.
+/// TVs always dock them, since the remote walks the bottom row.
+enum PlayerTransportPosition {
+  onScreen,
+  docked,
+}
+
 enum DolbyVisionFallbackBehavior {
   ask,
   hdr10Fallback,
@@ -122,11 +136,17 @@ enum PosterSize {
   small(portraitHeight: 120, landscapeHeight: 88),
   medium(portraitHeight: 150, landscapeHeight: 110),
   large(portraitHeight: 180, landscapeHeight: 132),
-  extraLarge(portraitHeight: 210, landscapeHeight: 154);
+  extraLarge(portraitHeight: 210, landscapeHeight: 154),
+  grandparents(portraitHeight: 300, landscapeHeight: 220);
 
   const PosterSize({required this.portraitHeight, required this.landscapeHeight});
   final int portraitHeight;
   final int landscapeHeight;
+
+  /// Every size but Grandparents, which only the Classic home rows draw.
+  static const gridValues = [small, medium, large, extraLarge];
+
+  PosterSize get upToExtraLarge => this == grandparents ? extraLarge : this;
 }
 
 enum FavoritesViewStyle {
@@ -165,6 +185,16 @@ enum SiriRemoteSwipeSensitivity {
   final double stepTravel;
 }
 
+/// What the Apple TV home screen shows above the Moonfin icon.
+enum TopShelfContent {
+  /// A carousel of the newest items from the home's Latest rows.
+  latestMedia,
+
+  /// The static Moonfin banner from the brand assets, with nothing from the
+  /// library on it.
+  appBanner,
+}
+
 enum RefreshRateSwitchingBehavior {
   disabled,
   scaleOnTv,
@@ -175,6 +205,31 @@ enum AutoHdrSwitchingBehavior {
   disabled,
   whenFullscreen,
   always,
+}
+
+/// What a Jellyfin user starts from Watch Parties. Synced as the plain name.
+enum WatchPartyServiceChoice { moonbase, syncplay }
+
+/// How phones and tablets are held while a game plays. [auto] follows the
+/// device, so the system rotation lock applies.
+enum GamePlaybackOrientation {
+  landscape,
+  portrait,
+  auto,
+}
+
+/// Where mpv draws video on Windows: its own D3D11 window, or media_kit's
+/// texture inside the app.
+enum VideoRenderer {
+  nativeWindow,
+  nativeHdrOnly,
+  inApp;
+
+  bool usesNativeWindow({required bool isHdr}) => switch (this) {
+    nativeWindow => true,
+    nativeHdrOnly => isHdr,
+    inApp => false,
+  };
 }
 
 enum StillWatchingBehavior {
@@ -198,6 +253,9 @@ enum WatchedIndicatorBehavior {
 
 enum ZoomMode {
   fit,
+
+  /// Shown as Zoom to Fill. The name stays autoCrop because it's the value
+  /// saved and synced to the server.
   autoCrop,
   stretch,
 }
@@ -241,6 +299,14 @@ enum DesktopScrollWheelAction {
   volume,
 }
 
+/// Where brightness and volume swipe gesture indicators are placed on the screen.
+/// [same] places the indicator on the side being swiped (brightness left, volume right).
+/// [inverted] places the indicator on the opposite side (brightness right, volume left).
+enum GestureIndicatorPlacement {
+  same,
+  inverted,
+}
+
 /// Glass rendering budget. `auto` picks per-device (real blur on capable
 /// hardware, zero-blur sheen on TV boxes/web); `full` forces real blur;
 /// `reduced` forces the zero-blur sheen everywhere.
@@ -249,6 +315,10 @@ enum GlassQualityMode { auto, full, reduced }
 /// How much this device is asked to spend on decoded images and inline video.
 /// [DevicePerformanceMode.auto] measures the device, the other two pin it.
 enum DevicePerformanceMode { auto, standard, reduced }
+
+/// Which renderer an Android TV box draws with. [RendererMode.auto] lets the
+/// app pick Impeller where it runs on Vulkan, [RendererMode.skia] pins Skia.
+enum RendererMode { auto, skia }
 
 /// Persisted settled quality of the adaptive glass renderer, mirroring the
 /// package's GlassQuality tiers. `unset` means no benchmark has settled yet,
@@ -300,13 +370,60 @@ enum VisualThemeId {
 /// sectioned grid modals. [nouveau] is the full-screen layout, with every
 /// section stacked down the page rather than behind tabs or cards.
 /// [minimalist] strips the screen back to artwork, one play button and the
-/// episodes, and is what Kids Mode always shows. Stored per server and user.
+/// episodes, and is what Kids Mode always shows. [stage] leads with the poster,
+/// with play under it and the details beside it. [premiere] centers the title
+/// over a backdrop that fills the screen, with every section down the page
+/// under it. [quickLook] opens a drawer over the screen the title was picked
+/// on, with Modern a press away for the full page. [frost] floats the title in
+/// a glass window over a blurred copy of its art, with tabs under its buttons.
+/// Stored per server and user.
 enum DetailScreenStyle {
   classic,
   modern,
   spotlight,
   nouveau,
-  minimalist;
+  minimalist,
+  stage,
+  premiere,
+  quickLook,
+  frost;
+}
+
+/// Selectable header layout for the library browse screen.
+///
+/// [classic] is the original centered title with a row of icon buttons and is
+/// the default. [modern] puts Home, search and labeled Sort, Group and Show
+/// pills in one bar. [docked] moves the controls and the letters into a side
+/// panel on TV and desktop and a floating bottom bar on phones. Stored per
+/// server and user.
+enum LibraryStyle {
+  classic,
+  modern,
+  docked;
+}
+
+/// Selectable layout for book and audiobook libraries.
+///
+/// [classic] is the original shelves under a featured title. [readingRoom]
+/// leads with large Continue cards over a few shelves. [bookstore] is the
+/// default, a rail or tiles of browse entries over a paged title grid. Stored
+/// per server and user.
+enum BookLibraryStyle {
+  classic,
+  readingRoom,
+  bookstore;
+}
+
+/// Selectable layout for music libraries.
+///
+/// [classic] is the original rows under a Jump Back In card. [quickAccess]
+/// leads with a grid of recent albums and playlists. [immersive] is the
+/// default, the album being listened to on a full-width hero over the rest.
+/// Stored per server and user.
+enum MusicLibraryStyle {
+  classic,
+  quickAccess,
+  immersive;
 }
 
 /// Selectable algorithm source for similarity recommendation system.
@@ -426,6 +543,7 @@ enum HomeSectionType {
   genres('genres'),
   studios('studios'),
   liveTv('livetv'),
+  onNow('onnow'),
   seerrShortcuts('seerr_shortcuts'),
   seerrRecentRequests('seerr_recent_requests'),
   seerrWatchlist('seerr_watchlist'),
@@ -458,6 +576,7 @@ enum HomeSectionType {
   tmdbTrendingTvDaily('tmdb_trending_tv_daily'),
   tmdbTrendingTvWeekly('tmdb_trending_tv_weekly'),
   tmdbTrendingAllWeekly('tmdb_trending_all_weekly'),
+  mdblistWatchingNow('mdblist_watching_now'),
   radarrCalendar('radarr_calendar'),
   sonarrCalendar('sonarr_calendar'),
   sinceYouWatched1('sinceyouwatched1'),
@@ -466,6 +585,7 @@ enum HomeSectionType {
   sinceYouWatched4('sinceyouwatched4'),
   sinceYouWatched5('sinceyouwatched5'),
   rewatch('rewatch'),
+  seasonal('seasonal'),
   none('none');
 
   const HomeSectionType(this.serializedName);
@@ -491,6 +611,33 @@ enum HomeSectionType {
     );
   }
 }
+
+/// The IMDb charts Moonbase serves, each asked for by its own serialized name.
+const imdbChartSections = [
+  HomeSectionType.imdbTop250Movies,
+  HomeSectionType.imdbTop250TvShows,
+  HomeSectionType.imdbMostPopularMovies,
+  HomeSectionType.imdbMostPopularTvShows,
+  HomeSectionType.imdbLowestRatedMovies,
+  HomeSectionType.imdbTopEnglishMovies,
+];
+
+/// The TMDB chart behind each TMDB section, as the path Moonbase asks TMDB for.
+const tmdbChartPaths = {
+  HomeSectionType.tmdbPopularMovies: 'movie/popular',
+  HomeSectionType.tmdbTopRatedMovies: 'movie/top_rated',
+  HomeSectionType.tmdbNowPlayingMovies: 'movie/now_playing',
+  HomeSectionType.tmdbUpcomingMovies: 'movie/upcoming',
+  HomeSectionType.tmdbPopularTv: 'tv/popular',
+  HomeSectionType.tmdbTopRatedTv: 'tv/top_rated',
+  HomeSectionType.tmdbAiringTodayTv: 'tv/airing_today',
+  HomeSectionType.tmdbOnTheAirTv: 'tv/on_the_air',
+  HomeSectionType.tmdbTrendingMovieDaily: 'trending/movie/day',
+  HomeSectionType.tmdbTrendingMovieWeekly: 'trending/movie/week',
+  HomeSectionType.tmdbTrendingTvDaily: 'trending/tv/day',
+  HomeSectionType.tmdbTrendingTvWeekly: 'trending/tv/week',
+  HomeSectionType.tmdbTrendingAllWeekly: 'trending/all/week',
+};
 
 /// Every sort ends on SortName so items the server ranks equally keep a stable
 /// order between pages, which a bare key leaves to whatever the database
@@ -642,6 +789,23 @@ enum SortDirection {
   final String apiValue;
 }
 
+/// How a poster shows its Seerr status: [badge] is Seerr's own dot in a corner
+/// and [banner] runs the status across the top. Stored per server and user.
+enum SeerrBadgeStyle { badge, banner }
+
+enum ExternalRowSortBy {
+  none('Default (List Order)'),
+  name('Name'),
+  releaseDate('Release Date'),
+  rating('Rating'),
+  popularity('Popularity'),
+  shuffle('Shuffle');
+
+  const ExternalRowSortBy(this.displayName);
+
+  final String displayName;
+}
+
 enum PlayedStatusFilter {
   all,
   watched,
@@ -711,7 +875,8 @@ enum FavoriteTypeFilter {
   musicAlbum,
   musicArtist,
   audio,
-  collection;
+  collection,
+  watchlist;
 
   String get displayName => switch (this) {
     all => 'All',
@@ -724,6 +889,7 @@ enum FavoriteTypeFilter {
     musicArtist => 'Artists',
     audio => 'Songs',
     collection => 'Collections',
+    watchlist => 'Watchlist',
   };
 
   List<String>? get itemTypes => switch (this) {
@@ -737,6 +903,7 @@ enum FavoriteTypeFilter {
     musicArtist => ['MusicArtist'],
     audio => ['Audio'],
     collection => ['BoxSet'],
+    watchlist => null,
   };
 
   static FavoriteTypeFilter fromRowId(String id) {
@@ -909,41 +1076,19 @@ enum ScreensaverTimeout {
 enum SinceYouWatchedSource {
   local,
   server,
-  online;
-
-  String get displayName => switch (this) {
-    SinceYouWatchedSource.local => 'Moonfin Recommends',
-    SinceYouWatchedSource.server => 'Jellyfin Recommends',
-    SinceYouWatchedSource.online => 'TMDb Similarity',
-  };
+  online,
 }
 
 enum SinceYouWatchedSourceType {
   movies,
   shows,
-  both;
-
-  String get displayName {
-    switch (this) {
-      case movies: return 'Movies';
-      case shows: return 'Shows';
-      case both: return 'Both';
-    }
-  }
+  both,
 }
 
 enum SinceYouWatchedSourceItem {
   recentlyWatched,
   favorites,
-  random;
-
-  String get displayName {
-    switch (this) {
-      case recentlyWatched: return 'Recently Watched';
-      case favorites: return 'Favorites';
-      case random: return 'Random';
-    }
-  }
+  random,
 }
 
 enum SinceYouWatchedNumRows {
@@ -970,6 +1115,9 @@ enum RewatchSortBy {
 /// series carries its first episode's date, so a long running show stops
 /// surfacing. The row shows series cards whichever of these is picked.
 enum RecentlyReleasedSeriesType { series, season, episode }
+
+/// What single-clicking on a Continue Watching or Next Up home card does.
+enum ContinueWatchingDefaultAction { details, play }
 
 /// When a home row card shows its MOVIE or SERIES label. Only external rows
 /// carry a media type, so the rest are unaffected either way.
@@ -1041,4 +1189,24 @@ enum ModernCardTransitionSpeed {
 
   const ModernCardTransitionSpeed(this.duration);
   final Duration duration;
+}
+
+/// What the Calendar button opens. The month grid sits behind both styles.
+enum CalendarStyle { agenda, countdown }
+
+enum CalendarWeekStart { locale, sunday, monday }
+
+/// [myShows] keeps episodes of series the user favorited or has watched.
+enum CalendarScope { everything, myShows }
+
+enum CalendarColorBy { type, status }
+
+enum CalendarImageType { poster, thumb }
+
+enum CalendarSelectAction { details, play }
+
+enum DateFormatSetting {
+  system,
+  monthDay,
+  dayMonth,
 }
