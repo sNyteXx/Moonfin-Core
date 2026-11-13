@@ -403,6 +403,7 @@ class FakeJellyfin implements ItemsApi {
     String? enableImageTypes,
     int? imageTypeLimit,
     bool recursive = false,
+    bool? hideWatched,
   }) async {
     calls.add(FakeCall('getRecentlyReleasedItems', {'parentId': parentId}));
     final list = _all
@@ -485,6 +486,15 @@ class FakeJellyfin implements ItemsApi {
   Future<List<Map<String, dynamic>>> getSpecialFeatures(String itemId) async {
     calls.add(FakeCall('getSpecialFeatures', {'id': itemId}));
     return const [];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAdditionalParts(String itemId) async {
+    calls.add(FakeCall('getAdditionalParts', {'id': itemId}));
+    return [
+      for (final item in _all)
+        if (item['PartOfId'] == itemId) _out(item, null),
+    ];
   }
 
   @override
